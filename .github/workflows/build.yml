@@ -1,0 +1,168 @@
+name: Build Android & iOS
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.7.2"
+  GODOT_TAG: "4.7.2-stable"
+  TEMPLATES_VER: "4.7.2.stable"
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Godot Linux & Export Templates
+        id: cache-godot-linux
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/godot-linux
+            ~/.local/share/godot/export_templates/${{ env.TEMPLATES_VER }}
+          key: godot-${{ env.GODOT_TAG }}-linux-v1
+
+      - name: Install Godot & Export Templates
+        if: steps.cache-godot-linux.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/godot-linux ~/.local/share/godot/export_templates/${{ env.TEMPLATES_VER }}
+          curl -fsSL "https://github.com/godotengine/godot/releases/download/${{ env.GODOT_TAG }}/Godot_v${{ env.GODOT_TAG }}_linux.x86_64.zip" -o /tmp/godot_linux.zip
+          unzip -oq /tmp/godot_linux.zip -d /tmp/godot-linux
+          chmod +x /tmp/godot-linux/Godot_*
+          curl -fsSL "https://github.com/godotengine/godot/releases/download/${{ env.GODOT_TAG }}/Godot_v${{ env.GODOT_TAG }}_export_templates.tpz" -o /tmp/templates.tpz
+          unzip -oq /tmp/templates.tpz -d /tmp/tpl_unpack
+          mv /tmp/tpl_unpack/templates/* ~/.local/share/godot/export_templates/${{ env.TEMPLATES_VER }}/
+          rm -rf /tmp/godot_linux.zip /tmp/templates.tpz /tmp/tpl_unpack
+
+      - name: Import Godot Resources
+        run: |
+          GODOT_BIN=$(find /tmp/godot-linux -maxdepth 1 -type f -name 'Godot_*' | head -n1)
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+          "$GODOT_BIN" --headless --import --quit-after 300
+
+      - name: Configure Android Keystore & Export APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/android ~/.config/godot
+          SDK_PATH="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "Using Android SDK: $SDK_PATH"
+          if [ -d "$SDK_PATH" ]; then
+            cat > ~/.config/godot/editor_settings-4.7.tres <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$SDK_PATH"
+          EOF
+          fi
+          KS_PATH="/tmp/r00ms-release.keystore"
+          KS_USER="$ANDROID_KEYSTORE_USER"
+          KS_PASS="$ANDROID_KEYSTORE_PASSWORD"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KS_PATH"
+          else
+            KS_USER="r00ms"
+            KS_PASS="r00ms123"
+            keytool -genkeypair -noprompt \
+              -keystore "$KS_PATH" \
+              -alias "$KS_USER" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$KS_PASS" -keypass "$KS_PASS" \
+              -dname "CN=r00ms, OU=Dev, O=AfonasGa, C=US"
+          fi
+          python3 - "$KS_PATH" "$KS_USER" "$KS_PASS" <<'PY'
+          import sys
+          ks_path, ks_user, ks_pass = sys.argv[1:4]
+          with open("export_presets.cfg", "r", encoding="utf-8") as f:
+              txt = f.read()
+          txt = txt.replace('keystore/release=""', f'keystore/release="{ks_path}"', 1)
+          txt = txt.replace('keystore/release_user=""', f'keystore/release_user="{ks_user}"', 1)
+          txt = txt.replace('keystore/release_password=""', f'keystore/release_password="{ks_pass}"', 1)
+          with open("export_presets.cfg", "w", encoding="utf-8") as f:
+              f.write(txt)
+          PY
+          "$GODOT_BIN" --headless --export-release "Android" build/android/r00ms.apk
+          test -s build/android/r00ms.apk
+          ls -lh build/android/r00ms.apk
+
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: r00ms-Android-APK
+          path: build/android/r00ms.apk
+          retention-days: 30
+
+  build-ios:
+    name: Build iOS IPA (Unsigned)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Godot macOS & Export Templates
+        id: cache-godot-macos
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/godot-macos
+            ~/Library/Application Support/Godot/export_templates/${{ env.TEMPLATES_VER }}
+          key: godot-${{ env.GODOT_TAG }}-macos-v1
+
+      - name: Install Godot & Export Templates
+        if: steps.cache-godot-macos.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/godot-macos "$HOME/Library/Application Support/Godot/export_templates/${{ env.TEMPLATES_VER }}"
+          curl -fsSL "https://github.com/godotengine/godot/releases/download/${{ env.GODOT_TAG }}/Godot_v${{ env.GODOT_TAG }}_macos.universal.zip" -o /tmp/godot_macos.zip
+          unzip -oq /tmp/godot_macos.zip -d /tmp/godot-macos
+          curl -fsSL "https://github.com/godotengine/godot/releases/download/${{ env.GODOT_TAG }}/Godot_v${{ env.GODOT_TAG }}_export_templates.tpz" -o /tmp/templates.tpz
+          unzip -oq /tmp/templates.tpz -d /tmp/tpl_unpack
+          mv /tmp/tpl_unpack/templates/* "$HOME/Library/Application Support/Godot/export_templates/${{ env.TEMPLATES_VER }}/"
+          rm -rf /tmp/godot_macos.zip /tmp/templates.tpz /tmp/tpl_unpack
+
+      - name: Import & Export iOS Xcode Project
+        run: |
+          set -euo pipefail
+          GODOT_BIN="/tmp/godot-macos/Godot.app/Contents/MacOS/Godot"
+          mkdir -p build/ios
+          "$GODOT_BIN" --headless --import --quit-after 300
+          "$GODOT_BIN" --headless --export-release "iOS" build/ios/r00ms.ipa
+          test -d build/ios/r00ms.xcodeproj
+
+      - name: Build Unsigned iOS App & Package IPA
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project build/ios/r00ms.xcodeproj \
+            -scheme r00ms \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build/ios/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build
+          mkdir -p build/ios/ipa_stage/Payload build/ios/out
+          cp -R build/ios/DerivedData/Build/Products/Release-iphoneos/r00ms.app build/ios/ipa_stage/Payload/
+          (cd build/ios/ipa_stage && zip -qry ../out/r00ms-iOS-unsigned.ipa Payload)
+          test -s build/ios/out/r00ms-iOS-unsigned.ipa
+          ls -lh build/ios/out/r00ms-iOS-unsigned.ipa
+
+      - name: Upload iOS IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: r00ms-iOS-IPA
+          path: build/ios/out/r00ms-iOS-unsigned.ipa
+          retention-days: 30
