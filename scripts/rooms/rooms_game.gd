@@ -3,6 +3,10 @@ extends Node3D
 ## Rooms-inspired 3D procedural horror runner (A-000 -> A-200+ Endless) inside Godot 4.7.
 
 enum State { PLAYING, PAUSED, DEAD, VICTORY }
+enum RenderQuality { MOBILE_OPT, MEDIUM, HIGH }
+
+const SETTINGS_PATH := "user://rooms_settings.cfg"
+const OVERRIDE_PATH := "user://override.cfg"
 
 @onready var world_env: WorldEnvironment = $WorldEnvironment
 @onready var rooms_container: Node3D = $RoomsContainer
@@ -165,12 +169,21 @@ var _opening_doors: Array[Dictionary] = []
 # UI refs & Smart Reticle
 var _ui := {}
 var _toast_timer := 0.0
+var _toast_alpha := 0.0
+var _prompt_alpha := 0.0
+var _reminder_alpha := 0.0
 var _reticle_ring: RoomsUI.ReticleRing = null
 var _reticle_screen_pos := Vector2.ZERO
 var _reticle_lag_offset := Vector2.ZERO
 var _reticle_radius := 6.5
 var _smart_reticle_target: Dictionary = {}
 var _reminder_dismissed := false
+
+# Render quality & backend selection
+var _render_quality: int = RenderQuality.HIGH
+var _room_vis_radius := 7
+var _render_backend := "forward_plus"
+var _active_render_backend := "forward_plus"
 
 # Mobile multitouch controls
 var _mobile_controls_enabled := false
@@ -199,11 +212,13 @@ func _ready() -> void:
 	_assets = RoomBuilder.create_shared_assets()
 	_load_entity_sprites()
 
+	_load_render_settings()
 	_setup_environment()
 	_build_entity_nodes()
 	_build_viewmodel()
 	_build_net()
 	_build_ui()
+	_apply_render_quality(_render_quality, false)
 	_refresh_mobile_mode()
 	_reset_run()
 
@@ -409,23 +424,183 @@ func _try_load_tex(res_path: String) -> Texture2D:
 	return null
 
 
+func _is_mobile_platform() -> bool:
+	return OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios") or OS.get_name() in ["Android", "iOS"]
+
+
+func _detect_active_render_backend() -> String:
+	var rs := RenderingServer
+	if rs != null and rs.has_method("get_current_rendering_method"):
+		var cur := String(rs.call("get_current_rendering_method"))
+		if not cur.is_empty():
+			return cur
+	if _is_mobile_platform():
+		return String(ProjectSettings.get_setting("rendering/renderer/rendering_method.mobile", "mobile"))
+	return String(ProjectSettings.get_setting("rendering/renderer/rendering_method", "forward_plus"))
+
+
+func _load_render_settings() -> void:
+	_active_render_backend = _detect_active_render_backend()
+	_render_backend = _active_render_backend
+	_render_quality = RenderQuality.MOBILE_OPT if _is_mobile_platform() else RenderQuality.HIGH
+
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS_PATH) == OK:
+		_render_quality = clampi(int(cfg.get_value("graphics", "quality", _render_quality)), RenderQuality.MOBILE_OPT, RenderQuality.HIGH)
+
+	var ov := ConfigFile.new()
+	if ov.load(OVERRIDE_PATH) == OK:
+		var saved_b := String(ov.get_value("rendering", "renderer/rendering_method", ""))
+		if saved_b in ["forward_plus", "mobile", "gl_compatibility"]:
+			_render_backend = saved_b
+
+
+func _save_render_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)
+	cfg.set_value("graphics", "quality", _render_quality)
+	cfg.save(SETTINGS_PATH)
+
+
+func _quality_label(q: int) -> String:
+	if q == RenderQuality.MOBILE_OPT:
+		return "Мобильный FPS"
+	if q == RenderQuality.MEDIUM:
+		return "Средний"
+	return "Высокий"
+
+
+func _backend_label(b: String) -> String:
+	if b == "mobile":
+		return "Mobile (Vulkan/Metal)"
+	if b == "gl_compatibility":
+		return "Compatibility (OpenGL)"
+	return "Forward+ (PC)"
+
+
+func _apply_render_quality(q: int, save_cfg: bool = true) -> void:
+	_render_quality = clampi(q, RenderQuality.MOBILE_OPT, RenderQuality.HIGH)
+	var vp := get_viewport()
+	var env := world_env.environment
+	if _render_quality == RenderQuality.MOBILE_OPT:
+		_room_vis_radius = 3
+		if vp != null:
+			vp.msaa_3d = Viewport.MSAA_DISABLED
+			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+			vp.scaling_3d_scale = 0.72
+		if flashlight != null:
+			flashlight.shadow_enabled = false
+		if cam != null:
+			cam.far = 42.0
+		if env != null:
+			env.ssao_enabled = false
+			env.glow_enabled = false
+			env.fog_enabled = false
+	elif _render_quality == RenderQuality.MEDIUM:
+		_room_vis_radius = 5
+		if vp != null:
+			vp.msaa_3d = Viewport.MSAA_DISABLED
+			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+			vp.scaling_3d_scale = 0.88
+		if flashlight != null:
+			flashlight.shadow_enabled = true
+		if cam != null:
+			cam.far = 65.0
+		if env != null:
+			env.ssao_enabled = false
+			env.glow_enabled = true
+			env.fog_enabled = true
+	else:
+		_room_vis_radius = 7
+		if vp != null:
+			vp.msaa_3d = Viewport.MSAA_2X
+			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+			vp.scaling_3d_scale = 1.0
+		if flashlight != null:
+			flashlight.shadow_enabled = true
+		if cam != null:
+			cam.far = 85.0
+		if env != null:
+			env.ssao_enabled = true
+			env.glow_enabled = true
+			env.fog_enabled = true
+
+	_update_room_visibility()
+	if save_cfg:
+		_save_render_settings()
+	_refresh_render_buttons()
+
+
+func _cycle_render_quality() -> void:
+	var nxt := (_render_quality + 1) % 3
+	_apply_render_quality(nxt, true)
+	_show_toast("Качество рендера: %s" % _quality_label(_render_quality), 2.2)
+
+
+func _set_render_backend(backend: String) -> void:
+	if not (backend in ["forward_plus", "mobile", "gl_compatibility"]):
+		return
+	_render_backend = backend
+	var ov := ConfigFile.new()
+	ov.load(OVERRIDE_PATH)
+	ov.set_value("rendering", "renderer/rendering_method", backend)
+	ov.set_value("rendering", "renderer/rendering_method.mobile", backend)
+	ov.save(OVERRIDE_PATH)
+	_refresh_render_buttons()
+	if backend != _active_render_backend:
+		_show_toast("Бэкенд: %s — перезапустите игру для применения" % _backend_label(backend), 3.0)
+	else:
+		_show_toast("Активный бэкенд: %s" % _backend_label(backend), 2.0)
+
+
+func _cycle_render_backend() -> void:
+	var order: Array[String] = ["forward_plus", "mobile", "gl_compatibility"]
+	var idx := order.find(_render_backend)
+	var nxt: String = order[(idx + 1) % order.size()]
+	_set_render_backend(nxt)
+
+
+func _restart_for_render() -> void:
+	if _is_mobile_platform():
+		_show_toast("Закройте и откройте приложение заново", 3.0)
+	else:
+		OS.set_restart_on_exit(true)
+		get_tree().quit()
+
+
+func _refresh_render_buttons() -> void:
+	if _ui.has("btn_quality"):
+		(_ui["btn_quality"] as Button).text = "Рендер / Графика: %s" % _quality_label(_render_quality)
+	if _ui.has("btn_backend"):
+		var suffix := " (*)" if _render_backend != _active_render_backend else ""
+		(_ui["btn_backend"] as Button).text = "Бэкенд: %s%s" % [_backend_label(_render_backend), suffix]
+	if _ui.has("btn_restart_render"):
+		(_ui["btn_restart_render"] as Control).visible = (_render_backend != _active_render_backend)
+
+
+func _update_room_visibility() -> void:
+	for r in _rooms:
+		if is_instance_valid(r.root):
+			r.root.visible = (abs(r.index - _current_room_idx) <= _room_vis_radius)
+
+
 func _setup_environment() -> void:
-	get_viewport().msaa_3d = Viewport.MSAA_2X
+	get_viewport().msaa_3d = Viewport.MSAA_DISABLED if _render_quality != RenderQuality.HIGH else Viewport.MSAA_2X
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.005, 0.007, 0.011)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.05, 0.065, 0.095)
 	env.ambient_light_energy = 0.11
-	env.fog_enabled = true
+	env.fog_enabled = (_render_quality != RenderQuality.MOBILE_OPT)
 	env.fog_light_color = Color(0.008, 0.011, 0.018)
 	env.fog_density = 0.032
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.ssao_enabled = true
+	env.ssao_enabled = (_render_quality == RenderQuality.HIGH)
 	env.ssao_radius = 0.85
 	env.ssao_intensity = 1.65
 	env.ssao_power = 1.6
-	env.glow_enabled = true
+	env.glow_enabled = (_render_quality != RenderQuality.MOBILE_OPT)
 	env.glow_intensity = 0.62
 	env.glow_bloom = 0.24
 	env.glow_hdr_threshold = 0.90
@@ -686,51 +861,61 @@ void fragment() {
 	# Diegetic crisp reminder (PC [F] / Mobile [WHITE]) matching screenshots
 	var reminder_lbl := Label.new()
 	reminder_lbl.set_anchors_preset(Control.PRESET_CENTER)
-	reminder_lbl.offset_left = -280
-	reminder_lbl.offset_right = 280
+	reminder_lbl.offset_left = -320
+	reminder_lbl.offset_right = 320
 	reminder_lbl.offset_top = 104
-	reminder_lbl.offset_bottom = 138
+	reminder_lbl.offset_bottom = 140
 	reminder_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	reminder_lbl.add_theme_font_size_override("font_size", 20)
-	reminder_lbl.add_theme_color_override("font_color", Color(0.96, 0.97, 0.99, 0.92))
-	reminder_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
+	reminder_lbl.add_theme_color_override("font_color", Color(0.96, 0.97, 0.99, 0.94))
+	reminder_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.88))
 	reminder_lbl.add_theme_constant_override("outline_size", 4)
+	reminder_lbl.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.72))
+	reminder_lbl.add_theme_constant_override("shadow_offset_y", 2)
+	reminder_lbl.modulate.a = 0.0
 	reminder_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud_group.add_child(reminder_lbl)
 	_ui["reminder_lbl"] = reminder_lbl
 
 	var prompt_lbl := Label.new()
 	prompt_lbl.set_anchors_preset(Control.PRESET_CENTER)
-	prompt_lbl.offset_left = -220
-	prompt_lbl.offset_right = 220
+	prompt_lbl.offset_left = -280
+	prompt_lbl.offset_right = 280
 	prompt_lbl.offset_top = 60
-	prompt_lbl.offset_bottom = 92
+	prompt_lbl.offset_bottom = 94
 	prompt_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	prompt_lbl.add_theme_font_size_override("font_size", 15)
-	prompt_lbl.add_theme_color_override("font_color", Color(1.0, 0.96, 0.72))
-	prompt_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
-	prompt_lbl.add_theme_constant_override("outline_size", 3)
+	prompt_lbl.add_theme_font_size_override("font_size", 16)
+	prompt_lbl.add_theme_color_override("font_color", Color(0.96, 0.97, 0.99, 0.94))
+	prompt_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.88))
+	prompt_lbl.add_theme_constant_override("outline_size", 4)
+	prompt_lbl.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.72))
+	prompt_lbl.add_theme_constant_override("shadow_offset_y", 2)
+	prompt_lbl.modulate.a = 0.0
 	prompt_lbl.visible = false
 	hud_group.add_child(prompt_lbl)
 	_ui["prompt_lbl"] = prompt_lbl
 
-	# Toast Banner
-	var toast := PanelContainer.new()
-	toast.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	toast.offset_left = -260
-	toast.offset_right = 260
-	toast.offset_top = 24
-	toast.offset_bottom = 68
-	toast.visible = false
-	toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	toast.add_theme_stylebox_override("panel", RoomsUI.make_panel_style(Color(0.05, 0.08, 0.10, 0.90), Color(0.45, 1.0, 0.72, 0.8), 10, 2))
-	hud_group.add_child(toast)
-	_ui["toast"] = toast
-
+	# Clean floating hint (same minimalist typography as Reminder — no green box)
 	var toast_lbl := Label.new()
+	toast_lbl.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	toast_lbl.offset_left = -420
+	toast_lbl.offset_right = 420
+	toast_lbl.offset_top = 28
+	toast_lbl.offset_bottom = 96
 	toast_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	toast_lbl.add_theme_font_size_override("font_size", 15)
-	toast.add_child(toast_lbl)
+	toast_lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	toast_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	toast_lbl.add_theme_font_size_override("font_size", 19)
+	toast_lbl.add_theme_color_override("font_color", Color(0.96, 0.97, 0.99, 0.95))
+	toast_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.88))
+	toast_lbl.add_theme_constant_override("outline_size", 4)
+	toast_lbl.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.75))
+	toast_lbl.add_theme_constant_override("shadow_offset_y", 2)
+	toast_lbl.modulate.a = 0.0
+	toast_lbl.visible = false
+	toast_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_group.add_child(toast_lbl)
+	_ui["toast"] = toast_lbl
 	_ui["toast_lbl"] = toast_lbl
 
 	_build_mobile_ui(hud_group)
@@ -798,13 +983,19 @@ void fragment() {
 	_ui["modal"] = modal
 
 	var m_card := PanelContainer.new()
-	m_card.custom_minimum_size = Vector2(460, 0)
+	m_card.custom_minimum_size = Vector2(468, 0)
 	m_card.add_theme_stylebox_override("panel", RoomsUI.make_panel_style(Color(0.04, 0.05, 0.08, 0.94), Color(0.45, 0.85, 1.0, 0.72), 16, 2))
 	modal.add_child(m_card)
 
+	var m_scroll := ScrollContainer.new()
+	m_scroll.custom_minimum_size = Vector2(452, 520)
+	m_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	m_card.add_child(m_scroll)
+
 	var m_box := VBoxContainer.new()
-	m_box.add_theme_constant_override("separation", 10)
-	m_card.add_child(m_box)
+	m_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	m_box.add_theme_constant_override("separation", 9)
+	m_scroll.add_child(m_box)
 
 	var m_title := Label.new()
 	m_title.text = "ПАУЗА"
@@ -843,6 +1034,37 @@ void fragment() {
 	btn_mobile.pressed.connect(_cycle_mobile_mode)
 	m_box.add_child(btn_mobile)
 	_ui["btn_mobile"] = btn_mobile
+
+	var ren_row := HBoxContainer.new()
+	ren_row.add_theme_constant_override("separation", 6)
+	m_box.add_child(ren_row)
+
+	var btn_quality := Button.new()
+	btn_quality.text = "Рендер / Графика: %s" % _quality_label(_render_quality)
+	btn_quality.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_quality.custom_minimum_size = Vector2(0, 36)
+	RoomsUI.style_button(btn_quality, Color(0.45, 0.94, 0.78), 13)
+	btn_quality.pressed.connect(_cycle_render_quality)
+	ren_row.add_child(btn_quality)
+	_ui["btn_quality"] = btn_quality
+
+	var btn_backend := Button.new()
+	btn_backend.text = "Бэкенд: %s" % _backend_label(_render_backend)
+	btn_backend.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_backend.custom_minimum_size = Vector2(0, 36)
+	RoomsUI.style_button(btn_backend, Color(0.96, 0.80, 0.36), 12)
+	btn_backend.pressed.connect(_cycle_render_backend)
+	ren_row.add_child(btn_backend)
+	_ui["btn_backend"] = btn_backend
+
+	var btn_restart_render := Button.new()
+	btn_restart_render.text = "Перезапустить с новым рендером"
+	btn_restart_render.custom_minimum_size = Vector2(0, 34)
+	btn_restart_render.visible = (_render_backend != _active_render_backend)
+	RoomsUI.style_button(btn_restart_render, Color(1.0, 0.56, 0.25), 13)
+	btn_restart_render.pressed.connect(_restart_for_render)
+	m_box.add_child(btn_restart_render)
+	_ui["btn_restart_render"] = btn_restart_render
 
 	# Online Test Panel (Steam Spacewar 480 + ENet LAN)
 	var net_sep := Label.new()
@@ -1238,6 +1460,10 @@ func _reset_run(forced_seed: int = -1) -> void:
 	_vm_shake_time = 0.0
 	_gummy_hold_accum = 0.0
 	_reminder_dismissed = false
+	_toast_timer = 0.0
+	_toast_alpha = 0.0
+	_prompt_alpha = 0.0
+	_reminder_alpha = 0.0
 	_reticle_lag_offset = Vector2.ZERO
 	_reticle_screen_pos = Vector2.ZERO
 	_locker_transition_duration = 1.00
@@ -1277,8 +1503,9 @@ func _reset_run(forced_seed: int = -1) -> void:
 	audio.a60_intensity = 0.0
 	audio.low_hp_mode = false
 
-	for _i in range(7):
+	for _i in range(5 if _render_quality == RenderQuality.MOBILE_OPT else 7):
 		_spawn_next_room()
+	_update_room_visibility()
 
 	player_body.position = Vector3(0.0, 0.05, 4.0)
 	player_body.velocity = Vector3.ZERO
@@ -1333,11 +1560,14 @@ func _spawn_next_room() -> void:
 	_next_cell = cell + RoomBuilder.dir_to_grid_step(out_dir)
 	_next_in_dir = out_dir
 
-	# Prune rooms far behind to keep FPS steady at A-300+
-	while _rooms.size() > 16 and _rooms[0].index < _current_room_idx - 7:
+	# Prune rooms far behind to keep FPS steady (tighter on Mobile FPS preset)
+	var max_keep := 10 if _render_quality == RenderQuality.MOBILE_OPT else 16
+	var back_keep := 4 if _render_quality == RenderQuality.MOBILE_OPT else 7
+	while _rooms.size() > max_keep and _rooms[0].index < _current_room_idx - back_keep:
 		var old_r: RoomBuilder.RoomInstance = _rooms.pop_front()
 		_room_by_idx.erase(old_r.index)
 		old_r.root.queue_free()
+	_update_room_visibility()
 
 
 func _set_state(new_state: State) -> void:
@@ -1750,9 +1980,11 @@ func _process(delta: float) -> void:
 				var move_p := clampf((_locker_transition_t - 0.14) / 0.72, 0.0, 1.0)
 				cam.global_position = _locker_cam_from.lerp(tgt_eye, ease(move_p, 0.28))
 			lock_mask.color = Color(0.0, 0.0, 0.0, lerpf(0.0, max_mask, t_ease))
+			lock_mask.visible = (lock_mask.color.a > 0.004)
 		else:
 			cam.global_position = tgt_eye
 			lock_mask.color = Color(0.0, 0.0, 0.0, max_mask)
+			lock_mask.visible = (max_mask > 0.004)
 	else:
 		if _locker_transition_t < 1.0 and not _locker_transition_entering:
 			var exit_turn_p := ease(clampf(_locker_transition_t, 0.0, 1.0), -1.8)
@@ -1817,8 +2049,10 @@ func _process(delta: float) -> void:
 			cam.global_position = _locker_cam_from.lerp(tgt_pos, t_out)
 			cam.rotation.z = lerpf(cam.rotation.z, sin(_locker_transition_t * PI) * (-0.05 if _locker_exit_face_locker else 0.03), 1.0 - exp(-14.0 * delta))
 			lock_mask.color = Color(0.0, 0.0, 0.0, lerpf(0.32, 0.0, t_out))
+			lock_mask.visible = (lock_mask.color.a > 0.004)
 		else:
 			lock_mask.color = Color(0.0, 0.0, 0.0, 0.0)
+			lock_mask.visible = false
 
 	if _net != null and _net.is_online():
 		var gp := player_body.global_position
@@ -2120,8 +2354,11 @@ func _advance_door_progress(r_idx: int, allow_spawn: bool) -> void:
 			_net.update_lobby_progress(int(_rng.seed), _highest_opened)
 		if opened_num >= 50 and not _power_out:
 			_trigger_power_outage()
-		while _rooms.size() < 14 or _rooms[-1].index < _highest_opened + 6:
+		var min_keep := 9 if _render_quality == RenderQuality.MOBILE_OPT else 14
+		var ahead_keep := 4 if _render_quality == RenderQuality.MOBILE_OPT else 6
+		while _rooms.size() < min_keep or _rooms[-1].index < _highest_opened + ahead_keep:
 			_spawn_next_room()
+		_update_room_visibility()
 
 		if opened_num == 100:
 			_checkpoint_room = 100
@@ -2509,6 +2746,7 @@ func _warp_player_to_room(target_idx: int, back_steps: int) -> void:
 	player_body.position = target_r.center_pos + Vector3(0.0, 0.05, 0.0)
 	player_body.velocity = Vector3.ZERO
 	_current_room_idx = target_idx
+	_update_room_visibility()
 
 	var dir := target_r.out_dir
 	var face_yaw := atan2(-dir.x, -dir.z)
@@ -2760,10 +2998,13 @@ func _process_player_movement(delta: float) -> void:
 		cam.position = Vector3(0.0, 1.48 + sin(_bob_phase) * 0.032 + breath_bob, 0.0) + shake_off
 
 	# Track current room closest to player (adapted for 12m room grid)
+	var prev_room := _current_room_idx
 	for r in _rooms:
 		if r.center_pos.distance_to(player_body.position) < RoomBuilder.CELL_SIZE * 0.52:
 			_current_room_idx = r.index
 			break
+	if _current_room_idx != prev_room:
+		_update_room_visibility()
 
 
 func _detect_floor_surface() -> String:
@@ -3104,27 +3345,38 @@ func _update_ui(delta: float) -> void:
 	var dmg: ColorRect = _ui["dmg_flash"]
 	if dmg.color.a > 0.005:
 		dmg.color.a = maxf(dmg.color.a - delta * 1.4, 0.0)
+	dmg.visible = (dmg.color.a > 0.004)
 
+	var toast_ctrl: Control = _ui["toast"]
 	if _toast_timer > 0.0:
-		_toast_timer -= delta
-		if _toast_timer <= 0.0:
-			(_ui["toast"] as Control).visible = false
+		_toast_timer = maxf(_toast_timer - delta, 0.0)
+	var want_toast := _toast_timer > 0.45
+	var toast_rate := 8.5 if want_toast else 5.2
+	_toast_alpha = lerpf(_toast_alpha, 1.0 if want_toast else 0.0, clampf(1.0 - exp(-toast_rate * delta), 0.0, 1.0))
+	toast_ctrl.modulate.a = _toast_alpha
+	toast_ctrl.visible = (_toast_alpha > 0.01 or _toast_timer > 0.0)
 
+	var vitals_rect: ColorRect = _ui["vitals_rect"]
 	var vitals_mat: ShaderMaterial = _ui["vitals_mat"]
 	var hp_target := 1.0 - clampf(float(_hp) / 100.0, 0.0, 1.0)
 	var stam_target := 1.0 - clampf(_stamina, 0.0, 1.0)
 	var ex_target := 1.0 if _exhausted else 0.0
 	var dk_target := clampf(_darkness_whisper_t * 0.90 if _darkness_phase == 1 else (1.0 if _darkness_phase == 2 else 0.0), 0.0, 1.0)
 	var smooth := clampf(delta * 6.0, 0.0, 1.0)
+	var max_vital := 0.0
 	for pair in [["hp_loss", hp_target], ["stam_loss", stam_target], ["exhausted_amt", ex_target], ["darkness_amt", dk_target]]:
 		var k: String = String(pair[0])
 		var tgt_v: float = float(pair[1])
 		var raw_v: Variant = vitals_mat.get_shader_parameter(k)
 		var prev_v: float = float(raw_v) if raw_v != null else 0.0
-		vitals_mat.set_shader_parameter(k, lerpf(prev_v, tgt_v, smooth))
+		var next_v := lerpf(prev_v, tgt_v, smooth)
+		vitals_mat.set_shader_parameter(k, next_v)
+		max_vital = maxf(max_vital, next_v)
+	vitals_rect.visible = (max_vital > 0.004)
 
 	var interact_tgt := {}
 	var prompt: Label = _ui["prompt_lbl"]
+	var want_prompt := false
 	var vp_sz := get_viewport().get_visible_rect().size
 	var vp_center := vp_sz * 0.5
 
@@ -3138,7 +3390,7 @@ func _update_ui(delta: float) -> void:
 			prompt.text = "[W / E] Выйти вперёд  |  [S] Выйти лицом к холодильнику"
 		else:
 			prompt.text = "[W / E] Выйти вперёд  |  [S] Выйти лицом к шкафу"
-		prompt.visible = true
+		want_prompt = true
 	else:
 		interact_tgt = _find_smart_reticle_target()
 		_smart_reticle_target = interact_tgt
@@ -3159,9 +3411,7 @@ func _update_ui(delta: float) -> void:
 				if not cam.is_position_behind(wp):
 					tgt_pos = cam.unproject_position(wp)
 			prompt.text = String(interact_tgt["label"])
-			prompt.visible = not _mobile_controls_enabled
-		else:
-			prompt.visible = false
+			want_prompt = not _mobile_controls_enabled
 
 		if _reticle_ring != null:
 			_reticle_ring.visible = true
@@ -3175,13 +3425,20 @@ func _update_ui(delta: float) -> void:
 			_reticle_ring.position = _reticle_screen_pos - _reticle_ring.size * 0.5
 			_reticle_ring.queue_redraw()
 
+	var pr_rate := 12.0 if want_prompt else 8.5
+	_prompt_alpha = lerpf(_prompt_alpha, 1.0 if want_prompt else 0.0, clampf(1.0 - exp(-pr_rate * delta), 0.0, 1.0))
+	prompt.modulate.a = _prompt_alpha
+	prompt.visible = (_prompt_alpha > 0.01)
+
 	if _ui.has("reminder_lbl"):
 		var rem: Label = _ui["reminder_lbl"]
-		if _reminder_dismissed or _is_hiding:
-			rem.visible = false
-		else:
-			rem.visible = true
+		var want_rem := (not _reminder_dismissed and not _is_hiding)
+		if want_rem:
 			rem.text = "Reminder: [WHITE] to turn flashlight." if _mobile_controls_enabled else "Reminder: [F] to turn flashlight."
+		var rem_rate := 6.5 if want_rem else 5.5
+		_reminder_alpha = lerpf(_reminder_alpha, 1.0 if want_rem else 0.0, clampf(1.0 - exp(-rem_rate * delta), 0.0, 1.0))
+		rem.modulate.a = _reminder_alpha
+		rem.visible = (_reminder_alpha > 0.01)
 
 	_update_mobile_ui(interact_tgt)
 
@@ -3222,7 +3479,11 @@ func _update_mobile_ui(_interact_tgt: Dictionary) -> void:
 		b_gummy.queue_redraw()
 
 
-func _show_toast(msg: String, duration: float = 2.6) -> void:
-	(_ui["toast_lbl"] as Label).text = msg
-	(_ui["toast"] as Control).visible = true
-	_toast_timer = duration
+func _show_toast(msg: String, duration: float = 2.8) -> void:
+	var lbl := _ui["toast_lbl"] as Label
+	if not lbl.visible or lbl.text != msg:
+		_toast_alpha = 0.0
+		lbl.modulate.a = 0.0
+	lbl.text = msg
+	lbl.visible = true
+	_toast_timer = maxf(duration, 1.1)
