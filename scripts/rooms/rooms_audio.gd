@@ -42,6 +42,8 @@ var _hs_nearby: AudioStreamPlayer
 var _hs_scream: AudioStreamPlayer
 var _a120_distant_bus_idx := -1
 var _hs_active := false
+var _is_a150 := false
+var _is_a35 := false
 
 var _a60_rumble: AudioStreamPlayer
 var _a60_ambience: AudioStreamPlayer
@@ -162,21 +164,23 @@ func _make_stream_player(res_path: String, should_loop: bool, bus_name: String) 
 	return p
 
 
-func start_a60_spawn(is_prime: bool = false, _is_before_100: bool = true) -> void:
+func start_a60_spawn(is_prime: bool = false, _is_before_100: bool = true, is_a35: bool = false) -> void:
+	_is_a35 = is_a35
 	_a60_stream_active = not is_prime
 	if is_prime:
 		stop_a60()
 		return
+	var base_pitch := 1.34 if is_a35 else 1.0
 	if _a60_rumble.stream != null:
-		_a60_rumble.pitch_scale = _hs_rng.randf_range(0.95, 1.05)
+		_a60_rumble.pitch_scale = _hs_rng.randf_range(0.95, 1.05) * base_pitch
 		_a60_rumble.volume_db = -58.0 if not muted else -80.0
 		_a60_rumble.play()
 	if _a60_ambience.stream != null:
-		_a60_ambience.pitch_scale = 1.0
+		_a60_ambience.pitch_scale = base_pitch
 		_a60_ambience.volume_db = -44.0 if not muted else -80.0
 		_a60_ambience.play()
 	if _a60_near.stream != null:
-		_a60_near.pitch_scale = 1.0
+		_a60_near.pitch_scale = base_pitch
 		_a60_near.volume_db = -72.0 if not muted else -80.0
 		_a60_near.play()
 
@@ -203,7 +207,7 @@ func update_a60_mix(_delta: float, distance: float, phase: int, is_prime: bool =
 	var amb_att := clampf(1.0 - (distance - 6.0) / 360.0, 0.04, 1.0)
 	var amb_curve := pow(amb_att, 1.35)
 	var prox := clampf(1.0 - (distance - 2.0) / 28.0, 0.0, 1.0)
-	var prime_pitch := 1.18 if is_prime else 1.0
+	var prime_pitch := (1.18 if is_prime else 1.0) * (1.30 if _is_a35 else 1.0)
 
 	_a60_rumble.volume_db = lerpf(-58.0, -4.5, curve)
 	_a60_ambience.pitch_scale = prime_pitch + _hs_rng.randf_range(-0.04, 0.04)
@@ -311,7 +315,8 @@ func play_flashlight_flicker() -> void:
 	_add_voice(base * 1.15, base * 0.72, 0.028, 0.06, "triangle")
 
 
-func start_a120_spawn() -> void:
+func start_a120_spawn(is_a150: bool = false) -> void:
+	_is_a150 = is_a150
 	_hs_active = true
 	_hs_pitch_timer = 0.0
 	_hs_wave_timer = 0.0
@@ -319,13 +324,17 @@ func start_a120_spawn() -> void:
 	_hs_drum_cd = 0.0
 	_hs_drum_prev_db = -40.0
 	_hs_headless_drum_timer = 0.0
+	var p_base := 1.28 if is_a150 else 1.0
 	if _hs_ambience.stream != null:
+		_hs_ambience.pitch_scale = p_base
 		_hs_ambience.volume_db = -26.0 if not muted else -80.0
 		_hs_ambience.play()
 	if _hs_distant.stream != null:
+		_hs_distant.pitch_scale = p_base
 		_hs_distant.volume_db = -24.0 if not muted else -80.0
 		_hs_distant.play()
 	if _hs_nearby.stream != null:
+		_hs_nearby.pitch_scale = p_base
 		_hs_nearby.volume_db = -60.0 if not muted else -80.0
 		_hs_nearby.play()
 
@@ -360,8 +369,8 @@ func update_a120_mix(delta: float, distance: float, phase: int) -> bool:
 
 	_hs_pitch_timer -= delta
 	if _hs_pitch_timer <= 0.0:
-		_hs_pitch_timer = _hs_rng.randf_range(0.16, 0.44)
-		_hs_pitch_tgt = _hs_rng.randf_range(0.76, 1.34)
+		_hs_pitch_timer = _hs_rng.randf_range(0.16, 0.44) * (0.75 if _is_a150 else 1.0)
+		_hs_pitch_tgt = _hs_rng.randf_range(0.76, 1.34) * (1.25 if _is_a150 else 1.0)
 		_hs_amb_wave_tgt = _hs_rng.randf_range(0.25, 1.0)
 
 	_hs_wave_timer -= delta

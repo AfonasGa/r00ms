@@ -124,7 +124,12 @@ var _std_low_flicker_t := 0.0
 var _a60_frames: Array[Texture2D] = []
 var _a90_textures: Dictionary = {}
 var _a120_frames: Array[Texture2D] = []
+var _a150_frames: Array[Texture2D] = []
+var _a35_frames: Array[Texture2D] = []
 var _darkness_tex: Texture2D = null
+
+var _a60_variant := "normal" # "normal", "prime", "a35"
+var _a120_variant := "normal" # "normal", "a150"
 
 var _a60_active := false
 var _a60_phase := 0 # 0=idle, 2=rush, 3=sink
@@ -184,11 +189,15 @@ var _a90_start_pitch := 0.0
 var _a90_pos_offset := Vector2.ZERO
 var _a90_scare_timer := 0.0
 
-# Architect dialogue playback
+# Architect dialogue playback (inspired by test.py with glitch transitions & memory)
 var _arch_lines: Array[String] = []
 var _arch_line_idx := 0
 var _arch_char_pos := 0.0
 var _arch_blip_acc := 0
+var _arch_glitch_step := -1
+var _arch_glitch_timer := 0.0
+var _arch_prev_text := "hello"
+var _arch_auto_advance_timer := 0.0
 
 # Door swing animations
 var _opening_doors: Array[Dictionary] = []
@@ -371,18 +380,16 @@ func _on_remote_entity_event(msg: Dictionary) -> void:
 		if _is_entity_authority() and _net != null and _net.is_online() and bool(msg.get("from_client", false)):
 			_net.broadcast_entity_event({"k": "a120_end"}, true)
 		return
-	if _is_entity_authority():
+	if kind == "a60_end":
+		_a60_active = false
+		_a60_phase = 0
+		_a60_node.visible = false
+		if _ui.has("a60_scare_rect"):
+			(_ui["a60_scare_rect"] as Control).visible = false
+		audio.stop_a60()
 		return
 
-	if kind == "a60_end":
-		if _state != State.PLAYING and _state != State.SPECTATING:
-			_a60_active = false
-			_a60_phase = 0
-			_a60_node.visible = false
-			audio.stop_a60()
-		else:
-			_a60_phase = 3
-			_a60_sink_timer = 0.42
+	if _is_entity_authority():
 		return
 	elif kind == "a60p_warn":
 		var gap := float(msg.get("gap", 0.0))
@@ -402,18 +409,15 @@ func _on_remote_entity_event(msg: Dictionary) -> void:
 	if kind == "a60_spawn":
 		var door_idx := int(msg.get("door", 0))
 		var is_prime := bool(msg.get("prime", false))
-		_start_a60_local(door_idx, is_prime)
+		var variant := String(msg.get("v", "prime" if is_prime else "normal"))
+		_start_a60_local(door_idx, is_prime, variant)
 	elif kind == "a60_pos":
 		var p_arr: Variant = msg.get("p")
 		if p_arr is Array and (p_arr as Array).size() >= 3:
 			var a: Array = p_arr
 			_net_a60_tgt = Vector3(float(a[0]), float(a[1]), float(a[2]))
-			if not _a60_active:
-				var is_p := bool(msg.get("prime", false))
-				_start_a60_local(int(msg.get("door", _highest_opened)), is_p)
-			_a60_phase = int(msg.get("ph", 2))
-			if _a60_phase == 2:
-				_a60_node.position = _net_a60_tgt
+			if _a60_active:
+				_a60_phase = int(msg.get("ph", 2))
 	elif kind == "a60_brk":
 		var b_idx := int(msg.get("door", -1))
 		var b_prime := bool(msg.get("prime", false))
@@ -424,7 +428,8 @@ func _on_remote_entity_event(msg: Dictionary) -> void:
 		if _a120_hit_cd <= 0.0:
 			var sp_r := int(msg.get("room", 0))
 			var rb := int(msg.get("rb", 0))
-			_start_a120_local(sp_r, rb)
+			var variant := String(msg.get("v", "normal"))
+			_start_a120_local(sp_r, rb, variant)
 	elif kind == "a120_pos":
 		if _a120_hit_cd > 0.0:
 			return
@@ -432,10 +437,9 @@ func _on_remote_entity_event(msg: Dictionary) -> void:
 		if p120 is Array and (p120 as Array).size() >= 3:
 			var a2: Array = p120
 			_net_a120_tgt = Vector3(float(a2[0]), float(a2[1]), float(a2[2]))
-			if not _a120_active:
-				_start_a120_local(int(msg.get("room", _highest_opened)), 0)
-			_a120_phase = int(msg.get("ph", 1))
-			_a120_substage = int(msg.get("ss", 0))
+			if _a120_active:
+				_a120_phase = int(msg.get("ph", 1))
+				_a120_substage = int(msg.get("ss", 0))
 
 
 func _on_remote_door_opened(room_index: int, slam: bool = false) -> void:
@@ -860,7 +864,8 @@ func _process_remote_players(delta: float) -> void:
 		var sw := sin(wp)
 		var cw := cos(wp)
 
-		var av: Node3D = rp["avatar"]
+		var av_val: Variant = rp.get("avatar")
+		var av: Node3D = av_val as Node3D if (av_val is Object) else null
 		if is_instance_valid(av):
 			av.visible = true
 		var rig: Dictionary = rp.get("rig", {})
@@ -941,6 +946,16 @@ func _load_entity_sprites() -> void:
 		var fallback120 := RoomsTextures.make_a120_frames()
 		for ft in fallback120:
 			_a120_frames.append(ft)
+
+	_a150_frames.clear()
+	var fallback150 := RoomsTextures.make_a150_frames()
+	for ft in fallback150:
+		_a150_frames.append(ft)
+
+	_a35_frames.clear()
+	var fallback35 := RoomsTextures.make_a35_frames()
+	for ft in fallback35:
+		_a35_frames.append(ft)
 
 	_a90_textures = RoomsTextures.make_a90_textures()
 	var spawn_tex := _try_load_tex("res://assets/sprites/paralysis/paralysis_spawn.webp")
@@ -1988,7 +2003,7 @@ void fragment() {
 	m_settings_box.add_child(btn_settings_back)
 	_ui["btn_settings_back"] = btn_settings_back
 
-	# Architect Death Void (Curious Light gold star, god-rays, rim-lit silhouette & floating text)
+	# Architect Death Void (Terminal Matrix / test.py CRT green void + ASCII Art in bottom right)
 	var arch_overlay := Control.new()
 	arch_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	arch_overlay.visible = false
@@ -2007,38 +2022,45 @@ void fragment() {
 	_ui["arch_bg"] = arch_bg
 
 	var arch_silhouette := TextureRect.new()
-	arch_silhouette.texture = RoomsArchitect.make_silhouette_texture(560, 270)
-	arch_silhouette.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	arch_silhouette.offset_left = -260
-	arch_silhouette.offset_top = -245
-	arch_silhouette.offset_right = 260
-	arch_silhouette.offset_bottom = 0
-	arch_silhouette.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	arch_silhouette.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	arch_silhouette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	arch_silhouette.visible = false
 	arch_overlay.add_child(arch_silhouette)
 	_ui["arch_silhouette"] = arch_silhouette
 
-	# Floating golden centered text directly under the glowing star
+	# Top-left Matrix CRT terminal speech text (inspired by test.py print_top_left_replace)
 	var arch_speech := Label.new()
 	arch_speech.set_anchors_preset(Control.PRESET_FULL_RECT)
-	arch_speech.anchor_left = 0.16
-	arch_speech.anchor_right = 0.84
-	arch_speech.anchor_top = 0.34
-	arch_speech.anchor_bottom = 0.56
-	arch_speech.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	arch_speech.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	arch_speech.anchor_left = 0.05
+	arch_speech.anchor_right = 0.62
+	arch_speech.anchor_top = 0.08
+	arch_speech.anchor_bottom = 0.52
+	arch_speech.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	arch_speech.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	arch_speech.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	arch_speech.add_theme_font_size_override("font_size", 26)
-	arch_speech.add_theme_color_override("font_color", Color(1.0, 0.96, 0.72))
-	arch_speech.add_theme_color_override("font_outline_color", Color(0.02, 0.01, 0.0, 0.92))
-	arch_speech.add_theme_constant_override("outline_size", 5)
+	arch_speech.add_theme_font_size_override("font_size", 24)
+	arch_speech.add_theme_color_override("font_color", Color(0.28, 1.0, 0.42))
+	arch_speech.add_theme_color_override("font_outline_color", Color(0.01, 0.16, 0.04, 0.95))
+	arch_speech.add_theme_constant_override("outline_size", 4)
 	arch_speech.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.85))
 	arch_speech.add_theme_constant_override("shadow_offset_x", 0)
-	arch_speech.add_theme_constant_override("shadow_offset_y", 3)
+	arch_speech.add_theme_constant_override("shadow_offset_y", 2)
 	arch_speech.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	arch_overlay.add_child(arch_speech)
 	_ui["arch_speech"] = arch_speech
+
+	# Bottom-right ASCII Art Monster Portrait (inspired by test.py draw_art_bottom_right)
+	var arch_ascii := RichTextLabel.new()
+	arch_ascii.bbcode_enabled = true
+	arch_ascii.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	arch_ascii.offset_left = -460
+	arch_ascii.offset_top = -290
+	arch_ascii.offset_right = -24
+	arch_ascii.offset_bottom = -24
+	arch_ascii.fit_content = false
+	arch_ascii.scroll_active = false
+	arch_ascii.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	arch_ascii.add_theme_font_size_override("normal_font_size", 14)
+	arch_overlay.add_child(arch_ascii)
+	_ui["arch_ascii"] = arch_ascii
 
 	# Quiet non-intrusive bottom bar & metadata
 	var arch_title := Label.new()
@@ -2047,26 +2069,19 @@ void fragment() {
 	_ui["arch_title"] = arch_title
 
 	var arch_meta := Label.new()
-	arch_meta.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	arch_meta.offset_left = 20
-	arch_meta.offset_top = 16
-	arch_meta.offset_right = 560
+	arch_meta.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	arch_meta.offset_left = 24
+	arch_meta.offset_top = -80
+	arch_meta.offset_right = 520
+	arch_meta.offset_bottom = -52
 	arch_meta.add_theme_font_size_override("font_size", 12)
-	arch_meta.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45, 0.55))
+	arch_meta.add_theme_color_override("font_color", Color(0.24, 0.85, 0.38, 0.70))
 	arch_meta.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	arch_overlay.add_child(arch_meta)
 	_ui["arch_meta"] = arch_meta
 
 	var arch_tip := Label.new()
-	arch_tip.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	arch_tip.offset_left = 24
-	arch_tip.offset_right = -24
-	arch_tip.offset_top = -78
-	arch_tip.offset_bottom = -52
-	arch_tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	arch_tip.add_theme_font_size_override("font_size", 13)
-	arch_tip.add_theme_color_override("font_color", Color(1.0, 0.92, 0.58, 0.80))
-	arch_tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	arch_tip.visible = false
 	arch_overlay.add_child(arch_tip)
 	_ui["arch_tip"] = arch_tip
 
@@ -2077,7 +2092,7 @@ void fragment() {
 	arch_page.offset_right = -20
 	arch_page.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	arch_page.add_theme_font_size_override("font_size", 12)
-	arch_page.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45, 0.65))
+	arch_page.add_theme_color_override("font_color", Color(0.24, 0.85, 0.38, 0.70))
 	arch_page.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	arch_overlay.add_child(arch_page)
 	_ui["arch_page"] = arch_page
@@ -2089,19 +2104,19 @@ void fragment() {
 	btn_arch_next.offset_right = 260
 	btn_arch_next.offset_bottom = -14
 	btn_arch_next.text = "Далее [Пробел / ЛКМ]"
-	RoomsUI.style_button(btn_arch_next, Color(1.0, 0.84, 0.34), 13)
+	RoomsUI.style_button(btn_arch_next, Color(0.25, 0.95, 0.45), 13)
 	btn_arch_next.pressed.connect(_advance_architect_dialogue)
 	arch_overlay.add_child(btn_arch_next)
 	_ui["btn_arch_next"] = btn_arch_next
 
 	var btn_arch_retry := Button.new()
-	btn_arch_retry.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	btn_arch_retry.offset_left = -260
+	btn_arch_retry.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	btn_arch_retry.offset_left = 276
 	btn_arch_retry.offset_top = -46
-	btn_arch_retry.offset_right = -24
+	btn_arch_retry.offset_right = 440
 	btn_arch_retry.offset_bottom = -14
 	btn_arch_retry.text = "Заново [R]"
-	RoomsUI.style_button(btn_arch_retry, Color(1.0, 0.72, 0.25), 13)
+	RoomsUI.style_button(btn_arch_retry, Color(1.0, 0.75, 0.25), 13)
 	btn_arch_retry.pressed.connect(_reset_run)
 	arch_overlay.add_child(btn_arch_retry)
 	_ui["btn_arch_retry"] = btn_arch_retry
@@ -2651,23 +2666,30 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	for k in extra_ctx.keys():
 		ctx[k] = extra_ctx[k]
 
-	var seq := _architect.build_death_sequence(cause, _highest_opened, ctx)
+	var u_name := _get_local_username()
+	var seq := _architect.build_death_sequence(cause, _highest_opened, u_name, ctx)
 	_arch_lines.clear()
 	var seq_lines: Array = seq["lines"]
 	for line_item in seq_lines:
 		_arch_lines.append(String(line_item))
 	if _arch_lines.is_empty():
-		_arch_lines.append("Будь осторожен в коридорах Секции A.")
+		_arch_lines.append("Be careful in Section A.")
 
 	_arch_line_idx = 0
 	_arch_char_pos = 0.0
 	_arch_blip_acc = 0
+	_arch_glitch_step = 0
+	_arch_glitch_timer = 0.0
+	_arch_prev_text = "hello"
+	_arch_auto_advance_timer = 0.0
 
 	(_ui["arch_title"] as Label).text = String(seq["title"])
-	(_ui["arch_meta"] as Label).text = "Причина: %s  |  Попытка #%d  |  Рекорд: A-%03d" % [
+	(_ui["arch_meta"] as Label).text = "ENTITY: %s  |  DEATHS: #%d  |  BEST ROOM: A-%03d" % [
 		cause, int(seq["deaths_total"]), _architect.best_room
 	]
-	(_ui["arch_tip"] as Label).text = "Совет Архитектора: %s" % String(seq["summary"])
+	(_ui["arch_tip"] as Label).text = "TIP: %s" % String(seq["summary"])
+	if _ui.has("arch_ascii"):
+		(_ui["arch_ascii"] as RichTextLabel).text = String(seq.get("art_bbcode", ""))
 	(_ui["arch_speech"] as Label).text = ""
 	_refresh_architect_controls()
 
@@ -2687,45 +2709,66 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	arch_overlay.modulate.a = 0.0
 
 
+func _get_local_username() -> String:
+	if _net != null:
+		var n: String = _net.persona_name
+		if n != "" and n != "Player":
+			return n
+	var env_user := OS.get_environment("USERNAME")
+	if env_user != "":
+		return env_user
+	env_user = OS.get_environment("USER")
+	if env_user != "":
+		return env_user
+	return "Player"
+
+
 func _refresh_architect_controls() -> void:
 	var total := maxi(_arch_lines.size(), 1)
-	(_ui["arch_page"] as Label).text = "Реплика %d / %d" % [_arch_line_idx + 1, total]
+	(_ui["arch_page"] as Label).text = "Line %d / %d" % [_arch_line_idx + 1, total]
 	var btn_next: Button = _ui["btn_arch_next"]
 	var can_spectate := (_net != null and _net.is_online() and not _remote_players.is_empty())
-	if _arch_line_idx + 1 < total:
+	if _arch_glitch_step >= 0 and _arch_glitch_step < 12:
+		btn_next.text = "Пропустить [Пробел]"
+	elif _arch_line_idx + 1 < total:
 		btn_next.text = "Далее [Пробел]"
-		btn_next.disabled = false
+	elif can_spectate:
+		btn_next.text = "Наблюдать за командой [Пробел]"
 	else:
-		var line_len := _arch_lines[_arch_line_idx].length() if not _arch_lines.is_empty() else 0
-		if int(_arch_char_pos) < line_len:
-			btn_next.text = "Пропустить текст [Пробел]"
-		elif can_spectate:
-			btn_next.text = "Наблюдать за командой [Пробел]"
-		else:
-			btn_next.text = "Понятно (жмите снова — заново)"
-		btn_next.disabled = false
+		btn_next.text = "Понятно (жмите снова — заново)"
+	btn_next.disabled = false
 
 
 func _advance_architect_dialogue() -> void:
 	if _state != State.DEAD or _death_phase < 2 or _arch_lines.is_empty():
 		return
 	var cur_line := _arch_lines[_arch_line_idx]
-	if int(_arch_char_pos) < cur_line.length():
+	if _arch_glitch_step < 12:
+		# Immediately finish glitch animation
+		_arch_glitch_step = 12
+		var sp_lbl: Label = _ui["arch_speech"]
+		sp_lbl.text = cur_line
+		sp_lbl.add_theme_color_override("font_color", Color(0.28, 1.0, 0.42))
+		_arch_prev_text = cur_line
 		_arch_char_pos = float(cur_line.length())
-		(_ui["arch_speech"] as Label).text = cur_line
+		_arch_auto_advance_timer = 0.0
 		_refresh_architect_controls()
 		return
 	if _arch_line_idx + 1 < _arch_lines.size():
 		_arch_line_idx += 1
+		_arch_glitch_step = 0
+		_arch_glitch_timer = 0.0
 		_arch_char_pos = 0.0
 		_arch_blip_acc = 0
-		(_ui["arch_speech"] as Label).text = ""
+		_arch_auto_advance_timer = 0.0
 		_refresh_architect_controls()
 	else:
 		if _net != null and _net.is_online() and not _remote_players.is_empty():
 			_start_spectating()
 		else:
 			_reset_run()
+		(_ui["arch_speech"] as Label).text = ""
+		_refresh_architect_controls()
 
 
 func _start_spectating() -> void:
@@ -2792,21 +2835,45 @@ func _process_spectating(delta: float) -> void:
 	if rp_hiding != _spectate_last_hiding:
 		_spectate_last_hiding = rp_hiding
 		_spectate_user_orbited = false
+
 	if not _spectate_user_orbited:
 		var auto_yaw := wrapf(rp_yaw + PI * 0.88, -PI, PI) if rp_hiding else rp_yaw
 		_spectate_yaw = lerp_angle(_spectate_yaw, auto_yaw, 1.0 - exp(-10.0 * delta))
 
-	var pivot_y := 0.58 if rp_under_desk else (1.36 if rp_hiding else 1.48)
-	var pivot := tgt_node.global_position + Vector3(0.0, pivot_y, 0.0)
-	var back_dir := (Basis(Vector3.UP, _spectate_yaw) * Basis(Vector3.RIGHT, -_spectate_pitch) * Vector3(0.0, 0.0, 1.0)).normalized()
-	var cam_dist := 1.95 if rp_hiding else 2.55
-	var desired := pivot + back_dir * cam_dist
-	var space_state := get_world_3d().direct_space_state
-	if space_state != null:
-		var q := PhysicsRayQueryParameters3D.create(pivot, desired, 0xFFFFFFFF, [player_body.get_rid()])
-		var hit := space_state.intersect_ray(q)
-		if not hit.is_empty():
-			desired = hit.get("position", desired) - back_dir * 0.22
+	var pivot: Vector3
+	var desired: Vector3
+	if rp_hiding:
+		var hr_idx := int(rp.get("hide_room", -1))
+		var hl_idx := int(rp.get("hide_locker", -1))
+		var hide_node: Node3D = null
+		if hr_idx >= 0 and _room_by_idx.has(hr_idx):
+			var hr_inst: RoomBuilder.RoomInstance = _room_by_idx[hr_idx]
+			if hl_idx >= 0 and hl_idx < hr_inst.lockers.size():
+				hide_node = hr_inst.lockers[hl_idx].get("node") as Node3D
+
+		if hide_node != null:
+			var fwd := hide_node.global_transform.basis.z.normalized()
+			var h_pos := hide_node.global_position
+			pivot = h_pos + Vector3(0.0, 0.45 if rp_under_desk else 1.35, 0.0)
+			var view_fwd := (Basis(Vector3.UP, _spectate_yaw) * Vector3(0.0, 0.0, 1.0)).normalized() if _spectate_user_orbited else fwd
+			desired = pivot + view_fwd * (2.1 if rp_under_desk else 2.5) + Vector3(0.0, 0.60 if rp_under_desk else 0.20, 0.0)
+		else:
+			pivot = tgt_node.global_position + Vector3(0.0, 0.58 if rp_under_desk else 1.36, 0.0)
+			var back_dir := (Basis(Vector3.UP, _spectate_yaw) * Basis(Vector3.RIGHT, -_spectate_pitch) * Vector3(0.0, 0.0, 1.0)).normalized()
+			desired = pivot + back_dir * 2.2
+	else:
+		if not _spectate_user_orbited:
+			_spectate_yaw = lerp_angle(_spectate_yaw, rp_yaw, 1.0 - exp(-10.0 * delta))
+		pivot = tgt_node.global_position + Vector3(0.0, 1.48, 0.0)
+		var back_dir := (Basis(Vector3.UP, _spectate_yaw) * Basis(Vector3.RIGHT, -_spectate_pitch) * Vector3(0.0, 0.0, 1.0)).normalized()
+		desired = pivot + back_dir * 2.55
+		var space_state := get_world_3d().direct_space_state
+		if space_state != null:
+			var q := PhysicsRayQueryParameters3D.create(pivot, desired, 0xFFFFFFFF, [player_body.get_rid()])
+			var hit := space_state.intersect_ray(q)
+			if not hit.is_empty():
+				desired = hit.get("position", desired) - back_dir * 0.22
+
 	cam.global_position = cam.global_position.lerp(desired, 1.0 - exp(-14.0 * delta))
 	cam.look_at(pivot, Vector3.UP)
 	cam.fov = lerpf(cam.fov, 76.0, 1.0 - exp(-10.0 * delta))
@@ -2990,6 +3057,8 @@ func _input(event: InputEvent) -> void:
 				_spectate_user_orbited = true
 			return
 		if not _mobile_controls_enabled and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			if _locker_transition_t < 1.0:
+				return
 			var rel := (event as InputEventMouseMotion).relative
 			if _is_hiding:
 				_target_hide_yaw = clampf(_target_hide_yaw - rel.x * 0.0022 * _mouse_sens_mult, -0.58, 0.58)
@@ -3308,28 +3377,32 @@ func _process_architect_and_scare(delta: float) -> void:
 	if iris != null and _ui.has("architect_overlay"):
 		iris.visible = (_ui["architect_overlay"] as Control).modulate.a < 0.99
 
-	if _ui.has("arch_silhouette"):
-		var sil: TextureRect = _ui["arch_silhouette"]
-		var t_sec := float(Time.get_ticks_msec()) * 0.001
-		sil.offset_top = -245.0 + sin(t_sec * 1.4) * 3.0
-
 	if _arch_lines.is_empty():
 		return
 	var cur_line := _arch_lines[_arch_line_idx]
-	var prev_chars := int(_arch_char_pos)
-	if prev_chars < cur_line.length():
-		_arch_char_pos = minf(_arch_char_pos + delta * 48.0, float(cur_line.length()))
-		var now_chars := int(_arch_char_pos)
-		if now_chars > prev_chars:
-			(_ui["arch_speech"] as Label).text = cur_line.substr(0, now_chars)
-			_arch_blip_acc += now_chars - prev_chars
-			if _arch_blip_acc >= 3:
-				_arch_blip_acc = 0
-				var last_ch := cur_line.substr(now_chars - 1, 1)
-				if last_ch != " " and last_ch != "\n":
-					audio.play_architect_blip(_rng.randf_range(0.92, 1.10))
-			if now_chars >= cur_line.length():
+	if _arch_glitch_step >= 0 and _arch_glitch_step < 12:
+		_arch_glitch_timer += delta
+		if _arch_glitch_timer >= 0.045:
+			_arch_glitch_timer = 0.0
+			_arch_glitch_step += 1
+			if _arch_glitch_step < 12:
+				var frame_txt := RoomsArchitect.generate_glitch_frame(_arch_prev_text, cur_line, _arch_glitch_step, 12)
+				(_ui["arch_speech"] as Label).text = frame_txt
+				var shade := Color(0.28, 1.0, 0.42) if _arch_glitch_step % 2 == 0 else Color(0.12, 0.70, 0.22)
+				(_ui["arch_speech"] as Label).add_theme_color_override("font_color", shade)
+				audio.play_architect_blip(_rng.randf_range(0.92, 1.10))
+			else:
+				(_ui["arch_speech"] as Label).text = cur_line
+				(_ui["arch_speech"] as Label).add_theme_color_override("font_color", Color(0.28, 1.0, 0.42))
+				_arch_prev_text = cur_line
+				_arch_char_pos = float(cur_line.length())
+				_arch_auto_advance_timer = 0.0
 				_refresh_architect_controls()
+	elif _arch_glitch_step >= 12:
+		_arch_auto_advance_timer += delta
+		if _arch_auto_advance_timer >= 3.0:
+			_arch_auto_advance_timer = 0.0
+			_advance_architect_dialogue()
 
 
 func _toggle_flashlight() -> void:
@@ -3904,22 +3977,29 @@ func _find_first_closed_door_room() -> RoomBuilder.RoomInstance:
 	return null
 
 
-func _spawn_a60(force_prime: bool = false) -> void:
+func _spawn_a60(force_prime: bool = false, variant: String = "") -> void:
 	if _rooms.is_empty():
 		return
 	var target_r := _find_first_closed_door_room()
 	if target_r == null:
 		return
-	_start_a60_local(target_r.index, force_prime)
+	var v := variant
+	if v == "":
+		if not force_prime and _highest_opened >= 30 and _rng.randf() < 0.28:
+			v = "a35"
+		else:
+			v = "prime" if force_prime else "normal"
+	_start_a60_local(target_r.index, force_prime, v)
 	if _is_entity_authority() and _net != null and _net.is_online():
 		_net.broadcast_entity_event({
 			"k": "a60_spawn",
 			"door": target_r.index,
 			"prime": force_prime,
+			"v": v,
 		}, true)
 
 
-func _start_a60_local(target_door_idx: int, is_prime: bool) -> void:
+func _start_a60_local(target_door_idx: int, is_prime: bool, variant: String = "normal") -> void:
 	_a60_path.clear()
 	if _rooms.is_empty():
 		return
@@ -3940,6 +4020,7 @@ func _start_a60_local(target_door_idx: int, is_prime: bool) -> void:
 	if _a60_path.size() < 2:
 		return
 
+	_a60_variant = "prime" if is_prime else variant
 	_a60_active = true
 	_a60_phase = 2
 	_a60_is_prime = is_prime
@@ -3952,7 +4033,10 @@ func _start_a60_local(target_door_idx: int, is_prime: bool) -> void:
 		_a60_prime_flicker_active = true
 		_a60_prime_flicker_gap_t = 0.0
 
-	if is_prime:
+	if _a60_variant == "a35":
+		_a60_light.light_color = Color(0.75, 0.15, 0.95)
+		_a60_sprite.modulate = Color(0.85, 0.35, 1.0)
+	elif is_prime:
 		_a60_light.light_color = Color(0.22, 0.84, 1.0)
 		_a60_sprite.modulate = Color(0.55, 0.96, 1.0)
 	else:
@@ -3963,10 +4047,10 @@ func _start_a60_local(target_door_idx: int, is_prime: bool) -> void:
 	_a60_node.position = _a60_path[0]
 	_a60_node.visible = true
 	_flicker_nearby_lights(1.4)
-	audio.start_a60_spawn(is_prime, _highest_opened < 100)
+	audio.start_a60_spawn(is_prime, _highest_opened < 100, _a60_variant == "a35")
 
 
-func _spawn_a120() -> void:
+func _spawn_a120(variant: String = "") -> void:
 	if _rooms.is_empty():
 		return
 	var spawn_idx := mini(_highest_opened + 3, _rooms[-1].index)
@@ -3980,26 +4064,34 @@ func _spawn_a120() -> void:
 		rb = 2
 	else:
 		rb = 3
-	_start_a120_local(spawn_idx, rb)
+	var v := variant
+	if v == "":
+		if _highest_opened >= 40 and _rng.randf() < 0.32:
+			v = "a150"
+		else:
+			v = "normal"
+	_start_a120_local(spawn_idx, rb, v)
 	if _is_entity_authority() and _net != null and _net.is_online():
 		_net.broadcast_entity_event({
 			"k": "a120_spawn",
 			"room": spawn_idx,
 			"rb": rb,
+			"v": v,
 		}, true)
 
 
-func _start_a120_local(spawn_idx: int, rb: int) -> void:
+func _start_a120_local(spawn_idx: int, rb: int, variant: String = "normal") -> void:
 	if _rooms.is_empty():
 		return
 	var spawn_r: RoomBuilder.RoomInstance = _room_by_idx.get(spawn_idx)
 	if spawn_r == null:
 		spawn_r = _rooms[-1]
 
+	_a120_variant = variant
 	_a120_active = true
 	_a120_phase = 1
 	_a120_substage = 0
-	_a120_warn_timer = 3.4
+	_a120_warn_timer = 2.6 if _a120_variant == "a150" else 3.4
 	_a120_pause_timer = 0.0
 	_a120_rebounds = rb
 	_a120_initial_rebounds = rb
@@ -4013,8 +4105,12 @@ func _start_a120_local(spawn_idx: int, rb: int) -> void:
 	_a120_node.position = spawn_r.center_pos + Vector3(0.0, 1.55, 0.0)
 	_net_a120_tgt = _a120_node.position
 	_a120_node.visible = true
+	if _a120_variant == "a150":
+		_a120_sprite.modulate = Color(1.0, 0.55, 0.15)
+	else:
+		_a120_sprite.modulate = Color(1.0, 1.0, 1.0)
 	_flicker_nearby_lights(1.6)
-	audio.start_a120_spawn()
+	audio.start_a120_spawn(_a120_variant == "a150")
 
 
 func _build_a120_corridor_path(from_room_idx: int, to_room_idx: int) -> Array[Vector3]:
@@ -4075,8 +4171,9 @@ func _handle_a120_hit() -> void:
 	audio.low_hp_mode = (_hp <= 25 and _hp > 0)
 	_shake_amount = 0.12
 
+	var kill_cause := "A-150" if _a120_variant == "a150" else "A-120"
 	if _hp <= 0:
-		_trigger_death("A-120", "", {"a120_rebounded": _a120_rebounds < _a120_initial_rebounds})
+		_trigger_death(kill_cause, "", {"a120_rebounded": _a120_rebounds < _a120_initial_rebounds})
 		return
 
 	var warp_safe_min := _checkpoint_room + 4
@@ -4086,7 +4183,8 @@ func _handle_a120_hit() -> void:
 		_warp_player_to_room(target_idx, back_steps)
 	else:
 		(_ui["dmg_flash"] as ColorRect).color = Color(0.85, 0.08, 0.08, 0.65)
-		_show_toast("Happy Scribble (A-120) нанёс 40 урона! (%d HP)" % _hp, 2.6)
+		var ent_name := "Angry Scribble (A-150)" if _a120_variant == "a150" else "Happy Scribble (A-120)"
+		_show_toast("%s нанёс 40 урона! (%d HP)" % [ent_name, _hp], 2.6)
 
 
 func _warp_player_to_room(target_idx: int, back_steps: int) -> void:
@@ -4308,6 +4406,12 @@ func _process_darkness_in_hiding(delta: float) -> void:
 
 
 func _process_player_movement(delta: float) -> void:
+	if _is_action_locked():
+		player_body.velocity.x = 0.0
+		player_body.velocity.z = 0.0
+		player_body.move_and_slide()
+		return
+
 	if _is_hiding:
 		_process_darkness_in_hiding(delta)
 		return
@@ -4447,8 +4551,9 @@ func _process_entities(delta: float) -> void:
 		var flip_interval := 0.035 if _a60_is_prime else 0.045
 		if _a60_anim_timer > flip_interval:
 			_a60_anim_timer = 0.0
-			_a60_frame_idx = (_a60_frame_idx + _rng.randi_range(1, 5)) % _a60_frames.size()
-			var f60 := _a60_frames[_a60_frame_idx]
+			var f_pool: Array[Texture2D] = _a35_frames if (_a60_variant == "a35" and not _a35_frames.is_empty()) else _a60_frames
+			_a60_frame_idx = (_a60_frame_idx + _rng.randi_range(1, 5)) % f_pool.size()
+			var f60 := f_pool[_a60_frame_idx]
 			_a60_last_tex = f60
 			_a60_sprite.texture = f60
 			_a60_sprite.pixel_size = 2.65 / float(maxi(f60.get_width(), 1))
@@ -4458,7 +4563,7 @@ func _process_entities(delta: float) -> void:
 			audio.a60_intensity = 0.0 if _a60_is_prime else clampf(16.0 / maxf(d_player, 2.0), 0.12, 1.0)
 			audio.update_a60_mix(delta, d_player, _a60_phase, _a60_is_prime)
 
-		var prime_col := Vector3(0.25, 0.85, 1.0) if _a60_is_prime else Vector3(1.0, 0.22, 0.18)
+		var prime_col := Vector3(0.75, 0.25, 1.0) if _a60_variant == "a35" else (Vector3(0.25, 0.85, 1.0) if _a60_is_prime else Vector3(1.0, 0.22, 0.18))
 		static_mat.set_shader_parameter("tint_col", prime_col)
 
 		if _a60_hint_timer > 0.0:
@@ -4503,7 +4608,7 @@ func _process_entities(delta: float) -> void:
 									_a60_path.append(r.exit_pos + Vector3(0.0, 1.55, 0.0))
 						_a60_path.append(next_closed.exit_pos + Vector3(0.0, 1.55, 0.0))
 
-				var rush_speed := 72.0 if _a60_is_prime else 60.0
+				var rush_speed := 76.0 if _a60_variant == "a35" else (72.0 if _a60_is_prime else 60.0)
 				if _a60_path_idx < _a60_path.size():
 					var tgt := _a60_path[_a60_path_idx]
 					var to_t := tgt - _a60_node.position
@@ -4533,6 +4638,9 @@ func _process_entities(delta: float) -> void:
 						"door": _a60_target_door_idx,
 						"prime": _a60_is_prime,
 					}, false)
+			else:
+				var rush_speed_c := 76.0 if _a60_variant == "a35" else (72.0 if _a60_is_prime else 60.0)
+				_a60_node.position = _a60_node.position.move_toward(_net_a60_tgt, rush_speed_c * delta * 1.25)
 
 			# Table Burn from A-60' (90% chance to deal 20 damage when hiding under a table!)
 			if can_harm_local and _a60_phase == 2 and _a60_is_prime and _is_hiding and _hiding_kind == "under_desk" and d_player <= 11.5 and not _a60_prime_table_burned:
@@ -4566,16 +4674,17 @@ func _process_entities(delta: float) -> void:
 								_trigger_death("A-60'", "", {"distance": d_player})
 								return
 					else:
+						var kill_cause := "A-35" if _a60_variant == "a35" else "A-60"
 						a60_scare_rect.visible = true
 						a60_scare_rect.texture = _a60_sprite.texture
-						a60_scare_rect.modulate = Color(1.0, 0.92, 0.92, 0.96)
+						a60_scare_rect.modulate = Color(0.85, 0.35, 1.0, 0.96) if kill_cause == "A-35" else Color(1.0, 0.92, 0.92, 0.96)
 						var vp := get_viewport().get_visible_rect().size
 						a60_scare_rect.position = vp * 0.5 - Vector2(270, 270)
 						audio.play_a60_jumpscare(false)
 						_hp = 0
 						audio.low_hp_mode = false
-						(_ui["dmg_flash"] as ColorRect).color = Color(0.92, 0.08, 0.08, 0.78)
-						_trigger_death("A-60", "", {"distance": d_player})
+						(_ui["dmg_flash"] as ColorRect).color = Color(0.85, 0.15, 0.95, 0.78) if kill_cause == "A-35" else Color(0.92, 0.08, 0.08, 0.78)
+						_trigger_death(kill_cause, "", {"distance": d_player})
 						return
 				else:
 					a60_scare_rect.visible = false
@@ -4631,6 +4740,7 @@ func _process_entities(delta: float) -> void:
 		audio.a60_intensity = lerpf(audio.a60_intensity, 0.0, minf(delta * 4.0, 1.0))
 		static_rect.visible = false
 		a60_scare_rect.visible = false
+		_a60_node.visible = false
 
 	# --- A-120 (Happy Scribble) ---
 	if _a120_hit_cd > 0.0:
@@ -4641,12 +4751,15 @@ func _process_entities(delta: float) -> void:
 		var d120 := _a120_node.global_position.distance_to(cam.global_position)
 		var drum_hit := audio.update_a120_mix(delta, d120, _a120_phase) if _state != State.DEAD else false
 		_a120_anim_timer += delta
-		if _a120_anim_timer >= 0.50:
-			_a120_anim_timer -= 0.50
-			_a120_frame_idx = (_a120_frame_idx + 1) % _a120_frames.size()
-			var f120 := _a120_frames[_a120_frame_idx]
-			_a120_sprite.texture = f120
-			_a120_sprite.pixel_size = 2.55 / float(maxi(f120.get_width(), 1))
+		var anim_flip_interval := 0.35 if _a120_variant == "a150" else 0.50
+		if _a120_anim_timer >= anim_flip_interval:
+			_a120_anim_timer -= anim_flip_interval
+			var f120_pool: Array[Texture2D] = _a150_frames if (_a120_variant == "a150" and not _a150_frames.is_empty()) else _a120_frames
+			_a120_frame_idx = (_a120_frame_idx + 1) % maxi(f120_pool.size(), 1)
+			var f120 := f120_pool[_a120_frame_idx] if not f120_pool.is_empty() else null
+			if f120 != null:
+				_a120_sprite.texture = f120
+				_a120_sprite.pixel_size = 2.55 / float(maxi(f120.get_width(), 1))
 		if drum_hit:
 			_a120_drum_bounce = 1.0
 
@@ -4673,7 +4786,7 @@ func _process_entities(delta: float) -> void:
 			if _a120_pause_timer > 0.0:
 				_a120_pause_timer -= delta
 			else:
-				var spd120 := 15.0
+				var spd120 := 21.0 if _a120_variant == "a150" else 15.0
 				if _a120_substage == 0:
 					var live_tgt := _get_a120_live_target()
 					var tgt_room := _get_room_idx_near(live_tgt)
@@ -4756,6 +4869,8 @@ func _process_entities(delta: float) -> void:
 		if can_harm_local and _a120_active and _a120_phase == 2 and _a120_node.global_position.distance_to(cam.global_position) < 2.15 and not _is_hiding and _a120_hit_cd <= 0.0:
 			_handle_a120_hit()
 			return
+	else:
+		_a120_node.visible = false
 
 	# --- A-90 / Paralysis (Freeze check, starts around A-009+) ---
 	if not can_harm_local:
