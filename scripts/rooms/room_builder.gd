@@ -414,15 +414,6 @@ static func _build_exit_door(anchor: Node3D, assets: SharedAssets, next_room_num
 	# Small silver handle on door leaf
 	_add_box(pivot, "DoorKnob", Vector3(leaf_w - 0.18, 1.05, 0.075), Vector3(0.10, 0.06, 0.06), assets.fridge_mat, false)
 
-	var plaque_lbl := Label3D.new()
-	plaque_lbl.text = "A-%03d" % next_room_num
-	plaque_lbl.font_size = 42
-	plaque_lbl.pixel_size = 0.0052
-	plaque_lbl.position = Vector3(leaf_w * 0.5, 1.85, 0.065)
-	plaque_lbl.modulate = Color(0.92, 0.85, 0.55)
-	plaque_lbl.outline_size = 6
-	pivot.add_child(plaque_lbl)
-
 
 static func _build_ceiling_grid(room_node: Node3D, assets: SharedAssets, light_on: bool, r: RoomInstance) -> void:
 	var mat := assets.lamp_on_mat if light_on else assets.lamp_off_mat

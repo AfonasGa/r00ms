@@ -65,7 +65,7 @@ var _hide_time := 0.0
 var _locker_blend := 0.0
 var _locker_transition_t := 1.0
 var _locker_transition_entering := false
-var _locker_transition_duration := 0.50
+var _locker_transition_duration := 1.00
 var _locker_exit_face_locker := false
 var _locker_exit_from_yaw := 0.0
 var _locker_exit_to_yaw := 0.0
@@ -167,6 +167,7 @@ var _ui := {}
 var _toast_timer := 0.0
 var _reticle_ring: RoomsUI.ReticleRing = null
 var _reticle_screen_pos := Vector2.ZERO
+var _reticle_lag_offset := Vector2.ZERO
 var _reticle_radius := 6.5
 var _smart_reticle_target: Dictionary = {}
 var _reminder_dismissed := false
@@ -219,6 +220,21 @@ func _build_net() -> void:
 	_net.state_received.connect(_on_remote_state)
 	_net.door_opened_remote.connect(_on_remote_door_opened)
 	_net.peer_disconnected.connect(_on_remote_peer_disconnected)
+	_net.invite_received.connect(func(inviter_name: String, _lid: int) -> void:
+		_show_toast("Steam: приглашение от %s! Примите в Shift+Tab" % inviter_name, 4.0)
+	)
+	_net.session_synced.connect(_on_net_session_synced)
+
+
+func _on_net_session_synced(seed_val: int, room_idx: int) -> void:
+	if seed_val != 0 and int(_rng.seed) != seed_val and _highest_opened <= 1 and not _is_hiding:
+		_reset_run(seed_val)
+	if room_idx > _highest_opened:
+		for idx in range(_highest_opened, room_idx):
+			var r: RoomBuilder.RoomInstance = _room_by_idx.get(idx)
+			if r != null and not r.door_opened:
+				_open_room_door(idx, true)
+	_show_toast("Синхронизация с Steam-лобби (A-%03d)" % room_idx, 2.8)
 
 
 func _on_net_lobbies_updated(lobbies: Array) -> void:
@@ -226,18 +242,35 @@ func _on_net_lobbies_updated(lobbies: Array) -> void:
 		return
 	for ch in _lobby_list_box.get_children():
 		ch.queue_free()
+	if lobbies.is_empty():
+		var empty_lbl := Label.new()
+		empty_lbl.text = "Другие лобби не найдены. Нажмите «Пригласить (Shift+Tab)»."
+		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_lbl.add_theme_font_size_override("font_size", 11)
+		empty_lbl.add_theme_color_override("font_color", Color(0.75, 0.82, 0.90))
+		_lobby_list_box.add_child(empty_lbl)
+		return
 	for raw_item in lobbies:
 		var item: Dictionary = raw_item
 		var lid := int(item.get("id", 0))
 		var lname := String(item.get("name", "Lobby"))
 		var members := int(item.get("members", 1))
+		var is_friend := bool(item.get("is_friend", false))
+		var is_self := bool(item.get("is_self", false))
 		var btn := Button.new()
-		btn.text = "Войти: %s (%d чел.)" % [lname, members]
-		RoomsUI.style_button(btn, Color(0.45, 0.88, 1.0), 12)
-		btn.pressed.connect(func() -> void:
-			if _net != null:
-				_net.join_steam_lobby(lid)
-		)
+		if is_self:
+			btn.text = "%s (%d чел.) [Ваше лобби]" % [lname, members]
+			btn.disabled = true
+			RoomsUI.style_button(btn, Color(0.60, 0.68, 0.78), 11)
+		else:
+			var tag := "[ДРУГ] " if is_friend else ""
+			btn.text = "Войти: %s%s (%d чел.)" % [tag, lname, members]
+			RoomsUI.style_button(btn, Color(0.35, 1.0, 0.62) if is_friend else Color(0.45, 0.88, 1.0), 12)
+			btn.pressed.connect(func() -> void:
+				if _net != null:
+					_net.join_steam_lobby(lid)
+			)
 		_lobby_list_box.add_child(btn)
 
 
@@ -838,7 +871,7 @@ void fragment() {
 	RoomsUI.style_button(btn_steam_host, Color(0.40, 0.80, 1.0), 13)
 	btn_steam_host.pressed.connect(func() -> void:
 		if _net != null:
-			_net.host_steam_lobby(int(_rng.seed))
+			_net.host_steam_lobby(int(_rng.seed), _highest_opened)
 	)
 	steam_row.add_child(btn_steam_host)
 
@@ -876,17 +909,30 @@ void fragment() {
 	)
 	enet_row.add_child(btn_lan_join)
 
+	var steam_act_row := HBoxContainer.new()
+	steam_act_row.add_theme_constant_override("separation", 6)
+	m_box.add_child(steam_act_row)
+
+	var btn_net_invite := Button.new()
+	btn_net_invite.text = "Пригласить (Shift+Tab)"
+	btn_net_invite.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	RoomsUI.style_button(btn_net_invite, Color(0.55, 0.86, 1.0), 12)
+	btn_net_invite.pressed.connect(func() -> void:
+		if _net != null:
+			_net.open_steam_invite_overlay(int(_rng.seed), _highest_opened)
+	)
+	steam_act_row.add_child(btn_net_invite)
+	_ui["btn_net_invite"] = btn_net_invite
+
 	var btn_net_disc := Button.new()
-	btn_net_disc.text = "Пригласить / Отключиться"
+	btn_net_disc.text = "Отключиться"
+	btn_net_disc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	RoomsUI.style_button(btn_net_disc, Color(1.0, 0.55, 0.45), 12)
 	btn_net_disc.pressed.connect(func() -> void:
 		if _net != null:
-			if _net.mode == "steam" and _net.current_lobby_id > 0:
-				_net.open_steam_invite_overlay()
-			else:
-				_net.disconnect_session()
+			_net.disconnect_session()
 	)
-	m_box.add_child(btn_net_disc)
+	steam_act_row.add_child(btn_net_disc)
 	_ui["btn_net_disc"] = btn_net_disc
 
 	_lobby_list_box = VBoxContainer.new()
@@ -1141,7 +1187,7 @@ func _cycle_mobile_mode() -> void:
 	_refresh_mobile_mode()
 
 
-func _reset_run() -> void:
+func _reset_run(forced_seed: int = -1) -> void:
 	for child in rooms_container.get_children():
 		child.queue_free()
 	_rooms.clear()
@@ -1149,7 +1195,10 @@ func _reset_run() -> void:
 	_occupied_cells.clear()
 	_opening_doors.clear()
 
-	_rng.randomize()
+	if forced_seed >= 0:
+		_rng.seed = forced_seed
+	else:
+		_rng.randomize()
 	_next_cell = Vector2i.ZERO
 	_next_in_dir = Vector3(0.0, 0.0, -1.0)
 	_next_room_index = 0
@@ -1189,7 +1238,9 @@ func _reset_run() -> void:
 	_vm_shake_time = 0.0
 	_gummy_hold_accum = 0.0
 	_reminder_dismissed = false
-	_locker_transition_duration = 0.50
+	_reticle_lag_offset = Vector2.ZERO
+	_reticle_screen_pos = Vector2.ZERO
+	_locker_transition_duration = 1.00
 	if _vm_holder != null:
 		_vm_holder.visible = true
 	if _anim_hand != null:
@@ -1246,6 +1297,8 @@ func _reset_run() -> void:
 	(_ui["a60_scare_rect"] as Control).visible = false
 	(_ui["static_rect"] as Control).visible = false
 	_reset_touch_state()
+	if _net != null:
+		_net.update_lobby_progress(int(_rng.seed), 0)
 	_set_state(State.PLAYING)
 	_show_toast("Вы в Секции A. Откройте дверь A-001, чтобы начать.", 3.5)
 
@@ -2063,6 +2116,8 @@ func _advance_door_progress(r_idx: int, allow_spawn: bool) -> void:
 	if opened_num > _highest_opened:
 		_highest_opened = opened_num
 		_current_room_idx = opened_num
+		if _net != null:
+			_net.update_lobby_progress(int(_rng.seed), _highest_opened)
 		if opened_num >= 50 and not _power_out:
 			_trigger_power_outage()
 		while _rooms.size() < 14 or _rooms[-1].index < _highest_opened + 6:
@@ -2211,7 +2266,7 @@ func _enter_locker(r_idx: int, l_idx: int) -> void:
 	_locker_cam_from = cam.global_position
 	_locker_transition_t = 0.0
 	_locker_transition_entering = true
-	_locker_transition_duration = 0.50
+	_locker_transition_duration = 1.00
 
 	var eye_loc: Vector3 = locker_data.get("eye_local", Vector3(0.0, 1.48, 0.05))
 	var exit_loc: Vector3 = locker_data.get("exit_local", Vector3(0.0, 0.05, 1.05))
@@ -2226,9 +2281,9 @@ func _enter_locker(r_idx: int, l_idx: int) -> void:
 	if is_instance_valid(_hiding_door_pivot):
 		var dp := _hiding_door_pivot
 		var tw := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-		tw.tween_property(dp, "rotation:y", -PI * 0.64, 0.14)
-		tw.tween_interval(0.20)
-		tw.tween_property(dp, "rotation:y", -0.05, 0.16)
+		tw.tween_property(dp, "rotation:y", -PI * 0.64, 0.28)
+		tw.tween_interval(0.40)
+		tw.tween_property(dp, "rotation:y", -0.05, 0.32)
 
 	if _hiding_kind == "under_desk":
 		audio.play_desk_crawl(true)
@@ -2243,7 +2298,7 @@ func _exit_locker(face_locker: bool = false) -> void:
 	_locker_transition_t = 0.0
 	_locker_transition_entering = false
 	_locker_exit_face_locker = face_locker
-	_locker_transition_duration = 0.30 if face_locker else 0.50
+	_locker_transition_duration = 0.70 if face_locker else 1.00
 
 	_is_hiding = false
 	_hiding_room_idx = -1
@@ -2279,13 +2334,13 @@ func _exit_locker(face_locker: bool = false) -> void:
 	if is_instance_valid(prev_door_pivot):
 		var tw := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 		if face_locker:
-			tw.tween_property(prev_door_pivot, "rotation:y", -PI * 0.62, 0.09)
-			tw.tween_interval(0.09)
-			tw.tween_property(prev_door_pivot, "rotation:y", 0.0, 0.12)
+			tw.tween_property(prev_door_pivot, "rotation:y", -PI * 0.62, 0.21)
+			tw.tween_interval(0.21)
+			tw.tween_property(prev_door_pivot, "rotation:y", 0.0, 0.28)
 		else:
-			tw.tween_property(prev_door_pivot, "rotation:y", -PI * 0.64, 0.15)
-			tw.tween_interval(0.16)
-			tw.tween_property(prev_door_pivot, "rotation:y", 0.0, 0.19)
+			tw.tween_property(prev_door_pivot, "rotation:y", -PI * 0.64, 0.30)
+			tw.tween_interval(0.32)
+			tw.tween_property(prev_door_pivot, "rotation:y", 0.0, 0.38)
 
 	if prev_kind == "under_desk":
 		audio.play_desk_crawl(false)
@@ -3087,9 +3142,15 @@ func _update_ui(delta: float) -> void:
 	else:
 		interact_tgt = _find_smart_reticle_target()
 		_smart_reticle_target = interact_tgt
+		var yaw_lag := wrapf(_target_yaw - _yaw, -PI, PI)
+		var pitch_lag := _target_pitch - _pitch
+		var desired_lag := Vector2(clampf(yaw_lag * 360.0, -48.0, 48.0), clampf(pitch_lag * 300.0, -36.0, 36.0))
+		var lag_in_a := clampf(1.0 - exp(-12.5 * delta), 0.0, 1.0)
+		_reticle_lag_offset = _reticle_lag_offset.lerp(desired_lag, lag_in_a)
+
 		var tgt_r := 6.5
 		var tgt_stroke := 1.9
-		var tgt_pos := vp_center
+		var tgt_pos := vp_center + _reticle_lag_offset
 		if not interact_tgt.is_empty():
 			tgt_r = 19.5
 			tgt_stroke = 2.8
@@ -3104,13 +3165,13 @@ func _update_ui(delta: float) -> void:
 
 		if _reticle_ring != null:
 			_reticle_ring.visible = true
-			var ret_a := clampf(1.0 - exp(-22.0 * delta), 0.0, 1.0)
+			var ret_a := clampf(1.0 - exp(-10.5 * delta), 0.0, 1.0)
 			if _reticle_screen_pos == Vector2.ZERO:
 				_reticle_screen_pos = tgt_pos
 			_reticle_screen_pos = _reticle_screen_pos.lerp(tgt_pos, ret_a)
-			_reticle_radius = lerpf(_reticle_radius, tgt_r, ret_a)
+			_reticle_radius = lerpf(_reticle_radius, tgt_r, clampf(1.0 - exp(-12.0 * delta), 0.0, 1.0))
 			_reticle_ring.ring_radius = _reticle_radius
-			_reticle_ring.stroke_width = lerpf(_reticle_ring.stroke_width, tgt_stroke, ret_a)
+			_reticle_ring.stroke_width = lerpf(_reticle_ring.stroke_width, tgt_stroke, clampf(1.0 - exp(-12.0 * delta), 0.0, 1.0))
 			_reticle_ring.position = _reticle_screen_pos - _reticle_ring.size * 0.5
 			_reticle_ring.queue_redraw()
 
