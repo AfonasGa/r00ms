@@ -401,18 +401,20 @@ static func _build_exit_door(anchor: Node3D, assets: SharedAssets, next_room_num
 
 	var pivot := Node3D.new()
 	pivot.name = "DoorPivot"
-	pivot.position = Vector3(-DOOR_W * 0.5 + 0.10, 0.0, 0.0)
+	# Hinged on the RIGHT (+X) so negative Y rotation swings the door AWAY (-Z) and RIGHT (+X)
+	pivot.position = Vector3(DOOR_W * 0.5 - 0.10, 0.0, 0.0)
 	anchor.add_child(pivot)
 	r.door_pivot = pivot
 
 	var leaf_w := DOOR_W - 0.20
-	var door_body := _add_box(pivot, "DoorLeaf", Vector3(leaf_w * 0.5, (DOOR_H - 0.04) * 0.5, 0.0), Vector3(leaf_w, DOOR_H - 0.04, 0.10), assets.door_mat)
+	var door_body := _add_box(pivot, "DoorLeaf", Vector3(-leaf_w * 0.5, (DOOR_H - 0.04) * 0.5, 0.0), Vector3(leaf_w, DOOR_H - 0.04, 0.10), assets.door_mat)
 	door_body.set_meta("interact_type", "door")
 	door_body.set_meta("room_index", r.index)
 	r.door_collider = door_body as StaticBody3D
 
-	# Small silver handle on door leaf
-	_add_box(pivot, "DoorKnob", Vector3(leaf_w - 0.18, 1.05, 0.075), Vector3(0.10, 0.06, 0.06), assets.fridge_mat, false)
+	# Small silver handle on left side of door leaf (both sides)
+	_add_box(pivot, "DoorKnob", Vector3(-leaf_w + 0.18, 1.05, 0.075), Vector3(0.10, 0.06, 0.06), assets.fridge_mat, false)
+	_add_box(pivot, "DoorKnobBack", Vector3(-leaf_w + 0.18, 1.05, -0.075), Vector3(0.10, 0.06, 0.06), assets.fridge_mat, false)
 
 
 static func _build_ceiling_grid(room_node: Node3D, assets: SharedAssets, light_on: bool, r: RoomInstance) -> void:

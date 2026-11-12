@@ -7,7 +7,8 @@ extends Node
 
 signal status_changed(text: String)
 signal lobbies_updated(lobbies: Array)
-signal door_opened_remote(room_index: int)
+signal door_opened_remote(room_index: int, slam: bool)
+signal locker_action_received(peer_key: String, room_idx: int, locker_idx: int, entering: bool, face_locker: bool)
 signal state_received(peer_key: String, data: Dictionary)
 signal peer_disconnected(peer_key: String)
 signal invite_received(inviter_name: String, lobby_id: int)
@@ -44,6 +45,7 @@ var _local_state: Dictionary = {}
 var _pending_open_invite := false
 var _pending_startup_lobby := 0
 var _last_synced_lobby := 0
+var _last_synced_seed := 0
 
 
 func _ready() -> void:
@@ -407,6 +409,7 @@ func disconnect_session() -> void:
 	current_lobby_id = 0
 	is_host = false
 	_last_synced_lobby = 0
+	_last_synced_seed = 0
 	mode = "offline"
 	emit_signal("status_changed", get_summary_status())
 
@@ -415,10 +418,32 @@ func update_local_state(state_dict: Dictionary) -> void:
 	_local_state = state_dict
 
 
-func broadcast_door_opened(room_index: int) -> void:
-	var msg := {"t": "door", "r": room_index}
+func broadcast_door_opened(room_index: int, slam: bool = false) -> void:
+	var msg := {"t": "door", "r": room_index, "s": slam}
 	if mode == "steam":
 		_steam_send_all(msg, 2) # P2P_SEND_RELIABLE
+	elif mode == "enet" and multiplayer.has_multiplayer_peer():
+		var bytes := var_to_bytes(msg)
+		multiplayer.send_bytes(bytes, 0, MultiplayerPeer.TRANSFER_MODE_RELIABLE)
+
+
+func broadcast_locker_action(room_index: int, locker_index: int, entering: bool, face_locker: bool = false) -> void:
+	var msg := {"t": "lock", "r": room_index, "l": locker_index, "e": entering, "f": face_locker}
+	if mode == "steam":
+		_steam_send_all(msg, 2)
+	elif mode == "enet" and multiplayer.has_multiplayer_peer():
+		var bytes := var_to_bytes(msg)
+		multiplayer.send_bytes(bytes, 0, MultiplayerPeer.TRANSFER_MODE_RELIABLE)
+
+
+func broadcast_session_sync(seed_val: int, room_idx: int) -> void:
+	run_seed = seed_val
+	run_room_idx = room_idx
+	if mode == "offline":
+		return
+	var msg := {"t": "sync", "seed": seed_val, "r": room_idx}
+	if mode == "steam":
+		_steam_send_all(msg, 2)
 	elif mode == "enet" and multiplayer.has_multiplayer_peer():
 		var bytes := var_to_bytes(msg)
 		multiplayer.send_bytes(bytes, 0, MultiplayerPeer.TRANSFER_MODE_RELIABLE)
@@ -450,7 +475,11 @@ func _process(delta: float) -> void:
 					"pt": float(_local_state.get("pitch", 0.0)),
 					"l": bool(_local_state.get("light", false)),
 					"h": bool(_local_state.get("hide", false)),
+					"hr": int(_local_state.get("hr", -1)),
+					"hl": int(_local_state.get("hl", -1)),
+					"d": bool(_local_state.get("dead", false)),
 					"sp": bool(_local_state.get("sprint", false)),
+					"sd": run_seed if is_host else 0,
 					"r": int(_local_state.get("room", 0)),
 					"hp": int(_local_state.get("hp", 100)),
 					"n": persona_name,
@@ -499,24 +528,43 @@ func _poll_enet_packets() -> void:
 func _handle_packet(peer_key: String, msg: Dictionary) -> void:
 	var mtype := String(msg.get("t", ""))
 	if mtype == "st":
+		if not is_host:
+			var host_seed := int(msg.get("sd", 0))
+			var host_room := int(msg.get("r", 0))
+			if host_seed > 0 and host_seed != _last_synced_seed:
+				_last_synced_seed = host_seed
+				emit_signal("session_synced", host_seed, host_room)
 		emit_signal("state_received", peer_key, msg)
 	elif mtype == "door":
-		emit_signal("door_opened_remote", int(msg.get("r", -1)))
+		emit_signal("door_opened_remote", int(msg.get("r", -1)), bool(msg.get("s", false)))
+	elif mtype == "lock":
+		emit_signal("locker_action_received", peer_key, int(msg.get("r", -1)), int(msg.get("l", -1)), bool(msg.get("e", false)), bool(msg.get("f", false)))
+	elif mtype == "sync":
+		if not is_host:
+			var s_val := int(msg.get("seed", 0))
+			var r_val := int(msg.get("r", 0))
+			if s_val > 0:
+				_last_synced_seed = s_val
+				emit_signal("session_synced", s_val, r_val)
 	elif mtype == "hi":
-		# Touch P2P session alive; no state needed beyond connection warmup
-		pass
+		if is_host and run_seed > 0:
+			broadcast_session_sync(run_seed, run_room_idx)
 
 
 func _try_emit_lobby_sync(lobby_id: int) -> void:
-	if _steam == null or lobby_id <= 0 or is_host or _last_synced_lobby == lobby_id:
+	if _steam == null or lobby_id <= 0 or is_host:
 		return
 	var seed_str := String(_steam.call("getLobbyData", lobby_id, "seed"))
 	if seed_str.is_empty() or not seed_str.is_valid_int():
 		return
+	var seed_v := int(seed_str)
+	if seed_v <= 0 or (_last_synced_lobby == lobby_id and _last_synced_seed == seed_v):
+		return
 	var room_str := String(_steam.call("getLobbyData", lobby_id, "room"))
 	var room_v := int(room_str) if room_str.is_valid_int() else 0
 	_last_synced_lobby = lobby_id
-	emit_signal("session_synced", int(seed_str), room_v)
+	_last_synced_seed = seed_v
+	emit_signal("session_synced", seed_v, room_v)
 
 
 func _on_steam_lobby_created(connect_code: int, lobby_id: int) -> void:
@@ -580,6 +628,8 @@ func _on_steam_lobby_chat_update(lobby_id: int, _changed_id: int, _making_change
 		is_host = (owner_id == steam_id)
 		_refresh_steam_lobby_members()
 		_steam_send_all({"t": "hi", "n": persona_name}, 2)
+		if is_host and run_seed > 0:
+			broadcast_session_sync(run_seed, run_room_idx)
 		emit_signal("status_changed", get_summary_status())
 
 
@@ -649,6 +699,8 @@ func _on_enet_peer_connected(id: int) -> void:
 	var sm := multiplayer as SceneMultiplayer
 	if sm != null and not sm.peer_packet.is_connected(_on_enet_packet_received):
 		sm.peer_packet.connect(_on_enet_packet_received)
+	if is_host and run_seed > 0:
+		broadcast_session_sync(run_seed, run_room_idx)
 	emit_signal("status_changed", get_summary_status())
 
 
@@ -662,6 +714,8 @@ func _on_enet_connected_to_server() -> void:
 	var sm := multiplayer as SceneMultiplayer
 	if sm != null and not sm.peer_packet.is_connected(_on_enet_packet_received):
 		sm.peer_packet.connect(_on_enet_packet_received)
+	if multiplayer.has_multiplayer_peer():
+		multiplayer.send_bytes(var_to_bytes({"t": "hi", "n": persona_name}), 1, MultiplayerPeer.TRANSFER_MODE_RELIABLE)
 	emit_signal("status_changed", get_summary_status())
 
 

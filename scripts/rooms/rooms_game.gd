@@ -2,7 +2,7 @@ extends Node3D
 
 ## Rooms-inspired 3D procedural horror runner (A-000 -> A-200+ Endless) inside Godot 4.7.
 
-enum State { PLAYING, PAUSED, DEAD, VICTORY }
+enum State { PLAYING, PAUSED, DEAD, VICTORY, SPECTATING }
 enum RenderQuality { MOBILE_OPT, MEDIUM, HIGH }
 
 const SETTINGS_PATH := "user://rooms_settings.cfg"
@@ -20,6 +20,17 @@ const OVERRIDE_PATH := "user://override.cfg"
 
 var _assets: RoomBuilder.SharedAssets
 var _rng := RandomNumberGenerator.new()
+var _world_seed := 0
+var _is_sprinting := false
+var _door_hand_timer := 0.0
+var _door_hand_slam := false
+
+# Death transition phases (0=red flash, 1=shrink to center, 2=architect fade & talk) + spectator
+var _death_phase := 0
+var _death_phase_t := 0.0
+var _spectate_key := ""
+var _spectate_yaw := 0.0
+var _spectate_pitch := 0.28
 
 var _rooms: Array[RoomBuilder.RoomInstance] = []
 var _room_by_idx: Dictionary = {}
@@ -236,6 +247,7 @@ func _build_net() -> void:
 	_net.lobbies_updated.connect(_on_net_lobbies_updated)
 	_net.state_received.connect(_on_remote_state)
 	_net.door_opened_remote.connect(_on_remote_door_opened)
+	_net.locker_action_received.connect(_on_remote_locker_action)
 	_net.peer_disconnected.connect(_on_remote_peer_disconnected)
 	_net.invite_received.connect(func(inviter_name: String, _lid: int) -> void:
 		_show_toast("Steam: приглашение от %s! Примите в Shift+Tab" % inviter_name, 4.0)
@@ -244,14 +256,14 @@ func _build_net() -> void:
 
 
 func _on_net_session_synced(seed_val: int, room_idx: int) -> void:
-	if seed_val != 0 and int(_rng.seed) != seed_val and _highest_opened <= 1 and not _is_hiding:
+	if seed_val > 0 and _world_seed != seed_val and (_net == null or not _net.is_host):
 		_reset_run(seed_val)
 	if room_idx > _highest_opened:
 		for idx in range(_highest_opened, room_idx):
 			var r: RoomBuilder.RoomInstance = _room_by_idx.get(idx)
 			if r != null and not r.door_opened:
-				_open_room_door(idx, true)
-	_show_toast("Синхронизация с Steam-лобби (A-%03d)" % room_idx, 2.8)
+				_open_room_door(idx, false, true)
+	_show_toast("Синхронизация с лобби (A-%03d)" % room_idx, 2.8)
 
 
 func _on_net_lobbies_updated(lobbies: Array) -> void:
@@ -291,11 +303,40 @@ func _on_net_lobbies_updated(lobbies: Array) -> void:
 		_lobby_list_box.add_child(btn)
 
 
-func _on_remote_door_opened(room_index: int) -> void:
+func _on_remote_door_opened(room_index: int, slam: bool = false) -> void:
 	for idx in range(maxi(room_index - 1, 0), room_index + 1):
 		var r: RoomBuilder.RoomInstance = _room_by_idx.get(idx)
 		if r != null and not r.door_opened:
-			_open_room_door(idx, true)
+			_open_room_door(idx, slam and (idx == room_index), true)
+
+
+func _on_remote_locker_action(peer_key: String, room_idx: int, locker_idx: int, entering: bool, face_locker: bool) -> void:
+	if _remote_players.has(peer_key):
+		var rp: Dictionary = _remote_players[peer_key]
+		rp["hiding"] = entering
+		rp["hide_room"] = room_idx if entering else -1
+		rp["hide_locker"] = locker_idx if entering else -1
+		rp["interact_t"] = 0.85
+
+	var r: RoomBuilder.RoomInstance = _room_by_idx.get(room_idx)
+	if r == null or locker_idx < 0 or locker_idx >= r.lockers.size():
+		return
+	var ld: Dictionary = r.lockers[locker_idx]
+	var dp := ld.get("door_pivot") as Node3D
+	if is_instance_valid(dp):
+		var tw := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+		if entering:
+			tw.tween_property(dp, "rotation:y", -PI * 0.64, 0.28)
+			tw.tween_interval(0.40)
+			tw.tween_property(dp, "rotation:y", -0.05, 0.32)
+		elif face_locker:
+			tw.tween_property(dp, "rotation:y", -PI * 0.62, 0.21)
+			tw.tween_interval(0.21)
+			tw.tween_property(dp, "rotation:y", 0.0, 0.28)
+		else:
+			tw.tween_property(dp, "rotation:y", -PI * 0.64, 0.30)
+			tw.tween_interval(0.32)
+			tw.tween_property(dp, "rotation:y", 0.0, 0.38)
 
 
 func _on_remote_peer_disconnected(peer_key: String) -> void:
@@ -576,6 +617,11 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 			"tgt_pitch": 0.0,
 			"light_on": false,
 			"hiding": false,
+			"hide_room": -1,
+			"hide_locker": -1,
+			"dead": false,
+			"room": 0,
+			"name": String(msg.get("n", "Player")),
 			"sprint": false,
 			"interact_t": 0.0,
 			"net_spd": 0.0,
@@ -583,7 +629,7 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 			"last_pkt_ms": Time.get_ticks_msec(),
 			"walk_phase": 0.0,
 			"walk_blend": 0.0,
-			"idle_phase": _rng.randf() * TAU,
+			"idle_phase": float(abs(hash(peer_key)) % 628) * 0.01,
 		}
 		_remote_players[peer_key] = rp
 
@@ -608,17 +654,22 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 	var prev_hide := bool(rp.get("hiding", false))
 	var next_hide := bool(msg.get("h", false))
 	if prev_hide != next_hide and not newly_created:
-		rp["interact_t"] = 0.65
+		rp["interact_t"] = maxf(float(rp.get("interact_t", 0.0)), 0.85)
 	rp["light_on"] = next_light
 	rp["hiding"] = next_hide
+	rp["hide_room"] = int(msg.get("hr", -1)) if next_hide else -1
+	rp["hide_locker"] = int(msg.get("hl", -1)) if next_hide else -1
+	rp["dead"] = bool(msg.get("d", false))
+	rp["room"] = int(msg.get("r", 0))
+	rp["name"] = String(msg.get("n", "Player"))
 	rp["sprint"] = bool(msg.get("sp", false))
 	var spot_node: SpotLight3D = rp["spot"]
-	spot_node.visible = next_light
+	spot_node.visible = next_light and not bool(rp["dead"])
 	var lbl_node: Label3D = rp["lbl"]
-	lbl_node.text = "%s [A-%03d]" % [String(msg.get("n", "Player")), int(msg.get("r", 0))]
+	lbl_node.text = "%s [МЁРТВ]" % String(rp["name"]) if bool(rp["dead"]) else "%s [A-%03d]" % [String(rp["name"]), int(rp["room"])]
 	var root_n: Node3D = rp["node"]
-	# Remote players must stay visible at all times (never hide on locker/pause transitions)
-	root_n.visible = true
+	# Remote players must stay visible at all times while alive (or show fallen/ghosted only on own spectate)
+	root_n.visible = not bool(rp["dead"])
 	if newly_created:
 		root_n.position = rp["tgt_pos"]
 		root_n.rotation.y = float(rp["tgt_yaw"])
@@ -631,6 +682,9 @@ func _process_remote_players(delta: float) -> void:
 		var rp: Dictionary = _remote_players[pk]
 		var n: Node3D = rp["node"]
 		if not is_instance_valid(n):
+			continue
+		if bool(rp.get("dead", false)):
+			n.visible = false
 			continue
 		n.visible = true
 		var prev_pos := n.position
@@ -711,10 +765,10 @@ func _process_remote_players(delta: float) -> void:
 		var arm_r_ry := 0.0
 		var arm_r_rz := 0.075 + 0.03 * sin(idle_t * 1.8) * (1.0 - wb)
 		if inter_t > 0.0:
-			var reach := sin(clampf(inter_t / 0.65, 0.0, 1.0) * PI)
+			var reach := sin(clampf(inter_t / 0.85, 0.0, 1.0) * PI)
 			arm_r_rx = lerpf(arm_r_rx, 1.48, reach)
-			arm_r_ry = reach * 0.32
-			arm_r_rz = -0.14 * reach
+			arm_r_ry = reach * 0.34
+			arm_r_rz = -0.16 * reach
 		elif light_on:
 			arm_r_rx = 1.42 + clampf(pitch * 0.78, -0.68, 0.68) + sw * 0.05 * wb
 			arm_r_rz = 0.04
@@ -1090,6 +1144,37 @@ func _build_ui() -> void:
 	dmg_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(dmg_flash)
 	_ui["dmg_flash"] = dmg_flash
+
+	# Death center-shrink iris shader (Red flash -> compresses & fades inward to black before Architect)
+	var iris_sh := Shader.new()
+	iris_sh.code = """shader_type canvas_item;
+uniform float shrink_amt : hint_range(0.0, 1.0) = 0.0;
+uniform float red_amt : hint_range(0.0, 1.0) = 0.0;
+
+void fragment() {
+	vec2 d = abs(UV - vec2(0.5)) * 2.0;
+	float rx = max(mix(1.25, 0.001, pow(shrink_amt, 0.72)), 0.001);
+	float ry = max(mix(1.25, 0.001, pow(shrink_amt, 0.92)), 0.001);
+	float ell = length(vec2(d.x / rx, d.y / ry));
+	float black_mask = smoothstep(0.72, 1.05, ell) * smoothstep(0.02, 0.25, shrink_amt);
+	if (shrink_amt >= 0.985) {
+		black_mask = 1.0;
+	}
+	vec3 col = mix(vec3(0.0), vec3(0.82, 0.03, 0.03), red_amt * (1.0 - black_mask * 0.65));
+	float alpha = max(black_mask, red_amt);
+	COLOR = vec4(col, clamp(alpha, 0.0, 1.0));
+}
+"""
+	var iris_mat := ShaderMaterial.new()
+	iris_mat.shader = iris_sh
+	var death_iris := ColorRect.new()
+	death_iris.set_anchors_preset(Control.PRESET_FULL_RECT)
+	death_iris.material = iris_mat
+	death_iris.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	death_iris.visible = false
+	root.add_child(death_iris)
+	_ui["death_iris"] = death_iris
+	_ui["death_iris_mat"] = iris_mat
 
 	# Static Noise & Dark Vignette (A-60 arrival < A-100 & proximity effect)
 	var static_sh := Shader.new()
@@ -1641,6 +1726,62 @@ void fragment() {
 	arch_overlay.add_child(btn_arch_retry)
 	_ui["btn_arch_retry"] = btn_arch_retry
 
+	# Online Spectator Bar (shown after Architect when observing teammates)
+	var spec_bar := Control.new()
+	spec_bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	spec_bar.offset_top = -90
+	spec_bar.offset_bottom = -16
+	spec_bar.visible = false
+	spec_bar.mouse_filter = Control.MOUSE_FILTER_PASS
+	root.add_child(spec_bar)
+	_ui["spectate_bar"] = spec_bar
+
+	var spec_lbl := Label.new()
+	spec_lbl.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	spec_lbl.offset_top = 0
+	spec_lbl.offset_bottom = 30
+	spec_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	spec_lbl.add_theme_font_size_override("font_size", 18)
+	spec_lbl.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0, 0.96))
+	spec_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.92))
+	spec_lbl.add_theme_constant_override("outline_size", 4)
+	spec_lbl.text = "Наблюдение"
+	spec_bar.add_child(spec_lbl)
+	_ui["spectate_lbl"] = spec_lbl
+
+	var btn_spec_prev := Button.new()
+	btn_spec_prev.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	btn_spec_prev.offset_left = -210
+	btn_spec_prev.offset_right = -70
+	btn_spec_prev.offset_top = -36
+	btn_spec_prev.offset_bottom = 0
+	btn_spec_prev.text = "< Игрок"
+	RoomsUI.style_button(btn_spec_prev, Color(0.45, 0.85, 1.0), 13)
+	btn_spec_prev.pressed.connect(func() -> void: _cycle_spectate_target(-1))
+	spec_bar.add_child(btn_spec_prev)
+
+	var btn_spec_next := Button.new()
+	btn_spec_next.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	btn_spec_next.offset_left = -60
+	btn_spec_next.offset_right = 80
+	btn_spec_next.offset_top = -36
+	btn_spec_next.offset_bottom = 0
+	btn_spec_next.text = "Игрок >"
+	RoomsUI.style_button(btn_spec_next, Color(0.45, 0.85, 1.0), 13)
+	btn_spec_next.pressed.connect(func() -> void: _cycle_spectate_target(1))
+	spec_bar.add_child(btn_spec_next)
+
+	var btn_spec_restart := Button.new()
+	btn_spec_restart.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	btn_spec_restart.offset_left = 94
+	btn_spec_restart.offset_right = 230
+	btn_spec_restart.offset_top = -36
+	btn_spec_restart.offset_bottom = 0
+	btn_spec_restart.text = "Рестарт [R]"
+	RoomsUI.style_button(btn_spec_restart, Color(1.0, 0.72, 0.25), 13)
+	btn_spec_restart.pressed.connect(_reset_run)
+	spec_bar.add_child(btn_spec_restart)
+
 
 func _make_ring_btn(parent: Control, accent: Color, stroke_w: float, right_off: float, top_off: float, diameter: float, anchor_preset: Control.LayoutPreset = Control.PRESET_BOTTOM_RIGHT, label_txt: String = "") -> RoomsUI.RingButton:
 	var b := RoomsUI.RingButton.new()
@@ -1779,10 +1920,13 @@ func _reset_run(forced_seed: int = -1) -> void:
 	_occupied_cells.clear()
 	_opening_doors.clear()
 
-	if forced_seed >= 0:
-		_rng.seed = forced_seed
+	if forced_seed > 0:
+		_world_seed = forced_seed & 0x7FFFFFFF
 	else:
-		_rng.randomize()
+		var tmp_rng := RandomNumberGenerator.new()
+		tmp_rng.randomize()
+		_world_seed = maxi(int(tmp_rng.randi() & 0x3FFFFFFF), 1)
+	_rng.seed = _world_seed
 	_next_cell = Vector2i.ZERO
 	_next_in_dir = Vector3(0.0, 0.0, -1.0)
 	_next_room_index = 0
@@ -1793,6 +1937,12 @@ func _reset_run(forced_seed: int = -1) -> void:
 	_stamina = 1.0
 	_stamina_regen_delay = 0.0
 	_exhausted = false
+	_is_sprinting = false
+	_door_hand_timer = 0.0
+	_door_hand_slam = false
+	_death_phase = 0
+	_death_phase_t = 0.0
+	_spectate_key = ""
 	_pant_timer = 0.0
 	_run_time = 0.0
 	_victory_reached = false
@@ -1881,13 +2031,19 @@ func _reset_run(forced_seed: int = -1) -> void:
 	cam.position = Vector3(0.0, 1.48, 0.0)
 	_apply_camera_rotation()
 	(_ui["architect_overlay"] as Control).visible = false
+	if _ui.has("death_iris"):
+		(_ui["death_iris"] as Control).visible = false
+	if _ui.has("spectate_bar"):
+		(_ui["spectate_bar"] as Control).visible = false
 	(_ui["a90_scare_rect"] as Control).visible = false
 	(_ui["a90_stop_icon"] as Control).visible = false
 	(_ui["a60_scare_rect"] as Control).visible = false
 	(_ui["static_rect"] as Control).visible = false
 	_reset_touch_state()
 	if _net != null:
-		_net.update_lobby_progress(int(_rng.seed), 0)
+		_net.update_lobby_progress(_world_seed, 0)
+		if _net.is_online() and _net.is_host and forced_seed <= 0:
+			_net.broadcast_session_sync(_world_seed, 0)
 	_set_state(State.PLAYING)
 	_show_toast("Вы в Секции A. Откройте дверь A-001, чтобы начать.", 3.5)
 
@@ -1899,9 +2055,17 @@ func _spawn_next_room() -> void:
 	var in_dir := _next_in_dir
 	_occupied_cells[cell] = true
 
+	# Strictly deterministic per-room RNG derived ONLY from (_world_seed, idx)
+	# so gameplay events (A-60/A-120/flicker) NEVER desync room generation between friends!
+	var room_rng := RandomNumberGenerator.new()
+	var mixed_seed := (((_world_seed * 1103515245) + ((idx + 1) * 2654435761)) ^ (idx * 747796405)) & 0x7FFFFFFF
+	if mixed_seed <= 0:
+		mixed_seed = idx + 1
+	room_rng.seed = mixed_seed
+
 	var out_dir := in_dir
 	if idx >= 2:
-		var roll := _rng.randf()
+		var roll := room_rng.randf()
 		var cand := in_dir
 		if roll < 0.17:
 			cand = RoomBuilder.rotate_left(in_dir)
@@ -1915,7 +2079,7 @@ func _spawn_next_room() -> void:
 			if not _occupied_cells.has(step1) and not _occupied_cells.has(step2):
 				out_dir = cand
 
-	var r := RoomBuilder.build_room(rooms_container, _assets, idx, cell, in_dir, out_dir, _rng, _power_out or (idx >= 50))
+	var r := RoomBuilder.build_room(rooms_container, _assets, idx, cell, in_dir, out_dir, room_rng, idx >= 50)
 	_rooms.append(r)
 	_room_by_idx[idx] = r
 
@@ -1934,13 +2098,29 @@ func _spawn_next_room() -> void:
 
 func _set_state(new_state: State) -> void:
 	_state = new_state
-	(_ui["hud_group"] as Control).visible = (_state != State.DEAD)
+	(_ui["hud_group"] as Control).visible = (_state != State.DEAD and _state != State.SPECTATING)
+	if _ui.has("spectate_bar"):
+		(_ui["spectate_bar"] as Control).visible = (_state == State.SPECTATING)
 	if _ui.has("mobile_group"):
 		(_ui["mobile_group"] as Control).visible = _mobile_controls_enabled and (_state == State.PLAYING)
 	if _state == State.PLAYING:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if _mobile_controls_enabled else Input.MOUSE_MODE_CAPTURED
 		(_ui["modal"] as Control).visible = false
 		(_ui["architect_overlay"] as Control).visible = false
+		if _ui.has("death_iris"):
+			(_ui["death_iris"] as Control).visible = false
+	elif _state == State.SPECTATING:
+		_reset_touch_state()
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if _mobile_controls_enabled else Input.MOUSE_MODE_CAPTURED
+		(_ui["modal"] as Control).visible = false
+		(_ui["architect_overlay"] as Control).visible = false
+		if _ui.has("death_iris"):
+			(_ui["death_iris"] as Control).visible = false
+		if _vm_holder != null:
+			_vm_holder.visible = false
+		if _anim_hand != null:
+			_anim_hand.visible = false
+		flashlight.visible = false
 	else:
 		_reset_touch_state()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -1977,7 +2157,6 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	_darkness_phase = 0
 	_darkness_whisper_t = 0.0
 	(_ui["darkness_rect"] as Control).visible = false
-	audio.play_architect_appear()
 	audio.a60_intensity = 0.0
 	_a60_active = false
 	_a60_phase = 0
@@ -1994,8 +2173,18 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	(_ui["modal"] as Control).visible = false
 
 	_state = State.DEAD
+	_death_phase = 0
+	_death_phase_t = 0.0
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	(_ui["hud_group"] as Control).visible = false
+
+	if _ui.has("death_iris"):
+		var iris := _ui["death_iris"] as Control
+		var imat := _ui.get("death_iris_mat") as ShaderMaterial
+		iris.visible = true
+		if imat != null:
+			imat.set_shader_parameter("red_amt", 0.92)
+			imat.set_shader_parameter("shrink_amt", 0.0)
 
 	var cur_room: RoomBuilder.RoomInstance = _room_by_idx.get(_current_room_idx)
 	var cur_bat := _std_battery if _active_tool == 0 else _gummy_battery
@@ -2037,17 +2226,17 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 		_a90_scare_timer = 0.0
 		(_ui["a90_scare_rect"] as Control).visible = false
 
+	# Keep Architect hidden during red flash & center-shrink; fades in smoothly once _death_phase reaches 2
 	var arch_overlay: Control = _ui["architect_overlay"]
-	arch_overlay.visible = true
+	arch_overlay.visible = false
 	arch_overlay.modulate.a = 0.0
-	var tw := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-	tw.tween_property(arch_overlay, "modulate:a", 1.0, 0.45)
 
 
 func _refresh_architect_controls() -> void:
 	var total := maxi(_arch_lines.size(), 1)
 	(_ui["arch_page"] as Label).text = "Реплика %d / %d" % [_arch_line_idx + 1, total]
 	var btn_next: Button = _ui["btn_arch_next"]
+	var can_spectate := (_net != null and _net.is_online() and not _remote_players.is_empty())
 	if _arch_line_idx + 1 < total:
 		btn_next.text = "Далее [Пробел]"
 		btn_next.disabled = false
@@ -2055,13 +2244,15 @@ func _refresh_architect_controls() -> void:
 		var line_len := _arch_lines[_arch_line_idx].length() if not _arch_lines.is_empty() else 0
 		if int(_arch_char_pos) < line_len:
 			btn_next.text = "Пропустить текст [Пробел]"
+		elif can_spectate:
+			btn_next.text = "Наблюдать за командой [Пробел]"
 		else:
 			btn_next.text = "Понятно (жмите снова — заново)"
 		btn_next.disabled = false
 
 
 func _advance_architect_dialogue() -> void:
-	if _state != State.DEAD or _arch_lines.is_empty():
+	if _state != State.DEAD or _death_phase < 2 or _arch_lines.is_empty():
 		return
 	var cur_line := _arch_lines[_arch_line_idx]
 	if int(_arch_char_pos) < cur_line.length():
@@ -2076,7 +2267,79 @@ func _advance_architect_dialogue() -> void:
 		(_ui["arch_speech"] as Label).text = ""
 		_refresh_architect_controls()
 	else:
-		_reset_run()
+		if _net != null and _net.is_online() and not _remote_players.is_empty():
+			_start_spectating()
+		else:
+			_reset_run()
+
+
+func _start_spectating() -> void:
+	_set_state(State.SPECTATING)
+	_spectate_pitch = 0.25
+	_cycle_spectate_target(0)
+
+
+func _cycle_spectate_target(step: int) -> void:
+	var keys := _remote_players.keys()
+	if keys.is_empty():
+		_spectate_key = ""
+		if _ui.has("spectate_lbl"):
+			(_ui["spectate_lbl"] as Label).text = "Нет активных игроков — нажмите [R] для рестарта"
+		return
+	keys.sort()
+	# Prefer alive teammates first
+	var alive_keys := []
+	for k in keys:
+		var rp: Dictionary = _remote_players[k]
+		if not bool(rp.get("dead", false)):
+			alive_keys.append(k)
+	var pool: Array = alive_keys if not alive_keys.is_empty() else keys
+	var cur_idx := pool.find(_spectate_key)
+	if cur_idx < 0:
+		cur_idx = 0
+	elif step != 0:
+		cur_idx = posmod(cur_idx + step, pool.size())
+	_spectate_key = String(pool[cur_idx])
+	var rp_sel: Dictionary = _remote_players.get(_spectate_key, {})
+	_spectate_yaw = float(rp_sel.get("tgt_yaw", 0.0))
+
+
+func _process_spectating(delta: float) -> void:
+	if _spectate_key.is_empty() or not _remote_players.has(_spectate_key):
+		_cycle_spectate_target(0)
+	if _spectate_key.is_empty() or not _remote_players.has(_spectate_key):
+		return
+	var rp: Dictionary = _remote_players[_spectate_key]
+	var tgt_node: Node3D = rp.get("node")
+	if not is_instance_valid(tgt_node):
+		return
+
+	var r_num := int(rp.get("room", 0))
+	if r_num != _current_room_idx:
+		_current_room_idx = r_num
+		_update_room_visibility()
+
+	var is_dead_t := bool(rp.get("dead", false))
+	if _ui.has("spectate_lbl"):
+		var s_txt := "Наблюдение: %s [A-%03d]" % [String(rp.get("name", "Player")), r_num]
+		if is_dead_t:
+			s_txt += " (МЁРТВ — [R] Рестарт)"
+		else:
+			s_txt += "   |   ЛКМ / A-D — Сменить   |   [R] — Рестарт"
+		(_ui["spectate_lbl"] as Label).text = s_txt
+
+	var pivot := tgt_node.global_position + Vector3(0.0, 1.48, 0.0)
+	var back_dir := (Basis(Vector3.UP, _spectate_yaw) * Basis(Vector3.RIGHT, -_spectate_pitch) * Vector3(0.0, 0.0, 1.0)).normalized()
+	var desired := pivot + back_dir * 2.55
+	var space_state := get_world_3d().direct_space_state
+	if space_state != null:
+		var q := PhysicsRayQueryParameters3D.create(pivot, desired, 0xFFFFFFFF, [player_body.get_rid()])
+		var hit := space_state.intersect_ray(q)
+		if not hit.is_empty():
+			desired = hit.get("position", desired) - back_dir * 0.22
+	cam.global_position = cam.global_position.lerp(desired, 1.0 - exp(-14.0 * delta))
+	cam.look_at(pivot, Vector3.UP)
+	cam.fov = lerpf(cam.fov, 76.0, 1.0 - exp(-10.0 * delta))
 
 
 func _reset_touch_state() -> void:
@@ -2194,6 +2457,20 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 
+		if _state == State.SPECTATING:
+			if ke.keycode == KEY_A or ke.keycode == KEY_LEFT:
+				_cycle_spectate_target(-1)
+				get_viewport().set_input_as_handled()
+				return
+			elif ke.keycode == KEY_D or ke.keycode == KEY_RIGHT:
+				_cycle_spectate_target(1)
+				get_viewport().set_input_as_handled()
+				return
+			elif ke.keycode == KEY_R:
+				_reset_run()
+				get_viewport().set_input_as_handled()
+				return
+
 		if ke.keycode == KEY_TAB or ke.keycode == KEY_ESCAPE:
 			if _state == State.PLAYING:
 				_set_state(State.PAUSED)
@@ -2224,8 +2501,14 @@ func _input(event: InputEvent) -> void:
 			elif ke.keycode == KEY_M:
 				audio.muted = not audio.muted
 
-	elif event is InputEventMouseMotion and _state == State.PLAYING:
+	elif event is InputEventMouseMotion and (_state == State.PLAYING or _state == State.SPECTATING):
 		if (event as InputEventMouseMotion).device == InputEvent.DEVICE_ID_EMULATION:
+			return
+		if _state == State.SPECTATING:
+			if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+				var rel_s := (event as InputEventMouseMotion).relative
+				_spectate_yaw -= rel_s.x * 0.004
+				_spectate_pitch = clampf(_spectate_pitch - rel_s.y * 0.004, -1.15, 0.85)
 			return
 		if not _mobile_controls_enabled and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			var rel := (event as InputEventMouseMotion).relative
@@ -2236,9 +2519,17 @@ func _input(event: InputEvent) -> void:
 				_target_yaw -= rel.x * 0.0024
 				_target_pitch = clampf(_target_pitch - rel.y * 0.0024, -1.42, 1.42)
 
-	elif event is InputEventMouseButton and _state == State.PLAYING:
+	elif event is InputEventMouseButton and (_state == State.PLAYING or _state == State.SPECTATING):
 		var mb := event as InputEventMouseButton
-		if mb.device == InputEvent.DEVICE_ID_EMULATION or _mobile_controls_enabled:
+		if mb.device == InputEvent.DEVICE_ID_EMULATION:
+			return
+		if _state == State.SPECTATING:
+			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+				_cycle_spectate_target(1)
+			elif mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
+				_cycle_spectate_target(-1)
+			return
+		if _mobile_controls_enabled:
 			return
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
@@ -2265,6 +2556,9 @@ func _sync_net_local_state() -> void:
 			"pitch": _pitch,
 			"light": _light_on and (_active_tool == 0 and _std_battery > 0.05 or _active_tool == 1 and _gummy_battery > 0.05),
 			"hide": _is_hiding,
+			"hr": _hiding_room_idx if _is_hiding else -1,
+			"hl": _hiding_locker_idx if _is_hiding else -1,
+			"dead": (_state == State.DEAD or _state == State.SPECTATING),
 			"sprint": hspd > 4.6,
 			"room": _highest_opened,
 			"hp": _hp,
@@ -2276,6 +2570,10 @@ func _process(delta: float) -> void:
 	_process_remote_players(delta)
 	if _state == State.DEAD:
 		_process_architect_and_scare(delta)
+		return
+	if _state == State.SPECTATING:
+		_process_doors(delta)
+		_process_spectating(delta)
 		return
 	if _state != State.PLAYING:
 		return
@@ -2377,6 +2675,9 @@ func _process(delta: float) -> void:
 		flashlight.rotation.x = lerpf(flashlight.rotation.x, fl_lag_x, 1.0 - exp(-14.0 * delta))
 		flashlight.rotation.y = lerpf(flashlight.rotation.y, fl_lag_y, 1.0 - exp(-14.0 * delta))
 
+		if _door_hand_timer > 0.0:
+			_door_hand_timer = maxf(_door_hand_timer - delta, 0.0)
+
 		if _anim_hand != null:
 			if _locker_transition_t < 0.96 and not _locker_transition_entering:
 				_anim_hand.visible = true
@@ -2400,6 +2701,20 @@ func _process(delta: float) -> void:
 						var d_p := (p_out - 0.68) / 0.32
 						_anim_hand.position = Vector3(-0.20, -0.10, -0.10).lerp(Vector3(0.30, -0.28, 0.04), d_p)
 						_anim_hand.rotation = Vector3(-0.10 * d_p, -0.16 * d_p, 0.0)
+			elif _door_hand_timer > 0.0:
+				# Snappy 0.25s hand animation pushing room door forward & right (wider & harder if sprinting/stamina)
+				_anim_hand.visible = true
+				var pd := 1.0 - clampf(_door_hand_timer / 0.25, 0.0, 1.0)
+				var reach_mul := 1.32 if _door_hand_slam else 1.0
+				if pd < 0.45:
+					var rp_d := ease(pd / 0.45, 0.4)
+					_anim_hand.position = Vector3(0.32, -0.28, 0.02).lerp(Vector3(-0.04, -0.12, -0.24 * reach_mul), rp_d)
+					_anim_hand.rotation = Vector3(0.06 * rp_d, 0.24 * rp_d * reach_mul, -0.14 * rp_d)
+				else:
+					var sp_d := (pd - 0.45) / 0.55
+					var push_arc := sin(sp_d * PI * 0.5)
+					_anim_hand.position = Vector3(-0.04, -0.12, -0.24 * reach_mul).lerp(Vector3(0.34, -0.30, 0.02), sp_d) + Vector3(0.18 * push_arc * reach_mul, 0.03 * push_arc, -0.08 * push_arc)
+					_anim_hand.rotation = Vector3(0.04, lerpf(0.24 * reach_mul, -0.45 * reach_mul, sp_d), -0.12 * (1.0 - sp_d))
 			else:
 				_anim_hand.visible = false
 
@@ -2412,7 +2727,8 @@ func _process(delta: float) -> void:
 			var bob_amp := clampf(hspd_vm / 5.5, 0.0, 1.0)
 			var bx := cos(t_sec_vm * 7.2) * 0.011 * bob_amp + sin(t_sec_vm * 1.4) * 0.0025
 			var by := absf(sin(t_sec_vm * 7.2)) * -0.014 * bob_amp + cos(t_sec_vm * 1.8) * 0.0025
-			_vm_holder.position = _vm_holder.position.lerp(Vector3(0.24 + bx, -0.21 + by, -0.34), 1.0 - exp(-14.0 * delta))
+			var dip_y := -0.11 if _door_hand_timer > 0.0 else 0.0
+			_vm_holder.position = _vm_holder.position.lerp(Vector3(0.24 + bx, -0.21 + by + dip_y, -0.34), 1.0 - exp(-14.0 * delta))
 			_vm_holder.rotation.x = lerpf(_vm_holder.rotation.x, fl_lag_x * 0.75, 1.0 - exp(-14.0 * delta))
 			_vm_holder.rotation.y = lerpf(_vm_holder.rotation.y, fl_lag_y * 0.75, 1.0 - exp(-14.0 * delta))
 			if _vm_shake_time > 0.0:
@@ -2443,6 +2759,38 @@ func _process_architect_and_scare(delta: float) -> void:
 		scare_rect.modulate.a = clampf(_a90_scare_timer / 0.45, 0.0, 1.0)
 		if _a90_scare_timer <= 0.0:
 			scare_rect.visible = false
+
+	_death_phase_t += delta
+	var iris := _ui.get("death_iris") as Control
+	var imat := _ui.get("death_iris_mat") as ShaderMaterial
+	if _death_phase == 0:
+		# Phase 0: Red death flash (0.48s)
+		if imat != null:
+			imat.set_shader_parameter("red_amt", lerpf(0.92, 0.78, clampf(_death_phase_t / 0.48, 0.0, 1.0)))
+			imat.set_shader_parameter("shrink_amt", 0.0)
+		if _death_phase_t >= 0.48:
+			_death_phase = 1
+			_death_phase_t = 0.0
+		return
+	elif _death_phase == 1:
+		# Phase 1: Screen compresses & fades inward to center into darkness (0.80s)
+		var sp := clampf(_death_phase_t / 0.80, 0.0, 1.0)
+		if imat != null:
+			imat.set_shader_parameter("shrink_amt", sp)
+			imat.set_shader_parameter("red_amt", lerpf(0.78, 0.0, ease(sp, 0.55)))
+		if sp >= 1.0:
+			_death_phase = 2
+			_death_phase_t = 0.0
+			audio.play_architect_appear()
+			var arch_overlay: Control = _ui["architect_overlay"]
+			arch_overlay.visible = true
+			arch_overlay.modulate.a = 0.0
+			var tw := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+			tw.tween_property(arch_overlay, "modulate:a", 1.0, 0.75)
+		return
+
+	if iris != null and _ui.has("architect_overlay"):
+		iris.visible = (_ui["architect_overlay"] as Control).modulate.a < 0.99
 
 	if _ui.has("arch_silhouette"):
 		var sil: TextureRect = _ui["arch_silhouette"]
@@ -2577,8 +2925,8 @@ func _collider_to_interact_dict(col: Object) -> Dictionary:
 		var r_idx := int(col.get_meta("room_index"))
 		var l_idx := int(col.get_meta("locker_index"))
 		var r_inst: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
-		var lbl := "Спрятаться"
-		if r_inst != null and l_idx >= 0 and l_idx < r_inst.lockers.size():
+		var lbl := "Занято" if _is_locker_occupied(r_idx, l_idx) else "Спрятаться"
+		if lbl != "Занято" and r_inst != null and l_idx >= 0 and l_idx < r_inst.lockers.size():
 			lbl = String(r_inst.lockers[l_idx].get("label", lbl))
 		return {
 			"type": "locker",
@@ -2659,11 +3007,12 @@ func _find_smart_reticle_target() -> Dictionary:
 			var sd := sp.distance_to(vp_center)
 			if sd < best_screen_d and _has_los_to_interact(space_state, cam_pos, wp, r.index):
 				best_screen_d = sd
+				var occupied := _is_locker_occupied(r.index, li)
 				best_tgt = {
 					"type": "locker",
 					"room_index": r.index,
 					"locker_index": li,
-					"label": String(ld.get("label", "Спрятаться")),
+					"label": "Занято" if occupied else String(ld.get("label", "Спрятаться")),
 					"screen_pos": sp,
 					"world_pos": wp,
 				}
@@ -2698,18 +3047,37 @@ func _has_los_to_interact(space_state: PhysicsDirectSpaceState3D, from_pos: Vect
 	return hp.distance_to(to_pos) < 0.65
 
 
-func _open_room_door(r_idx: int, from_remote: bool = false) -> void:
+func _is_locker_occupied(r_idx: int, l_idx: int) -> bool:
+	for pk in _remote_players.keys():
+		var rp: Dictionary = _remote_players[pk]
+		if bool(rp.get("dead", false)) or not bool(rp.get("hiding", false)):
+			continue
+		if int(rp.get("hide_room", -1)) == r_idx and int(rp.get("hide_locker", -1)) == l_idx:
+			return true
+	return false
+
+
+func _open_room_door(r_idx: int, slam: bool = false, from_remote: bool = false) -> void:
 	var r: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
 	if r == null or r.door_opened:
 		return
+	var is_slam := slam
+	if not from_remote and not is_slam:
+		var hspd := Vector2(player_body.velocity.x, player_body.velocity.z).length()
+		is_slam = _is_sprinting or hspd > 4.4
 	r.door_opened = true
 	if r.door_collider != null:
 		r.door_collider.collision_layer = 0
 		r.door_collider.collision_mask = 0
-	_opening_doors.append({"pivot": r.door_pivot, "progress": 0.0})
+	_opening_doors.append({"pivot": r.door_pivot, "progress": 0.0, "slam": is_slam})
+	if not from_remote and not _is_hiding:
+		_door_hand_timer = 0.25
+		_door_hand_slam = is_slam
+		if is_slam:
+			_shake_amount = maxf(_shake_amount, 0.016)
 	audio.play_door_open()
 	if not from_remote and _net != null and _net.is_online():
-		_net.broadcast_door_opened(r_idx)
+		_net.broadcast_door_opened(r_idx, is_slam)
 	_advance_door_progress(r_idx, not from_remote)
 
 
@@ -2719,7 +3087,7 @@ func _advance_door_progress(r_idx: int, allow_spawn: bool) -> void:
 		_highest_opened = opened_num
 		_current_room_idx = opened_num
 		if _net != null:
-			_net.update_lobby_progress(int(_rng.seed), _highest_opened)
+			_net.update_lobby_progress(_world_seed, _highest_opened)
 		if opened_num >= 50 and not _power_out:
 			_trigger_power_outage()
 		var min_keep := 9 if _render_quality == RenderQuality.MOBILE_OPT else 14
@@ -2844,6 +3212,9 @@ func _enter_locker(r_idx: int, l_idx: int) -> void:
 	var r: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
 	if r == null or l_idx < 0 or l_idx >= r.lockers.size():
 		return
+	if _is_locker_occupied(r_idx, l_idx):
+		_show_toast("Спот занят!", 1.8)
+		return
 	var locker_data: Dictionary = r.lockers[l_idx]
 	var lnode: Node3D = locker_data["node"]
 
@@ -2894,11 +3265,15 @@ func _enter_locker(r_idx: int, l_idx: int) -> void:
 		audio.play_desk_crawl(true)
 	else:
 		audio.play_locker_toggle(true)
+	if _net != null and _net.is_online():
+		_net.broadcast_locker_action(r_idx, l_idx, true, false)
 
 
 func _exit_locker(face_locker: bool = false) -> void:
 	var prev_kind := _hiding_kind
 	var prev_door_pivot := _hiding_door_pivot
+	var prev_room_idx := _hiding_room_idx
+	var prev_locker_idx := _hiding_locker_idx
 	_locker_cam_from = cam.global_position
 	_locker_transition_t = 0.0
 	_locker_transition_entering = false
@@ -2951,6 +3326,8 @@ func _exit_locker(face_locker: bool = false) -> void:
 		audio.play_desk_crawl(false)
 	else:
 		audio.play_locker_toggle(false)
+	if _net != null and _net.is_online() and prev_room_idx >= 0 and prev_locker_idx >= 0:
+		_net.broadcast_locker_action(prev_room_idx, prev_locker_idx, false, face_locker)
 
 
 func _maybe_spawn_door_entities(room_num: int) -> void:
@@ -3175,10 +3552,11 @@ func _process_doors(delta: float) -> void:
 		if not is_instance_valid(pivot_raw):
 			_opening_doors.remove_at(i)
 			continue
-		var p: float = minf(float(d["progress"]) + delta * 3.8, 1.0)
+		var p: float = minf(float(d["progress"]) + delta / 0.25, 1.0)
 		d["progress"] = p
 		var pivot := pivot_raw as Node3D
-		pivot.rotation.y = lerpf(0.0, -PI * 0.56, 1.0 - pow(1.0 - p, 2.0))
+		var target_ang: float = -PI * 0.88 if bool(d.get("slam", false)) else -PI * 0.52
+		pivot.rotation.y = lerpf(0.0, target_ang, 1.0 - pow(1.0 - p, 2.0))
 		if p >= 1.0:
 			_opening_doors.remove_at(i)
 
@@ -3304,6 +3682,7 @@ func _process_player_movement(delta: float) -> void:
 
 	var moving := inp.length_squared() > 0.01
 	var wants_sprint := (Input.is_key_pressed(KEY_SHIFT) or _joy_sprint or _mobile_sprint_held) and moving and (not _exhausted) and _stamina > 0.01
+	_is_sprinting = wants_sprint
 	if wants_sprint:
 		_stamina = maxf(_stamina - delta * 0.34, 0.0)
 		_stamina_regen_delay = 0.65
