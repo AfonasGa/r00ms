@@ -207,6 +207,7 @@ var _net: RoomsNet = null
 var _remote_players: Dictionary = {}
 var _lobby_list_box: VBoxContainer = null
 var _noob_scene: PackedScene = null
+var _noob_parts: Dictionary = {}
 
 
 func _ready() -> void:
@@ -306,44 +307,211 @@ func _on_remote_peer_disconnected(peer_key: String) -> void:
 		_remote_players.erase(peer_key)
 
 
-func _build_remote_avatar_mesh(parent: Node3D) -> Node3D:
+func _find_first_mesh_in_tree(n: Node) -> MeshInstance3D:
+	if n is MeshInstance3D:
+		return n as MeshInstance3D
+	for ch in n.get_children():
+		var found := _find_first_mesh_in_tree(ch)
+		if found != null:
+			return found
+	return null
+
+
+func _rel_xform_to(n: Node, ancestor: Node) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	var cur: Node = n
+	while cur != null and cur != ancestor:
+		if cur is Node3D:
+			xf = (cur as Node3D).transform * xf
+		cur = cur.get_parent()
+	return xf
+
+
+func _prepare_noob_parts() -> void:
+	_noob_parts.clear()
+	if _noob_scene == null:
+		return
+	var inst := _noob_scene.instantiate() as Node3D
+	if inst == null:
+		return
+	var mi := _find_first_mesh_in_tree(inst)
+	if mi == null or mi.mesh == null or mi.mesh.get_surface_count() == 0:
+		inst.queue_free()
+		return
+
+	var mdt := MeshDataTool.new()
+	if mdt.create_from_surface(mi.mesh, 0) != OK:
+		inst.queue_free()
+		return
+
+	var sc := 1.72 / 5.101215
+	var bottom_center := Vector3(-6.639172, -2.109478, 2.7993965)
+	var rot_only := Basis(Vector3.UP, -PI * 0.5)
+	var rot_xf := Transform3D(rot_only.scaled(Vector3.ONE * sc), Vector3.ZERO)
+	var rel_xf := _rel_xform_to(mi, inst)
+	var to_avatar := rot_xf * Transform3D(Basis.IDENTITY, -bottom_center) * rel_xf
+	var norm_basis := (rot_only * rel_xf.basis).orthonormalized()
+
+	var part_origins := {
+		"head": Vector3(0.0, 1.348, 0.0),
+		"torso": Vector3(0.0, 0.674, 0.0),
+		"arm_l": Vector3(-0.505, 1.295, 0.0),
+		"arm_r": Vector3(0.505, 1.295, 0.0),
+		"leg_l": Vector3(-0.168, 0.674, 0.0),
+		"leg_r": Vector3(0.168, 0.674, 0.0),
+	}
+	var sts := {}
+	for k in part_origins.keys():
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		sts[k] = st
+
+	for f in range(mdt.get_face_count()):
+		var v_idx := [mdt.get_face_vertex(f, 0), mdt.get_face_vertex(f, 1), mdt.get_face_vertex(f, 2)]
+		var p0 := to_avatar * mdt.get_vertex(v_idx[0])
+		var p1 := to_avatar * mdt.get_vertex(v_idx[1])
+		var p2 := to_avatar * mdt.get_vertex(v_idx[2])
+		var cx := (p0.x + p1.x + p2.x) / 3.0
+		var mn_x := minf(p0.x, minf(p1.x, p2.x))
+		var mx_x := maxf(p0.x, maxf(p1.x, p2.x))
+		var mn_y := minf(p0.y, minf(p1.y, p2.y))
+		var mx_y := maxf(p0.y, maxf(p1.y, p2.y))
+
+		var target := "torso"
+		if mn_y > 1.31 and mx_x < 0.25 and mn_x > -0.25:
+			target = "head"
+		elif mx_y < 0.674 or (mn_y + mx_y) * 0.5 < 0.670:
+			target = "leg_l" if cx < 0.0 else "leg_r"
+		elif mx_x < -0.330 or cx < -0.340:
+			target = "arm_l"
+		elif mn_x > 0.330 or cx > 0.340:
+			target = "arm_r"
+
+		var origin: Vector3 = part_origins[target]
+		var st_t: SurfaceTool = sts[target]
+		var pts := [p0, p1, p2]
+		for j in range(3):
+			var vi: int = v_idx[j]
+			var nrm := (norm_basis * mdt.get_vertex_normal(vi)).normalized()
+			st_t.set_normal(nrm)
+			st_t.set_uv(mdt.get_vertex_uv(vi))
+			st_t.add_vertex(pts[j] - origin)
+
+	var base_mat := mi.get_active_material(0)
+	if base_mat == null and mi.mesh.get_surface_count() > 0:
+		base_mat = mi.mesh.surface_get_material(0)
+	var hand_mat: Material = null
+	if base_mat is StandardMaterial3D:
+		var sm := (base_mat as StandardMaterial3D).duplicate() as StandardMaterial3D
+		sm.emission_enabled = true
+		sm.emission = Color(1.0, 0.94, 0.68)
+		sm.emission_energy_multiplier = 0.12
+		if sm.albedo_texture != null:
+			sm.emission_texture = sm.albedo_texture
+		hand_mat = sm
+	else:
+		var hm := StandardMaterial3D.new()
+		hm.albedo_color = Color(0.96, 0.80, 0.22)
+		hm.emission_enabled = true
+		hm.emission = Color(0.96, 0.80, 0.22)
+		hm.emission_energy_multiplier = 0.12
+		hand_mat = hm
+
+	var meshes_out := {}
+	for k in sts.keys():
+		var st_k: SurfaceTool = sts[k]
+		var am := st_k.commit()
+		if am != null and am.get_surface_count() > 0 and base_mat != null:
+			am.surface_set_material(0, base_mat)
+		meshes_out[k] = am
+
+	_noob_parts = {
+		"ready": true,
+		"mat": base_mat,
+		"hand_mat": hand_mat,
+		"meshes": meshes_out,
+	}
+	inst.queue_free()
+
+
+func _build_remote_avatar_mesh(parent: Node3D) -> Dictionary:
 	var model_root := Node3D.new()
 	model_root.name = "NoobAvatar"
 	parent.add_child(model_root)
 
-	if _noob_scene != null:
-		var inst := _noob_scene.instantiate() as Node3D
-		if inst != null:
-			# Exact local AABB of roblox_noob.gltf after node transforms: height=5.101215, bottom-center=(-6.639172, -2.109478, 2.7993965), -PI/2 faces -Z
-			var sc := 1.72 / 5.101215
-			var bottom_center := Vector3(-6.639172, -2.109478, 2.7993965)
-			var rotator := Node3D.new()
-			rotator.rotation.y = -PI * 0.5
-			rotator.scale = Vector3.ONE * sc
-			inst.position = -bottom_center
-			rotator.add_child(inst)
-			model_root.add_child(rotator)
-			_prep_avatar_meshes(inst)
-			return model_root
+	var torso_pivot := Node3D.new()
+	torso_pivot.name = "TorsoPivot"
+	torso_pivot.position = Vector3(0.0, 0.674, 0.0)
+	model_root.add_child(torso_pivot)
 
-	# Stylized R6 Roblox Noob fallback if glTF unavailable
-	var skin_mat := StandardMaterial3D.new()
-	skin_mat.albedo_color = Color(0.96, 0.80, 0.22)
-	skin_mat.roughness = 0.55
-	var torso_mat := StandardMaterial3D.new()
-	torso_mat.albedo_color = Color(0.11, 0.44, 0.82)
-	torso_mat.roughness = 0.60
-	var leg_mat := StandardMaterial3D.new()
-	leg_mat.albedo_color = Color(0.45, 0.72, 0.18)
-	leg_mat.roughness = 0.65
-	RoomBuilder._add_box(model_root, "LegL", Vector3(-0.17, 0.34, 0.0), Vector3(0.30, 0.68, 0.34), leg_mat, false)
-	RoomBuilder._add_box(model_root, "LegR", Vector3(0.17, 0.34, 0.0), Vector3(0.30, 0.68, 0.34), leg_mat, false)
-	RoomBuilder._add_box(model_root, "Torso", Vector3(0.0, 1.02, 0.0), Vector3(0.64, 0.68, 0.34), torso_mat, false)
-	RoomBuilder._add_box(model_root, "ArmL", Vector3(-0.48, 1.02, 0.0), Vector3(0.28, 0.68, 0.32), skin_mat, false)
-	RoomBuilder._add_box(model_root, "ArmR", Vector3(0.48, 1.02, 0.0), Vector3(0.28, 0.68, 0.32), skin_mat, false)
-	RoomBuilder._add_box(model_root, "Head", Vector3(0.0, 1.56, 0.0), Vector3(0.42, 0.40, 0.42), skin_mat, false)
+	var head_pivot := Node3D.new()
+	head_pivot.name = "HeadPivot"
+	head_pivot.position = Vector3(0.0, 0.674, 0.0)
+	torso_pivot.add_child(head_pivot)
+
+	var arm_l_pivot := Node3D.new()
+	arm_l_pivot.name = "ArmLPivot"
+	arm_l_pivot.position = Vector3(-0.505, 0.621, 0.0)
+	torso_pivot.add_child(arm_l_pivot)
+
+	var arm_r_pivot := Node3D.new()
+	arm_r_pivot.name = "ArmRPivot"
+	arm_r_pivot.position = Vector3(0.505, 0.621, 0.0)
+	torso_pivot.add_child(arm_r_pivot)
+
+	var leg_l_pivot := Node3D.new()
+	leg_l_pivot.name = "LegLPivot"
+	leg_l_pivot.position = Vector3(-0.168, 0.674, 0.0)
+	model_root.add_child(leg_l_pivot)
+
+	var leg_r_pivot := Node3D.new()
+	leg_r_pivot.name = "LegRPivot"
+	leg_r_pivot.position = Vector3(0.168, 0.674, 0.0)
+	model_root.add_child(leg_r_pivot)
+
+	if bool(_noob_parts.get("ready", false)):
+		var meshes: Dictionary = _noob_parts["meshes"]
+		var part_map := {
+			"head": head_pivot,
+			"torso": torso_pivot,
+			"arm_l": arm_l_pivot,
+			"arm_r": arm_r_pivot,
+			"leg_l": leg_l_pivot,
+			"leg_r": leg_r_pivot,
+		}
+		for pk in part_map.keys():
+			var mi := MeshInstance3D.new()
+			mi.name = "Noob_" + String(pk)
+			mi.mesh = meshes.get(pk) as ArrayMesh
+			(part_map[pk] as Node3D).add_child(mi)
+	else:
+		# Stylized R6 Roblox Noob fallback if glTF unavailable
+		var skin_mat := StandardMaterial3D.new()
+		skin_mat.albedo_color = Color(0.96, 0.80, 0.22)
+		skin_mat.roughness = 0.55
+		var torso_mat := StandardMaterial3D.new()
+		torso_mat.albedo_color = Color(0.11, 0.44, 0.82)
+		torso_mat.roughness = 0.60
+		var leg_mat := StandardMaterial3D.new()
+		leg_mat.albedo_color = Color(0.45, 0.72, 0.18)
+		leg_mat.roughness = 0.65
+		RoomBuilder._add_box(leg_l_pivot, "LegL", Vector3(0.0, -0.337, 0.0), Vector3(0.32, 0.674, 0.337), leg_mat, false)
+		RoomBuilder._add_box(leg_r_pivot, "LegR", Vector3(0.0, -0.337, 0.0), Vector3(0.32, 0.674, 0.337), leg_mat, false)
+		RoomBuilder._add_box(torso_pivot, "Torso", Vector3(0.0, 0.337, 0.0), Vector3(0.674, 0.674, 0.337), torso_mat, false)
+		RoomBuilder._add_box(arm_l_pivot, "ArmL", Vector3(0.0, -0.284, 0.0), Vector3(0.337, 0.674, 0.337), skin_mat, false)
+		RoomBuilder._add_box(arm_r_pivot, "ArmR", Vector3(0.0, -0.284, 0.0), Vector3(0.337, 0.674, 0.337), skin_mat, false)
+		RoomBuilder._add_box(head_pivot, "Head", Vector3(0.0, 0.186, 0.0), Vector3(0.40, 0.40, 0.40), skin_mat, false)
+
 	_prep_avatar_meshes(model_root)
-	return model_root
+	return {
+		"root": model_root,
+		"torso": torso_pivot,
+		"head": head_pivot,
+		"arm_l": arm_l_pivot,
+		"arm_r": arm_r_pivot,
+		"leg_l": leg_l_pivot,
+		"leg_r": leg_r_pivot,
+	}
 
 
 func _prep_avatar_meshes(n: Node) -> void:
@@ -372,20 +540,19 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 		root_node.visible = true
 		add_child(root_node)
 
-		var avatar := _build_remote_avatar_mesh(root_node)
-
-		var head := Node3D.new()
-		head.name = "HeadPivot"
-		head.position = Vector3(0.0, 1.48, 0.0)
-		root_node.add_child(head)
+		var rig := _build_remote_avatar_mesh(root_node)
+		var avatar: Node3D = rig["root"]
+		var head: Node3D = rig["head"]
+		var arm_r: Node3D = rig["arm_r"]
 
 		var spot := SpotLight3D.new()
-		spot.position = Vector3(0.32, -0.08, -0.26)
+		spot.position = Vector3(0.0, -0.62, -0.05)
+		spot.rotation.x = -PI * 0.5
 		spot.light_color = Color(1.0, 0.96, 0.88)
 		spot.light_energy = 1.9
 		spot.spot_range = 17.0
 		spot.spot_angle = 38.0
-		head.add_child(spot)
+		arm_r.add_child(spot)
 
 		var name_lbl := Label3D.new()
 		name_lbl.position = Vector3(0.0, 2.02, 0.0)
@@ -400,24 +567,53 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 		rp = {
 			"node": root_node,
 			"avatar": avatar,
+			"rig": rig,
 			"head": head,
 			"spot": spot,
 			"lbl": name_lbl,
 			"tgt_pos": Vector3.ZERO,
 			"tgt_yaw": 0.0,
 			"tgt_pitch": 0.0,
+			"light_on": false,
+			"hiding": false,
+			"sprint": false,
+			"interact_t": 0.0,
+			"net_spd": 0.0,
+			"move_hold": 0.0,
+			"last_pkt_ms": Time.get_ticks_msec(),
 			"walk_phase": 0.0,
+			"walk_blend": 0.0,
+			"idle_phase": _rng.randf() * TAU,
 		}
 		_remote_players[peer_key] = rp
 
+	var prev_tgt: Vector3 = rp.get("tgt_pos", Vector3.ZERO)
 	var p_arr: Variant = msg.get("p", [0.0, 0.0, 0.0])
 	if p_arr is Array and (p_arr as Array).size() >= 3:
 		var a: Array = p_arr
-		rp["tgt_pos"] = Vector3(float(a[0]), float(a[1]), float(a[2]))
+		var next_tgt := Vector3(float(a[0]), float(a[1]), float(a[2]))
+		rp["tgt_pos"] = next_tgt
+		if not newly_created:
+			var now_ms := Time.get_ticks_msec()
+			var dt_pkt := clampf(float(now_ms - int(rp.get("last_pkt_ms", now_ms))) * 0.001, 0.016, 0.25)
+			rp["last_pkt_ms"] = now_ms
+			var d_horiz := Vector2(next_tgt.x - prev_tgt.x, next_tgt.z - prev_tgt.z).length()
+			var inst_spd := d_horiz / dt_pkt
+			rp["net_spd"] = lerpf(float(rp.get("net_spd", 0.0)), inst_spd, 0.55)
+			if inst_spd > 0.35:
+				rp["move_hold"] = 0.16
 	rp["tgt_yaw"] = float(msg.get("y", 0.0))
 	rp["tgt_pitch"] = float(msg.get("pt", 0.0))
+	var next_light := bool(msg.get("l", false))
+	var prev_hide := bool(rp.get("hiding", false))
+	var next_hide := bool(msg.get("h", false))
+	if prev_hide != next_hide and not newly_created:
+		rp["interact_t"] = 0.65
+	rp["light_on"] = next_light
+	rp["hiding"] = next_hide
+	rp["sprint"] = bool(msg.get("sp", false))
 	var spot_node: SpotLight3D = rp["spot"]
-	spot_node.visible = bool(msg.get("l", false))
+	spot_node.visible = next_light
 	var lbl_node: Label3D = rp["lbl"]
 	lbl_node.text = "%s [A-%03d]" % [String(msg.get("n", "Player")), int(msg.get("r", 0))]
 	var root_n: Node3D = rp["node"]
@@ -430,6 +626,7 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 
 func _process_remote_players(delta: float) -> void:
 	var a := clampf(1.0 - exp(-14.0 * delta), 0.0, 1.0)
+	var anim_a := clampf(1.0 - exp(-16.0 * delta), 0.0, 1.0)
 	for pk in _remote_players.keys():
 		var rp: Dictionary = _remote_players[pk]
 		var n: Node3D = rp["node"]
@@ -439,20 +636,92 @@ func _process_remote_players(delta: float) -> void:
 		var prev_pos := n.position
 		n.position = n.position.lerp(rp["tgt_pos"], a)
 		n.rotation.y = lerp_angle(n.rotation.y, float(rp["tgt_yaw"]), a)
-		var hd: Node3D = rp["head"]
-		hd.rotation.x = lerpf(hd.rotation.x, float(rp["tgt_pitch"]), a)
+
+		var hold := maxf(float(rp.get("move_hold", 0.0)) - delta, 0.0)
+		rp["move_hold"] = hold
+		var lerp_spd := Vector2(n.position.x - prev_pos.x, n.position.z - prev_pos.z).length() / maxf(delta, 0.001)
+		var net_spd := float(rp.get("net_spd", 0.0)) if hold > 0.0 else 0.0
+		var move_spd := maxf(lerp_spd, net_spd)
+		var is_moving := move_spd > 0.28 or hold > 0.0
+		var is_sprinting := bool(rp.get("sprint", false)) or move_spd > 4.6
+		var target_blend := clampf(move_spd / 3.4, 0.0, 1.0) if is_moving else 0.0
+		var wb := lerpf(float(rp.get("walk_blend", 0.0)), target_blend, 1.0 - exp(-12.0 * delta))
+		rp["walk_blend"] = wb
+
+		var idle_t := float(rp.get("idle_phase", 0.0)) + delta
+		rp["idle_phase"] = idle_t
+		var wp := float(rp.get("walk_phase", 0.0))
+		if is_moving:
+			wp += delta * clampf(move_spd * (2.5 if is_sprinting else 2.2), 4.0, 15.0)
+			rp["walk_phase"] = wp
+
+		var inter_t := maxf(float(rp.get("interact_t", 0.0)) - delta, 0.0)
+		rp["interact_t"] = inter_t
+
+		var is_hiding := bool(rp.get("hiding", false))
+		var light_on := bool(rp.get("light_on", false))
+		var pitch := clampf(float(rp.get("tgt_pitch", 0.0)), -0.95, 0.95)
+		var run_amt := 1.0 if is_sprinting else clampf((move_spd - 3.0) / 3.0, 0.0, 1.0)
+		var leg_amp := lerpf(0.56, 0.90, run_amt) * wb
+		var arm_amp := lerpf(0.50, 0.94, run_amt) * wb
+		var sw := sin(wp)
+		var cw := cos(wp)
+
 		var av: Node3D = rp["avatar"]
 		if is_instance_valid(av):
 			av.visible = true
-			var move_spd := Vector2(n.position.x - prev_pos.x, n.position.z - prev_pos.z).length() / maxf(delta, 0.001)
-			if move_spd > 0.25:
-				var wp := float(rp.get("walk_phase", 0.0)) + delta * minf(move_spd * 2.4, 14.0)
-				rp["walk_phase"] = wp
-				av.position.y = absf(sin(wp)) * 0.045
-				av.rotation.z = sin(wp) * 0.045
-			else:
-				av.position.y = lerpf(av.position.y, 0.0, a)
-				av.rotation.z = lerpf(av.rotation.z, 0.0, a)
+		var rig: Dictionary = rp.get("rig", {})
+		if rig.is_empty():
+			continue
+
+		var torso: Node3D = rig["torso"]
+		var head: Node3D = rig["head"]
+		var arm_l: Node3D = rig["arm_l"]
+		var arm_r: Node3D = rig["arm_r"]
+		var leg_l: Node3D = rig["leg_l"]
+		var leg_r: Node3D = rig["leg_r"]
+
+		# Torso: breathing in idle, energetic stride bob + forward sprint lean + twist, crouch when hiding
+		var hide_drop := -0.14 if is_hiding else 0.0
+		var torso_y := 0.674 + hide_drop + sin(idle_t * 2.1) * 0.012 * (1.0 - wb * 0.6) + absf(sw) * 0.055 * wb
+		var torso_rx := (-0.20 if is_hiding else (-0.04 - 0.11 * run_amt) * wb + sin(idle_t * 1.4) * 0.015 * (1.0 - wb))
+		var torso_ry := cw * 0.09 * wb
+		var torso_rz := sw * 0.032 * wb
+		torso.position.y = lerpf(torso.position.y, torso_y, anim_a)
+		torso.rotation = torso.rotation.lerp(Vector3(torso_rx, torso_ry, torso_rz), anim_a)
+
+		# Head: tracks pitch + subtle idle look-around + stride bob
+		var head_rx := pitch * 0.72 + sin(idle_t * 1.6) * 0.025 * (1.0 - wb) - torso_rx * 0.35
+		var head_ry := sin(idle_t * 0.85) * 0.05 * (1.0 - wb) - torso_ry * 0.5
+		head.rotation = head.rotation.lerp(Vector3(head_rx, head_ry, 0.0), anim_a)
+
+		# Legs: alternate stride in opposition, slight brace bend while hiding
+		var leg_l_rx := (0.28 if is_hiding else sw * leg_amp)
+		var leg_r_rx := (-0.22 if is_hiding else -sw * leg_amp)
+		leg_l.rotation = leg_l.rotation.lerp(Vector3(leg_l_rx, 0.0, -0.02), anim_a)
+		leg_r.rotation = leg_r.rotation.lerp(Vector3(leg_r_rx, 0.0, 0.02), anim_a)
+
+		# Left Arm: relaxed idle sway / opposite swing to Left Leg / raised guard in locker
+		var arm_l_rx := (0.45 if is_hiding else (-sw * arm_amp + sin(idle_t * 1.5) * 0.055 * (1.0 - wb)))
+		var arm_l_rz := -0.075 - 0.03 * sin(idle_t * 1.8) * (1.0 - wb) + (0.12 if is_hiding else 0.0)
+		arm_l.rotation = arm_l.rotation.lerp(Vector3(arm_l_rx, 0.0, arm_l_rz), anim_a)
+
+		# Right Arm: locker reach gesture > flashlight aim > opposite walk/run swing > idle sway
+		var arm_r_rx := +sw * arm_amp + cos(idle_t * 1.5) * 0.055 * (1.0 - wb)
+		var arm_r_ry := 0.0
+		var arm_r_rz := 0.075 + 0.03 * sin(idle_t * 1.8) * (1.0 - wb)
+		if inter_t > 0.0:
+			var reach := sin(clampf(inter_t / 0.65, 0.0, 1.0) * PI)
+			arm_r_rx = lerpf(arm_r_rx, 1.48, reach)
+			arm_r_ry = reach * 0.32
+			arm_r_rz = -0.14 * reach
+		elif light_on:
+			arm_r_rx = 1.42 + clampf(pitch * 0.78, -0.68, 0.68) + sw * 0.05 * wb
+			arm_r_rz = 0.04
+		elif is_hiding:
+			arm_r_rx = 0.52
+			arm_r_rz = -0.12
+		arm_r.rotation = arm_r.rotation.lerp(Vector3(arm_r_rx, arm_r_ry, arm_r_rz), anim_a)
 
 
 func _load_entity_sprites() -> void:
@@ -496,6 +765,7 @@ func _load_entity_sprites() -> void:
 	_darkness_tex = _try_load_tex("res://assets/sprites/darkness/darkness_eye.webp")
 	if ResourceLoader.exists("res://assets/models/player/roblox_noob/roblox_noob.gltf"):
 		_noob_scene = load("res://assets/models/player/roblox_noob/roblox_noob.gltf") as PackedScene
+	_prepare_noob_parts()
 
 
 func _try_load_tex(res_path: String) -> Texture2D:
@@ -732,20 +1002,32 @@ func _build_viewmodel() -> void:
 	_vm_gummy_bulb = RoomBuilder._add_cyl(_vm_gummy, "GumLens", Vector3(0.0, 0.0, -0.136), 0.032, 0.008, _vm_gummy_on_mat)
 	_vm_gummy_bulb.rotation.x = PI * 0.5
 
-	# Stylized First-Person Hand / Arm for opening & closing lockers and fridges
+	# Roblox Noob R6 First-Person Right Arm for opening & closing lockers and fridges
 	_anim_hand = Node3D.new()
 	_anim_hand.name = "LockerHand"
 	_anim_hand.visible = false
 	cam.add_child(_anim_hand)
-	var skin_mat := StandardMaterial3D.new()
-	skin_mat.albedo_color = Color(0.76, 0.64, 0.55)
-	skin_mat.roughness = 0.62
-	var sleeve := RoomBuilder._add_box(_anim_hand, "Sleeve", Vector3(0.0, 0.0, 0.16), Vector3(0.095, 0.085, 0.34), _assets.wall_mat, false)
-	sleeve.rotation.x = 0.08
-	RoomBuilder._add_box(_anim_hand, "Cuff", Vector3(0.0, 0.0, -0.015), Vector3(0.10, 0.09, 0.03), _assets.fridge_mat, false)
-	RoomBuilder._add_box(_anim_hand, "Palm", Vector3(0.0, 0.0, -0.075), Vector3(0.082, 0.048, 0.11), skin_mat, false)
-	RoomBuilder._add_box(_anim_hand, "Fingers", Vector3(0.0, -0.012, -0.145), Vector3(0.078, 0.038, 0.055), skin_mat, false)
-	RoomBuilder._add_box(_anim_hand, "Thumb", Vector3(-0.048, 0.005, -0.08), Vector3(0.026, 0.032, 0.065), skin_mat, false)
+	if bool(_noob_parts.get("ready", false)):
+		var meshes: Dictionary = _noob_parts["meshes"]
+		var arm_mesh := meshes.get("arm_r") as ArrayMesh
+		if arm_mesh != null:
+			var mi_arm := MeshInstance3D.new()
+			mi_arm.name = "NoobArmR"
+			mi_arm.mesh = arm_mesh
+			mi_arm.material_override = _noob_parts.get("hand_mat") as Material
+			mi_arm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi_arm.extra_cull_margin = 16384.0
+			mi_arm.rotation = Vector3(PI * 0.5, 0.0, 0.0)
+			mi_arm.scale = Vector3(0.32, 0.80, 0.32)
+			_anim_hand.add_child(mi_arm)
+	if _anim_hand.get_child_count() == 0:
+		var noob_arm_mat := StandardMaterial3D.new()
+		noob_arm_mat.albedo_color = Color(0.96, 0.80, 0.22)
+		noob_arm_mat.roughness = 0.52
+		noob_arm_mat.emission_enabled = true
+		noob_arm_mat.emission = Color(0.96, 0.80, 0.22)
+		noob_arm_mat.emission_energy_multiplier = 0.12
+		RoomBuilder._add_box(_anim_hand, "NoobArmR", Vector3(0.0, 0.0, -0.24), Vector3(0.11, 0.11, 0.52), noob_arm_mat, false)
 
 
 func _build_entity_nodes() -> void:
@@ -1976,12 +2258,14 @@ func _apply_camera_rotation() -> void:
 func _sync_net_local_state() -> void:
 	if _net != null and _net.is_online():
 		var gp := player_body.global_position
+		var hspd := Vector2(player_body.velocity.x, player_body.velocity.z).length()
 		_net.update_local_state({
 			"pos": [gp.x, gp.y, gp.z],
 			"yaw": _yaw,
 			"pitch": _pitch,
 			"light": _light_on and (_active_tool == 0 and _std_battery > 0.05 or _active_tool == 1 and _gummy_battery > 0.05),
 			"hide": _is_hiding,
+			"sprint": hspd > 4.6,
 			"room": _highest_opened,
 			"hp": _hp,
 		})
@@ -2034,16 +2318,17 @@ func _process(delta: float) -> void:
 				var p := _locker_transition_t
 				if p < 0.30:
 					var rp := ease(p / 0.30, 0.35)
-					_anim_hand.position = Vector3(0.22, -0.12, -0.22).lerp(Vector3(-0.05, -0.02, -0.45), rp)
-					_anim_hand.rotation = Vector3(0.08, 0.16 * rp, -0.18 * rp)
-				elif p < 0.68:
-					var sp := (p - 0.30) / 0.38
-					_anim_hand.position = Vector3(-0.05, -0.02, -0.45).lerp(Vector3(-0.22, -0.05, -0.34), sin(sp * PI * 0.5))
-					_anim_hand.rotation = Vector3(0.0, 0.44 * sp, -0.10)
+					_anim_hand.position = Vector3(0.36, -0.26, -0.02).lerp(Vector3(0.14, -0.14, -0.16), rp)
+					_anim_hand.rotation = Vector3(0.05, 0.18 * rp, -0.14 * rp)
+				elif p < 0.65:
+					var sp := (p - 0.30) / 0.35
+					_anim_hand.position = Vector3(0.14, -0.14, -0.16).lerp(Vector3(-0.08, -0.12, -0.12), sin(sp * PI * 0.5))
+					_anim_hand.rotation = Vector3(0.0, 0.36 * sp, -0.10)
 				else:
-					var cp := (p - 0.68) / 0.32
-					_anim_hand.position = Vector3(-0.22, -0.05, -0.34).lerp(Vector3(0.20, -0.18, -0.18), cp)
-					_anim_hand.rotation = Vector3(-0.12 * cp, -0.15 * cp, 0.0)
+					var cp := (p - 0.65) / 0.35
+					var swing := sin(cp * PI)
+					_anim_hand.position = Vector3(0.22, -0.16, -0.04).lerp(Vector3(0.34, -0.30, 0.04), cp) + Vector3(-0.18 * swing, 0.04 * swing, -0.12 * swing)
+					_anim_hand.rotation = Vector3(0.06 * swing, 0.26 * swing - 0.12 * cp, -0.10 * swing)
 			else:
 				_anim_hand.visible = false
 		if _vm_holder != null:
@@ -2097,24 +2382,24 @@ func _process(delta: float) -> void:
 				_anim_hand.visible = true
 				var p_out := _locker_transition_t
 				if _locker_exit_face_locker:
-					# Fast 0.3s S exit animation: push door wide while twisting back toward locker
+					# Fast 0.7s S exit animation: push door wide while twisting back toward locker
 					var s_p := sin(p_out * PI)
-					_anim_hand.position = Vector3(-0.08, -0.05, -0.45).lerp(Vector3(0.24, -0.22, -0.20), p_out) + Vector3(-0.14 * s_p, 0.04 * s_p, 0.0)
-					_anim_hand.rotation = Vector3(0.06, 0.38 * s_p - 0.25 * p_out, -0.16 * s_p)
+					_anim_hand.position = Vector3(0.04, -0.12, -0.16).lerp(Vector3(0.32, -0.26, 0.02), p_out) + Vector3(-0.14 * s_p, 0.04 * s_p, -0.06 * s_p)
+					_anim_hand.rotation = Vector3(0.06, 0.36 * s_p - 0.20 * p_out, -0.14 * s_p)
 				else:
-					# Full 0.5s W exit animation: reach door latch -> swing open -> step out & lower hand
+					# Full 1.0s W exit animation: reach door latch -> swing open -> step out & lower hand
 					if p_out < 0.32:
 						var r_p := ease(p_out / 0.32, 0.35)
-						_anim_hand.position = Vector3(0.20, -0.20, -0.20).lerp(Vector3(-0.05, -0.04, -0.46), r_p)
-						_anim_hand.rotation = Vector3(0.08 * r_p, 0.16 * r_p, -0.15 * r_p)
+						_anim_hand.position = Vector3(0.30, -0.24, -0.02).lerp(Vector3(0.04, -0.09, -0.18), r_p)
+						_anim_hand.rotation = Vector3(0.06 * r_p, 0.16 * r_p, -0.14 * r_p)
 					elif p_out < 0.68:
 						var o_p := (p_out - 0.32) / 0.36
-						_anim_hand.position = Vector3(-0.05, -0.04, -0.46).lerp(Vector3(-0.26, -0.08, -0.32), sin(o_p * PI * 0.5))
-						_anim_hand.rotation = Vector3(0.0, 0.48 * o_p, -0.10)
+						_anim_hand.position = Vector3(0.04, -0.09, -0.18).lerp(Vector3(-0.20, -0.10, -0.10), sin(o_p * PI * 0.5))
+						_anim_hand.rotation = Vector3(0.0, 0.42 * o_p, -0.10)
 					else:
 						var d_p := (p_out - 0.68) / 0.32
-						_anim_hand.position = Vector3(-0.26, -0.08, -0.32).lerp(Vector3(0.24, -0.26, -0.16), d_p)
-						_anim_hand.rotation = Vector3(-0.10 * d_p, -0.18 * d_p, 0.0)
+						_anim_hand.position = Vector3(-0.20, -0.10, -0.10).lerp(Vector3(0.30, -0.28, 0.04), d_p)
+						_anim_hand.rotation = Vector3(-0.10 * d_p, -0.16 * d_p, 0.0)
 			else:
 				_anim_hand.visible = false
 

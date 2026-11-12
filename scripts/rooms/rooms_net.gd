@@ -450,6 +450,7 @@ func _process(delta: float) -> void:
 					"pt": float(_local_state.get("pitch", 0.0)),
 					"l": bool(_local_state.get("light", false)),
 					"h": bool(_local_state.get("hide", false)),
+					"sp": bool(_local_state.get("sprint", false)),
 					"r": int(_local_state.get("room", 0)),
 					"hp": int(_local_state.get("hp", 100)),
 					"n": persona_name,
