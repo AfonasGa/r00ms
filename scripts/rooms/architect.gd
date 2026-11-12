@@ -95,6 +95,26 @@ const DARKNESS_ART: Array[String] = [
 
 const GLITCH_CHARS: Array[String] = ["#", "1", "0", "=", "≠", "%", "@"]
 
+static var _terminal_font: Font = null
+
+static func get_terminal_font() -> Font:
+	if _terminal_font == null:
+		var sf := SystemFont.new()
+		sf.font_names = PackedStringArray([
+			"Consolas",
+			"Courier New",
+			"Cascadia Mono",
+			"Cascadia Code",
+			"Lucida Console",
+			"Roboto Mono",
+			"Droid Sans Mono",
+			"DejaVu Sans Mono",
+			"Monospace",
+			"monospace"
+		])
+		_terminal_font = sf
+	return _terminal_font
+
 
 func record_progress(room_num: int) -> void:
 	if room_num > best_room:

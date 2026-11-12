@@ -2033,10 +2033,12 @@ void fragment() {
 	arch_speech.anchor_right = 0.62
 	arch_speech.anchor_top = 0.08
 	arch_speech.anchor_bottom = 0.52
+	var arch_mono_f := RoomsArchitect.get_terminal_font()
 	arch_speech.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	arch_speech.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	arch_speech.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	arch_speech.add_theme_font_size_override("font_size", 24)
+	arch_speech.add_theme_font_override("font", arch_mono_f)
+	arch_speech.add_theme_font_size_override("font_size", 22)
 	arch_speech.add_theme_color_override("font_color", Color(0.28, 1.0, 0.42))
 	arch_speech.add_theme_color_override("font_outline_color", Color(0.01, 0.16, 0.04, 0.95))
 	arch_speech.add_theme_constant_override("outline_size", 4)
@@ -2058,7 +2060,10 @@ void fragment() {
 	arch_ascii.fit_content = false
 	arch_ascii.scroll_active = false
 	arch_ascii.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	arch_ascii.add_theme_font_size_override("normal_font_size", 14)
+	arch_ascii.add_theme_font_override("normal_font", arch_mono_f)
+	arch_ascii.add_theme_font_override("mono_font", arch_mono_f)
+	arch_ascii.add_theme_font_size_override("normal_font_size", 13)
+	arch_ascii.add_theme_font_size_override("mono_font_size", 13)
 	arch_overlay.add_child(arch_ascii)
 	_ui["arch_ascii"] = arch_ascii
 
@@ -2071,11 +2076,12 @@ void fragment() {
 	var arch_meta := Label.new()
 	arch_meta.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	arch_meta.offset_left = 24
-	arch_meta.offset_top = -80
+	arch_meta.offset_top = -78
 	arch_meta.offset_right = 520
 	arch_meta.offset_bottom = -52
+	arch_meta.add_theme_font_override("font", arch_mono_f)
 	arch_meta.add_theme_font_size_override("font_size", 12)
-	arch_meta.add_theme_color_override("font_color", Color(0.24, 0.85, 0.38, 0.70))
+	arch_meta.add_theme_color_override("font_color", Color(0.35, 0.85, 0.45, 0.75))
 	arch_meta.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	arch_overlay.add_child(arch_meta)
 	_ui["arch_meta"] = arch_meta
@@ -2091,35 +2097,26 @@ void fragment() {
 	arch_page.offset_top = 16
 	arch_page.offset_right = -20
 	arch_page.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	arch_page.add_theme_font_override("font", arch_mono_f)
 	arch_page.add_theme_font_size_override("font_size", 12)
-	arch_page.add_theme_color_override("font_color", Color(0.24, 0.85, 0.38, 0.70))
+	arch_page.add_theme_color_override("font_color", Color(0.35, 0.85, 0.45, 0.75))
 	arch_page.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	arch_overlay.add_child(arch_page)
 	_ui["arch_page"] = arch_page
 
 	var btn_arch_next := Button.new()
 	btn_arch_next.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	btn_arch_next.offset_left = 24
-	btn_arch_next.offset_top = -46
-	btn_arch_next.offset_right = 260
-	btn_arch_next.offset_bottom = -14
-	btn_arch_next.text = "Далее [Пробел / ЛКМ]"
-	RoomsUI.style_button(btn_arch_next, Color(0.25, 0.95, 0.45), 13)
 	btn_arch_next.pressed.connect(_advance_architect_dialogue)
 	arch_overlay.add_child(btn_arch_next)
 	_ui["btn_arch_next"] = btn_arch_next
 
 	var btn_arch_retry := Button.new()
 	btn_arch_retry.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	btn_arch_retry.offset_left = 276
-	btn_arch_retry.offset_top = -46
-	btn_arch_retry.offset_right = 440
-	btn_arch_retry.offset_bottom = -14
-	btn_arch_retry.text = "Заново [R]"
-	RoomsUI.style_button(btn_arch_retry, Color(1.0, 0.75, 0.25), 13)
 	btn_arch_retry.pressed.connect(_reset_run)
 	arch_overlay.add_child(btn_arch_retry)
 	_ui["btn_arch_retry"] = btn_arch_retry
+
+	_style_arch_terminal_buttons()
 
 	# Online Spectator Bar (shown after Architect when observing teammates)
 	var spec_bar := Control.new()
@@ -2316,6 +2313,10 @@ func _refresh_mobile_mode() -> void:
 		(_ui["btn_mobile"] as Button).text = lbl
 	if _state == State.PLAYING:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if _mobile_controls_enabled else Input.MOUSE_MODE_CAPTURED
+	if _ui.has("btn_arch_next"):
+		_style_arch_terminal_buttons()
+		if _state == State.DEAD:
+			_refresh_architect_controls()
 
 
 func _cycle_mobile_mode() -> void:
@@ -2538,6 +2539,10 @@ func _set_state(new_state: State) -> void:
 		(_ui["mobile_group"] as Control).visible = _mobile_controls_enabled and (_state == State.PLAYING)
 	if _state == State.PLAYING:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if _mobile_controls_enabled else Input.MOUSE_MODE_CAPTURED
+	if _ui.has("btn_arch_next"):
+		_style_arch_terminal_buttons()
+		if _state == State.DEAD:
+			_refresh_architect_controls()
 		(_ui["modal"] as Control).visible = false
 		(_ui["architect_overlay"] as Control).visible = false
 		if _ui.has("death_iris"):
@@ -2723,19 +2728,96 @@ func _get_local_username() -> String:
 	return "Player"
 
 
+func _style_arch_terminal_buttons() -> void:
+	if not _ui.has("btn_arch_next") or not _ui.has("btn_arch_retry"):
+		return
+	var btn_next := _ui["btn_arch_next"] as Button
+	var btn_retry := _ui["btn_arch_retry"] as Button
+	var mono_f := RoomsArchitect.get_terminal_font()
+
+	if _mobile_controls_enabled:
+		btn_next.flat = false
+		btn_retry.flat = false
+		btn_next.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		btn_retry.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		btn_next.offset_left = 24
+		btn_next.offset_top = -54
+		btn_next.offset_right = 230
+		btn_next.offset_bottom = -14
+		btn_retry.offset_left = 244
+		btn_retry.offset_top = -54
+		btn_retry.offset_right = 400
+		btn_retry.offset_bottom = -14
+		RoomsUI.style_button(btn_next, Color(0.28, 1.0, 0.42), 14)
+		RoomsUI.style_button(btn_retry, Color(0.85, 0.75, 0.35), 14)
+		btn_next.add_theme_font_override("font", mono_f)
+		btn_retry.add_theme_font_override("font", mono_f)
+	else:
+		btn_next.flat = true
+		btn_retry.flat = true
+		btn_next.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn_retry.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn_next.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		btn_retry.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		btn_next.offset_left = 24
+		btn_next.offset_top = -46
+		btn_next.offset_right = 320
+		btn_next.offset_bottom = -16
+		btn_retry.offset_left = 330
+		btn_retry.offset_top = -46
+		btn_retry.offset_right = 500
+		btn_retry.offset_bottom = -16
+
+		var empty_sb := StyleBoxEmpty.new()
+		for sb in ["normal", "hover", "pressed", "focus", "disabled"]:
+			btn_next.add_theme_stylebox_override(sb, empty_sb)
+			btn_retry.add_theme_stylebox_override(sb, empty_sb)
+
+		btn_next.add_theme_font_override("font", mono_f)
+		btn_next.add_theme_font_size_override("font_size", 13)
+		btn_next.add_theme_color_override("font_color", Color(0.60, 0.72, 0.65, 0.85))
+		btn_next.add_theme_color_override("font_hover_color", Color(0.28, 1.0, 0.42, 1.0))
+		btn_next.add_theme_color_override("font_pressed_color", Color(0.95, 1.0, 0.95, 1.0))
+
+		btn_retry.add_theme_font_override("font", mono_f)
+		btn_retry.add_theme_font_size_override("font_size", 13)
+		btn_retry.add_theme_color_override("font_color", Color(0.60, 0.72, 0.65, 0.85))
+		btn_retry.add_theme_color_override("font_hover_color", Color(1.0, 0.82, 0.35, 1.0))
+		btn_retry.add_theme_color_override("font_pressed_color", Color(0.95, 1.0, 0.95, 1.0))
+
+
 func _refresh_architect_controls() -> void:
 	var total := maxi(_arch_lines.size(), 1)
-	(_ui["arch_page"] as Label).text = "Line %d / %d" % [_arch_line_idx + 1, total]
-	var btn_next: Button = _ui["btn_arch_next"]
+	if _ui.has("arch_page"):
+		(_ui["arch_page"] as Label).text = "LINE %02d / %02d" % [_arch_line_idx + 1, total]
+	_style_arch_terminal_buttons()
+	var btn_next: Button = _ui.get("btn_arch_next")
+	var btn_retry: Button = _ui.get("btn_arch_retry")
+	if btn_next == null:
+		return
 	var can_spectate := (_net != null and _net.is_online() and not _remote_players.is_empty())
-	if _arch_glitch_step >= 0 and _arch_glitch_step < 12:
-		btn_next.text = "Пропустить [Пробел]"
-	elif _arch_line_idx + 1 < total:
-		btn_next.text = "Далее [Пробел]"
-	elif can_spectate:
-		btn_next.text = "Наблюдать за командой [Пробел]"
+	if _mobile_controls_enabled:
+		if _arch_glitch_step >= 0 and _arch_glitch_step < 12:
+			btn_next.text = "Пропустить >"
+		elif _arch_line_idx + 1 < total:
+			btn_next.text = "Далее >"
+		elif can_spectate:
+			btn_next.text = "Наблюдать >"
+		else:
+			btn_next.text = "Завершить >"
+		if btn_retry != null:
+			btn_retry.text = "Заново"
 	else:
-		btn_next.text = "Понятно (жмите снова — заново)"
+		if _arch_glitch_step >= 0 and _arch_glitch_step < 12:
+			btn_next.text = "> [ПРОБЕЛ / ЛКМ] ПРОПУСТИТЬ"
+		elif _arch_line_idx + 1 < total:
+			btn_next.text = "> [ПРОБЕЛ / ЛКМ] ДАЛЕЕ"
+		elif can_spectate:
+			btn_next.text = "> [ПРОБЕЛ / ЛКМ] НАБЛЮДЕНИЕ"
+		else:
+			btn_next.text = "> [ПРОБЕЛ / ЛКМ] ЗАВЕРШИТЬ"
+		if btn_retry != null:
+			btn_retry.text = "> [R] ЗАНОВО"
 	btn_next.disabled = false
 
 
