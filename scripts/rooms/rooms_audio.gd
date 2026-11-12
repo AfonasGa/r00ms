@@ -113,24 +113,26 @@ func _make_stream_player(res_path: String, should_loop: bool, bus_name: String) 
 
 
 func start_a60_spawn(is_prime: bool = false, _is_before_100: bool = true) -> void:
-	_a60_stream_active = true
-	var prime_pitch := 1.16 if is_prime else 1.0
+	_a60_stream_active = not is_prime
+	if is_prime:
+		stop_a60()
+		return
 	if _a60_rumble.stream != null:
-		_a60_rumble.pitch_scale = 1.14 if is_prime else _hs_rng.randf_range(0.95, 1.05)
+		_a60_rumble.pitch_scale = _hs_rng.randf_range(0.95, 1.05)
 		_a60_rumble.volume_db = -58.0 if not muted else -80.0
 		_a60_rumble.play()
 	if _a60_ambience.stream != null:
-		_a60_ambience.pitch_scale = prime_pitch
+		_a60_ambience.pitch_scale = 1.0
 		_a60_ambience.volume_db = -44.0 if not muted else -80.0
 		_a60_ambience.play()
 	if _a60_near.stream != null:
-		_a60_near.pitch_scale = prime_pitch
+		_a60_near.pitch_scale = 1.0
 		_a60_near.volume_db = -72.0 if not muted else -80.0
 		_a60_near.play()
 
 
 func update_a60_mix(_delta: float, distance: float, phase: int, is_prime: bool = false) -> void:
-	if not _a60_stream_active or phase == 0:
+	if is_prime or not _a60_stream_active or phase == 0:
 		return
 	if _a60_rumble.stream != null and not _a60_rumble.playing:
 		_a60_rumble.play()
@@ -251,6 +253,14 @@ func play_flashlight_low_power() -> void:
 		return
 	_add_voice(1100.0, 240.0, 0.16, 0.22, "triangle")
 	_add_voice(520.0, 180.0, 0.18, 0.14, "sine", 0.05)
+
+
+func play_flashlight_flicker() -> void:
+	if muted:
+		return
+	var base := _hs_rng.randf_range(1650.0, 2550.0)
+	_add_voice(base, base * 0.55, 0.038, 0.11, "noise_thud")
+	_add_voice(base * 1.15, base * 0.72, 0.028, 0.06, "triangle")
 
 
 func start_a120_spawn() -> void:

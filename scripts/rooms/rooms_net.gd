@@ -13,6 +13,7 @@ signal state_received(peer_key: String, data: Dictionary)
 signal peer_disconnected(peer_key: String)
 signal invite_received(inviter_name: String, lobby_id: int)
 signal session_synced(seed_val: int, room_idx: int)
+signal entity_event_received(msg: Dictionary)
 
 const SPACEWAR_APP_ID := 480
 const ENET_PORT := 27480
@@ -449,6 +450,19 @@ func broadcast_session_sync(seed_val: int, room_idx: int) -> void:
 		multiplayer.send_bytes(bytes, 0, MultiplayerPeer.TRANSFER_MODE_RELIABLE)
 
 
+func broadcast_entity_event(payload: Dictionary, reliable: bool = true) -> void:
+	if mode == "offline":
+		return
+	var msg := payload.duplicate()
+	msg["t"] = "ent"
+	if mode == "steam":
+		_steam_send_all(msg, 2 if reliable else 0)
+	elif mode == "enet" and multiplayer.has_multiplayer_peer():
+		var bytes := var_to_bytes(msg)
+		var tmode := MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED
+		multiplayer.send_bytes(bytes, 0, tmode)
+
+
 func _process(delta: float) -> void:
 	if steam_ready and _steam != null:
 		_callback_accum += delta
@@ -549,6 +563,8 @@ func _handle_packet(peer_key: String, msg: Dictionary) -> void:
 	elif mtype == "hi":
 		if is_host and run_seed > 0:
 			broadcast_session_sync(run_seed, run_room_idx)
+	elif mtype == "ent":
+		emit_signal("entity_event_received", msg)
 
 
 func _try_emit_lobby_sync(lobby_id: int) -> void:

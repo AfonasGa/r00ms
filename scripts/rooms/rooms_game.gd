@@ -99,20 +99,24 @@ var _vm_std_bulb: MeshInstance3D = null
 var _vm_gummy_bulb: MeshInstance3D = null
 var _vm_shake_time := 0.0
 var _gummy_hold_accum := 0.0
+var _gummy_pump_phase := 0.0
+var _rmb_held := false
 var _vm_bulb_on_mat: StandardMaterial3D
 var _vm_bulb_off_mat: StandardMaterial3D
 var _vm_gummy_on_mat: StandardMaterial3D
 var _anim_hand: Node3D = null
 
-# Flashlights
+# Flashlights & Batteries
 var _light_on := true
 var _active_tool := 0 # 0 = standard, 1 = gummy
 var _has_gummy := false
-var _std_battery := 100.0
+var _std_battery := 150.0 # 120s normal + 30s Low Battery Mode
 var _gummy_battery := 100.0
+var _batteries := 0
 var _was_light_before_hide := true
 var _std_low_power := false
 var _std_low_power_regen := 0.0
+var _std_low_flicker_t := 0.0
 
 # Entities
 var _a60_frames: Array[Texture2D] = []
@@ -124,6 +128,13 @@ var _a60_active := false
 var _a60_phase := 0 # 0=idle, 2=rush, 3=sink
 var _a60_is_prime := false
 var _a60_prime_rebounds := 0
+var _a60_prime_pending_timer := 0.0
+var _a60_prime_chains_left := 0
+var _a60_prime_flicker_active := false
+var _a60_prime_flicker_gap_t := 0.0
+var _a60_prime_flicker_snd_cd := 0.0
+var _a60_prime_table_burned := false
+var _a60_prime_hit_cd := 0.0
 var _a60_node: Node3D = null
 var _a60_sprite: Sprite3D = null
 var _a60_light: OmniLight3D = null
@@ -153,6 +164,9 @@ var _a120_drum_bounce := 0.0
 var _a120_anim_timer := 0.0
 var _a120_frame_idx := 0
 var _a120_hit_cd := 0.0
+var _ent_sync_accum := 0.0
+var _net_a60_tgt := Vector3.ZERO
+var _net_a120_tgt := Vector3.ZERO
 
 var _darkness_phase := 0 # 0=idle, 1=whispering, 2=attacking
 var _darkness_whisper_t := 0.0
@@ -248,6 +262,7 @@ func _build_net() -> void:
 	_net.state_received.connect(_on_remote_state)
 	_net.door_opened_remote.connect(_on_remote_door_opened)
 	_net.locker_action_received.connect(_on_remote_locker_action)
+	_net.entity_event_received.connect(_on_remote_entity_event)
 	_net.peer_disconnected.connect(_on_remote_peer_disconnected)
 	_net.invite_received.connect(func(inviter_name: String, _lid: int) -> void:
 		_show_toast("Steam: приглашение от %s! Примите в Shift+Tab" % inviter_name, 4.0)
@@ -303,11 +318,75 @@ func _on_net_lobbies_updated(lobbies: Array) -> void:
 		_lobby_list_box.add_child(btn)
 
 
+func _is_entity_authority() -> bool:
+	return _net == null or not _net.is_online() or _net.is_host
+
+
+func _on_remote_entity_event(msg: Dictionary) -> void:
+	if _is_entity_authority():
+		return
+	var kind := String(msg.get("k", ""))
+	if kind == "a60_spawn":
+		var door_idx := int(msg.get("door", 0))
+		var is_prime := bool(msg.get("prime", false))
+		_start_a60_local(door_idx, is_prime)
+	elif kind == "a60_pos":
+		var p_arr: Variant = msg.get("p")
+		if p_arr is Array and (p_arr as Array).size() >= 3:
+			var a: Array = p_arr
+			_net_a60_tgt = Vector3(float(a[0]), float(a[1]), float(a[2]))
+			if not _a60_active:
+				var is_p := bool(msg.get("prime", false))
+				_start_a60_local(int(msg.get("door", _highest_opened)), is_p)
+			_a60_phase = int(msg.get("ph", 2))
+			if _a60_phase == 2:
+				_a60_node.position = _net_a60_tgt
+	elif kind == "a60_brk":
+		var b_idx := int(msg.get("door", -1))
+		var b_prime := bool(msg.get("prime", false))
+		var r_brk: RoomBuilder.RoomInstance = _room_by_idx.get(b_idx)
+		if r_brk != null and not r_brk.door_opened and not r_brk.door_broken:
+			_break_door_by_a60(b_idx, b_prime)
+	elif kind == "a60_end":
+		_a60_phase = 3
+		_a60_sink_timer = 0.42
+	elif kind == "a60p_warn":
+		var gap := float(msg.get("gap", 0.0))
+		_a60_prime_flicker_active = true
+		_a60_prime_flicker_gap_t = gap
+		_a60_prime_flicker_snd_cd = 0.0
+	elif kind == "a60p_end":
+		_a60_prime_flicker_active = false
+		_a60_prime_flicker_gap_t = 0.0
+	elif kind == "a120_spawn":
+		var sp_r := int(msg.get("room", 0))
+		var rb := int(msg.get("rb", 0))
+		_start_a120_local(sp_r, rb)
+	elif kind == "a120_pos":
+		var p120: Variant = msg.get("p")
+		if p120 is Array and (p120 as Array).size() >= 3:
+			var a2: Array = p120
+			_net_a120_tgt = Vector3(float(a2[0]), float(a2[1]), float(a2[2]))
+			if not _a120_active:
+				_start_a120_local(int(msg.get("room", _highest_opened)), 0)
+			_a120_phase = int(msg.get("ph", 1))
+			_a120_substage = int(msg.get("ss", 0))
+	elif kind == "a120_end":
+		_a120_active = false
+		_a120_phase = 0
+		_a120_substage = 0
+		_a120_node.visible = false
+		audio.stop_a120()
+
+
 func _on_remote_door_opened(room_index: int, slam: bool = false) -> void:
 	for idx in range(maxi(room_index - 1, 0), room_index + 1):
 		var r: RoomBuilder.RoomInstance = _room_by_idx.get(idx)
 		if r != null and not r.door_opened:
+			var before_high := _highest_opened
 			_open_room_door(idx, slam and (idx == room_index), true)
+			if _net != null and _net.is_online() and _net.is_host and _highest_opened > before_high:
+				_maybe_spawn_door_entities(_highest_opened)
 
 
 func _on_remote_locker_action(peer_key: String, room_idx: int, locker_idx: int, entering: bool, face_locker: bool) -> void:
@@ -1365,6 +1444,22 @@ void fragment() {
 	_ui["toast"] = toast_lbl
 	_ui["toast_lbl"] = toast_lbl
 
+	# Minimalist borderless battery counter (bottom-left)
+	var bat_lbl := Label.new()
+	bat_lbl.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	bat_lbl.offset_left = 20
+	bat_lbl.offset_right = 340
+	bat_lbl.offset_top = -42
+	bat_lbl.offset_bottom = -14
+	bat_lbl.add_theme_font_size_override("font_size", 15)
+	bat_lbl.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0, 0.88))
+	bat_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
+	bat_lbl.add_theme_constant_override("outline_size", 4)
+	bat_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bat_lbl.visible = false
+	hud_group.add_child(bat_lbl)
+	_ui["bat_lbl"] = bat_lbl
+
 	_build_mobile_ui(hud_group)
 
 	# A-90 (Paralysis) Screen Overlay + Stop Sign + Jumpscare Flash
@@ -1833,10 +1928,24 @@ func _build_mobile_ui(hud_group: Control) -> void:
 	)
 	_ui["m_btn_pause"] = btn_pause
 
-	# Brutal Large WHITE hollow circle -> Flashlight (bottom-right)
+	# Brutal Large WHITE hollow circle -> Flashlight toggle (std) / Hold to shake (Gummy)
 	var btn_light := _make_ring_btn(mobile_group, Color(1.0, 1.0, 1.0, 0.96), 7.5, -24, -22, 126)
-	btn_light.pressed.connect(_toggle_flashlight)
+	btn_light.button_down.connect(func() -> void:
+		if _active_tool == 1:
+			_mobile_gummy_held = true
+		else:
+			_toggle_flashlight()
+	)
+	btn_light.button_up.connect(func() -> void:
+		_mobile_gummy_held = false
+	)
 	_ui["m_btn_light"] = btn_light
+
+	# Compact amber ring button to reload flashlight with 2 batteries when needed on mobile
+	var btn_reload := _make_ring_btn(mobile_group, Color(1.0, 0.82, 0.25, 0.95), 4.5, -168, -124, 54, Control.PRESET_BOTTOM_RIGHT, "R")
+	btn_reload.pressed.connect(_try_reload_flashlight)
+	btn_reload.visible = false
+	_ui["m_btn_reload"] = btn_reload
 
 	# Brutal smaller BLUE hollow circle -> HOLD TO SPRINT (above-right of white ring)
 	var btn_sprint := _make_ring_btn(mobile_group, Color(0.14, 0.44, 1.0, 0.98), 6.0, -22, -162, 68)
@@ -1965,12 +2074,16 @@ func _reset_run(forced_seed: int = -1) -> void:
 	_light_on = true
 	_active_tool = 0
 	_has_gummy = false
-	_std_battery = 100.0
+	_std_battery = 150.0
 	_gummy_battery = 100.0
+	_batteries = 0
 	_std_low_power = false
 	_std_low_power_regen = 0.0
+	_std_low_flicker_t = 0.0
 	_vm_shake_time = 0.0
 	_gummy_hold_accum = 0.0
+	_gummy_pump_phase = 0.0
+	_rmb_held = false
 	_reminder_dismissed = false
 	_toast_timer = 0.0
 	_toast_alpha = 0.0
@@ -1988,6 +2101,13 @@ func _reset_run(forced_seed: int = -1) -> void:
 	_a60_phase = 0
 	_a60_is_prime = false
 	_a60_prime_rebounds = 0
+	_a60_prime_pending_timer = 0.0
+	_a60_prime_chains_left = 0
+	_a60_prime_flicker_active = false
+	_a60_prime_flicker_gap_t = 0.0
+	_a60_prime_flicker_snd_cd = 0.0
+	_a60_prime_table_burned = false
+	_a60_prime_hit_cd = 0.0
 	_a60_hint_timer = 0.0
 	_a60_random_timer = _rng.randf_range(22.0, 36.0)
 	_a60_scare_snd_cd = 0.0
@@ -1999,6 +2119,7 @@ func _reset_run(forced_seed: int = -1) -> void:
 	_a120_drum_bounce = 0.0
 	_a120_anim_timer = 0.0
 	_a120_hit_cd = 0.0
+	_ent_sync_accum = 0.0
 	_a120_sprite.position = Vector3.ZERO
 	_a120_sprite.scale = Vector3.ONE
 	_a120_node.visible = false
@@ -2021,24 +2142,26 @@ func _reset_run(forced_seed: int = -1) -> void:
 
 	player_body.position = Vector3(0.0, 0.05, 4.0)
 	player_body.velocity = Vector3.ZERO
+	player_body.rotation = Vector3.ZERO
 	_target_yaw = 0.0
 	_target_pitch = 0.0
 	_yaw = 0.0
 	_pitch = 0.0
 	_cam_roll = 0.0
+	_spectate_yaw = 0.0
+	_spectate_pitch = 0.25
 	_fov = 75.0
 	cam.fov = 75.0
 	cam.position = Vector3(0.0, 1.48, 0.0)
+	cam.rotation = Vector3.ZERO
 	_apply_camera_rotation()
+	flashlight.visible = true
 	(_ui["architect_overlay"] as Control).visible = false
 	if _ui.has("death_iris"):
 		(_ui["death_iris"] as Control).visible = false
 	if _ui.has("spectate_bar"):
 		(_ui["spectate_bar"] as Control).visible = false
-	(_ui["a90_scare_rect"] as Control).visible = false
-	(_ui["a90_stop_icon"] as Control).visible = false
-	(_ui["a60_scare_rect"] as Control).visible = false
-	(_ui["static_rect"] as Control).visible = false
+	_clear_all_vignettes()
 	_reset_touch_state()
 	if _net != null:
 		_net.update_lobby_progress(_world_seed, 0)
@@ -2111,6 +2234,7 @@ func _set_state(new_state: State) -> void:
 			(_ui["death_iris"] as Control).visible = false
 	elif _state == State.SPECTATING:
 		_reset_touch_state()
+		_clear_all_vignettes()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if _mobile_controls_enabled else Input.MOUSE_MODE_CAPTURED
 		(_ui["modal"] as Control).visible = false
 		(_ui["architect_overlay"] as Control).visible = false
@@ -2145,6 +2269,36 @@ func _set_state(new_state: State) -> void:
 			btn_res.visible = true
 
 
+func _clear_all_vignettes() -> void:
+	if _ui.has("vitals_mat"):
+		var vmat := _ui["vitals_mat"] as ShaderMaterial
+		for k in ["hp_loss", "stam_loss", "exhausted_amt", "darkness_amt"]:
+			vmat.set_shader_parameter(k, 0.0)
+	if _ui.has("vitals_rect"):
+		(_ui["vitals_rect"] as Control).visible = false
+	if _ui.has("darkness_rect"):
+		var dkr := _ui["darkness_rect"] as Control
+		dkr.visible = false
+		dkr.modulate.a = 0.0
+	if _ui.has("static_mat"):
+		var smat := _ui["static_mat"] as ShaderMaterial
+		smat.set_shader_parameter("static_amt", 0.0)
+		smat.set_shader_parameter("vig_amt", 0.0)
+	if _ui.has("static_rect"):
+		(_ui["static_rect"] as Control).visible = false
+	if _ui.has("locker_mask"):
+		var lm := _ui["locker_mask"] as ColorRect
+		lm.color = Color(0.0, 0.0, 0.0, 0.0)
+		lm.visible = false
+	if _ui.has("dmg_flash"):
+		var df := _ui["dmg_flash"] as ColorRect
+		df.color.a = 0.0
+		df.visible = false
+	for vk in ["a90_rect", "a90_stop_icon", "a90_stop", "a90_scare_rect", "a60_scare_rect"]:
+		if _ui.has(vk):
+			(_ui[vk] as Control).visible = false
+
+
 func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}) -> void:
 	if _state != State.PLAYING:
 		return
@@ -2156,20 +2310,19 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	audio.stop_darkness()
 	_darkness_phase = 0
 	_darkness_whisper_t = 0.0
-	(_ui["darkness_rect"] as Control).visible = false
 	audio.a60_intensity = 0.0
 	_a60_active = false
 	_a60_phase = 0
+	_a60_prime_pending_timer = 0.0
+	_a60_prime_chains_left = 0
+	_a60_prime_flicker_active = false
 	_a60_node.visible = false
 	_a120_active = false
 	_a120_phase = 0
 	_a120_node.visible = false
 	_a90_phase = 0
-	(_ui["a90_rect"] as Control).visible = false
-	(_ui["a90_stop_icon"] as Control).visible = false
-	(_ui["a90_stop"] as Control).visible = false
-	(_ui["a60_scare_rect"] as Control).visible = false
-	(_ui["static_rect"] as Control).visible = false
+	_rmb_held = false
+	_clear_all_vignettes()
 	(_ui["modal"] as Control).visible = false
 
 	_state = State.DEAD
@@ -2482,22 +2635,20 @@ func _input(event: InputEvent) -> void:
 				return
 
 		if _state == State.PLAYING:
-			if ke.keycode == KEY_E:
-				_try_interact()
-			elif _is_hiding and ke.keycode == KEY_W:
+			if _is_hiding and ke.keycode == KEY_W:
 				_exit_locker(false)
 			elif _is_hiding and ke.keycode == KEY_S:
 				_exit_locker(true)
-			elif ke.keycode == KEY_F:
-				_toggle_flashlight()
 			elif ke.keycode == KEY_1:
 				_active_tool = 0
+				_rmb_held = false
 				audio.play_flashlight_click()
 			elif ke.keycode == KEY_2 and _has_gummy:
 				_active_tool = 1
+				_light_on = true
 				audio.play_flashlight_click()
 			elif ke.keycode == KEY_R:
-				_try_shake_gummy()
+				_try_reload_flashlight()
 			elif ke.keycode == KEY_M:
 				audio.muted = not audio.muted
 
@@ -2534,16 +2685,25 @@ func _input(event: InputEvent) -> void:
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-			elif _try_interact():
-				pass
-			elif _active_tool == 1:
-				_try_shake_gummy()
+			else:
+				_try_interact()
+		elif mb.button_index == MOUSE_BUTTON_RIGHT:
+			if mb.pressed:
+				if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+					Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+				if _active_tool == 1:
+					_rmb_held = true
+					_reminder_dismissed = true
+					_try_shake_gummy(3.5)
+				else:
+					_toggle_flashlight()
+			else:
+				_rmb_held = false
 
 
 func _apply_camera_rotation() -> void:
-	player_body.rotation.y = _yaw
-	cam.rotation.x = _pitch
-	cam.rotation.z = _cam_roll
+	player_body.rotation = Vector3(0.0, _yaw, 0.0)
+	cam.rotation = Vector3(_pitch, 0.0, _cam_roll)
 
 
 func _sync_net_local_state() -> void:
@@ -2596,11 +2756,16 @@ func _process(delta: float) -> void:
 		var dur := maxf(_locker_transition_duration, 0.05)
 		_locker_transition_t = minf(_locker_transition_t + delta / dur, 1.0)
 
-	if (_mobile_gummy_held or Input.is_key_pressed(KEY_R)) and _active_tool == 1 and _has_gummy and not _is_hiding:
+	var shaking_gummy := (_mobile_gummy_held or (_rmb_held and not _mobile_controls_enabled)) and _active_tool == 1 and _has_gummy
+	if shaking_gummy:
+		_light_on = true
+		_gummy_battery = minf(_gummy_battery + delta * 26.7, 100.0)
+		_gummy_pump_phase += delta * 15.0
+		_vm_shake_time = 0.14
 		_gummy_hold_accum += delta
-		if _gummy_hold_accum >= 0.28:
-			_gummy_hold_accum -= 0.28
-			_try_shake_gummy(4.7)
+		if _gummy_hold_accum >= 0.36:
+			_gummy_hold_accum -= 0.36
+			audio.play_gummy_shake()
 	else:
 		_gummy_hold_accum = 0.0
 
@@ -2608,7 +2773,7 @@ func _process(delta: float) -> void:
 	if _is_hiding:
 		if _locker_transition_t < 1.0:
 			var prev_t := maxf(_locker_transition_t - delta / maxf(_locker_transition_duration, 0.05), 0.0)
-			if _locker_transition_t >= 0.72 and prev_t < 0.72:
+			if _locker_transition_t >= 0.72 and prev_t < 0.72 and _active_tool == 0:
 				_light_on = false
 		if _anim_hand != null:
 			if _hiding_kind != "under_desk" and _locker_transition_t < 0.98:
@@ -2630,9 +2795,21 @@ func _process(delta: float) -> void:
 			else:
 				_anim_hand.visible = false
 		if _vm_holder != null:
-			_vm_holder.visible = (_locker_transition_t >= 0.96 and _light_on)
+			_vm_holder.visible = (_locker_transition_t >= 0.94 and (_light_on or shaking_gummy))
 			if _vm_holder.visible:
+				_vm_std.visible = (_active_tool == 0)
+				_vm_gummy.visible = (_active_tool == 1)
 				_vm_holder.position = Vector3(0.18, -0.19, -0.28)
+				if _vm_shake_time > 0.0 or shaking_gummy:
+					if not shaking_gummy:
+						_vm_shake_time = maxf(_vm_shake_time - delta, 0.0)
+						_gummy_pump_phase += delta * 15.0
+					var pump := sin(_gummy_pump_phase)
+					_vm_gummy.position = _vm_gummy.position.lerp(Vector3(0.0, pump * 0.085, -0.012 * cos(_gummy_pump_phase)), 1.0 - exp(-22.0 * delta))
+					_vm_gummy.rotation = _vm_gummy.rotation.lerp(Vector3(pump * 0.24, 0.0, 0.0), 1.0 - exp(-22.0 * delta))
+				else:
+					_vm_gummy.position = _vm_gummy.position.lerp(Vector3.ZERO, 1.0 - exp(-16.0 * delta))
+					_vm_gummy.rotation = _vm_gummy.rotation.lerp(Vector3.ZERO, 1.0 - exp(-16.0 * delta))
 		var t_ease := ease(_locker_transition_t, 0.26)
 		var base_yaw := atan2(-_locker_fwd.x, -_locker_fwd.z)
 		player_body.global_position = _locker_eye - Vector3(0.0, _hiding_eye_local_y, 0.0)
@@ -2731,11 +2908,13 @@ func _process(delta: float) -> void:
 			_vm_holder.position = _vm_holder.position.lerp(Vector3(0.24 + bx, -0.21 + by + dip_y, -0.34), 1.0 - exp(-14.0 * delta))
 			_vm_holder.rotation.x = lerpf(_vm_holder.rotation.x, fl_lag_x * 0.75, 1.0 - exp(-14.0 * delta))
 			_vm_holder.rotation.y = lerpf(_vm_holder.rotation.y, fl_lag_y * 0.75, 1.0 - exp(-14.0 * delta))
-			if _vm_shake_time > 0.0:
-				_vm_shake_time = maxf(_vm_shake_time - delta, 0.0)
-				var s_env := clampf(_vm_shake_time / 0.30, 0.0, 1.0)
-				_vm_gummy.position = Vector3(sin(t_sec_vm * 46.0) * 0.018 * s_env, cos(t_sec_vm * 62.0) * 0.032 * s_env, 0.0)
-				_vm_gummy.rotation = Vector3(sin(t_sec_vm * 58.0) * 0.28 * s_env, 0.0, cos(t_sec_vm * 48.0) * 0.22 * s_env)
+			if _vm_shake_time > 0.0 or shaking_gummy:
+				if not shaking_gummy:
+					_vm_shake_time = maxf(_vm_shake_time - delta, 0.0)
+					_gummy_pump_phase += delta * 15.0
+				var pump := sin(_gummy_pump_phase)
+				_vm_gummy.position = _vm_gummy.position.lerp(Vector3(0.0, pump * 0.085, -0.012 * cos(_gummy_pump_phase)), 1.0 - exp(-22.0 * delta))
+				_vm_gummy.rotation = _vm_gummy.rotation.lerp(Vector3(pump * 0.24, 0.0, 0.0), 1.0 - exp(-22.0 * delta))
 			else:
 				_vm_gummy.position = _vm_gummy.position.lerp(Vector3.ZERO, 1.0 - exp(-16.0 * delta))
 				_vm_gummy.rotation = _vm_gummy.rotation.lerp(Vector3.ZERO, 1.0 - exp(-16.0 * delta))
@@ -2817,6 +2996,14 @@ func _process_architect_and_scare(delta: float) -> void:
 
 
 func _toggle_flashlight() -> void:
+	if _active_tool == 1:
+		# Shakerlight cannot be turned off while equipped
+		_light_on = true
+		return
+	if _std_battery <= 0.0 and not _light_on:
+		audio.play_flashlight_click()
+		_show_toast("Фонарик разряжен! Соберите 2 батарейки и нажмите [R].", 2.2)
+		return
 	_light_on = not _light_on
 	_reminder_dismissed = true
 	audio.play_flashlight_click()
@@ -2828,6 +3015,7 @@ func _toggle_flashlight() -> void:
 			_hide_time = 0.0
 			_darkness_quick_return = true
 			_std_low_power = true
+			_std_battery = minf(_std_battery, 30.0)
 			_std_low_power_regen = 0.0
 			(_ui["darkness_rect"] as Control).visible = false
 			audio.stop_darkness()
@@ -2835,12 +3023,29 @@ func _toggle_flashlight() -> void:
 			_show_toast("Обычный фонарик отпугнул Тьму (слабый режим)!", 2.2)
 
 
-func _try_shake_gummy(amount: float = 10.0) -> void:
-	if _active_tool != 1 or not _has_gummy or _is_hiding:
+func _try_reload_flashlight() -> void:
+	if _std_battery >= 149.9 and not _std_low_power:
+		_show_toast("Обычный фонарик уже полностью заряжен", 1.8)
 		return
+	if _batteries < 2:
+		_show_toast("Нужно 2 батарейки для зарядки (%d/2)" % _batteries, 2.2)
+		return
+	_batteries -= 2
+	_std_battery = 150.0
+	_std_low_power = false
+	_std_low_power_regen = 0.0
+	_std_low_flicker_t = 0.0
+	audio.play_pickup()
+	_show_toast("Фонарик заряжен (-2 батарейки, осталось: %d)" % _batteries, 2.4)
+
+
+func _try_shake_gummy(amount: float = 10.0) -> void:
+	if _active_tool != 1 or not _has_gummy:
+		return
+	_light_on = true
 	_gummy_battery = minf(_gummy_battery + amount, 100.0)
-	_shake_amount = maxf(_shake_amount, 0.022)
-	_vm_shake_time = 0.34
+	_shake_amount = maxf(_shake_amount, 0.012)
+	_vm_shake_time = 0.36
 	audio.play_gummy_shake()
 
 
@@ -2874,15 +3079,14 @@ func _execute_interact_target(target: Dictionary) -> bool:
 			return false
 		var pkind := String(target["pickup_kind"])
 		if pkind == "battery":
-			_std_battery = minf(_std_battery + 35.0, 100.0)
-			_std_low_power = false
-			_std_low_power_regen = 0.0
-			_show_toast("+35% заряда фонарика")
+			_batteries += 1
+			_show_toast("Батарейка (+1) — Всего: %d. [R] для зарядки (нужно 2)" % _batteries, 2.8)
 		elif pkind == "gummy":
 			_has_gummy = true
 			_active_tool = 1
+			_light_on = true
 			_gummy_battery = 100.0
-			_show_toast("Подобран Зелёный фонарик [2]! Зажмите [R] чтобы потрясти.", 3.2)
+			_show_toast("Подобран Трясосвет [2]! Зажмите [ПКМ] чтобы заряжать.", 3.2)
 		elif pkind == "medkit":
 			_hp = mini(_hp + 45, 100)
 			audio.low_hp_mode = (_hp <= 25)
@@ -3307,7 +3511,7 @@ func _exit_locker(face_locker: bool = false) -> void:
 	_target_hide_pitch = 0.0
 	_hide_yaw_offset = 0.0
 	_hide_pitch_offset = 0.0
-	_light_on = _was_light_before_hide
+	_light_on = true if _active_tool == 1 else _was_light_before_hide
 	if _vm_holder != null:
 		_vm_holder.visible = true
 
@@ -3331,6 +3535,8 @@ func _exit_locker(face_locker: bool = false) -> void:
 
 
 func _maybe_spawn_door_entities(room_num: int) -> void:
+	if not _is_entity_authority():
+		return
 	if _a60_active or _a120_active:
 		return
 	# A-120 starts appearing after room A-015; A-60 spawns anytime via its independent timer!
@@ -3348,12 +3554,29 @@ func _find_first_closed_door_room() -> RoomBuilder.RoomInstance:
 
 
 func _spawn_a60(force_prime: bool = false) -> void:
-	_a60_path.clear()
 	if _rooms.is_empty():
 		return
 	var target_r := _find_first_closed_door_room()
 	if target_r == null:
 		return
+	_start_a60_local(target_r.index, force_prime)
+	if _is_entity_authority() and _net != null and _net.is_online():
+		_net.broadcast_entity_event({
+			"k": "a60_spawn",
+			"door": target_r.index,
+			"prime": force_prime,
+		}, true)
+
+
+func _start_a60_local(target_door_idx: int, is_prime: bool) -> void:
+	_a60_path.clear()
+	if _rooms.is_empty():
+		return
+	var target_r: RoomBuilder.RoomInstance = _room_by_idx.get(target_door_idx)
+	if target_r == null:
+		target_r = _find_first_closed_door_room()
+	if target_r == null:
+		target_r = _rooms[-1]
 	_a60_target_door_idx = target_r.index
 	var start_entry_dir: Vector3 = _rooms[0].in_dir
 	_a60_path.append(_rooms[0].center_pos - start_entry_dir * 260.0 + Vector3(0.0, 1.55, 0.0))
@@ -3366,13 +3589,17 @@ func _spawn_a60(force_prime: bool = false) -> void:
 	if _a60_path.size() < 2:
 		return
 
-	var is_prime := force_prime or (_highest_opened >= 50 and _rng.randf() < 0.30)
 	_a60_active = true
 	_a60_phase = 2
 	_a60_is_prime = is_prime
-	_a60_prime_rebounds = (1 if _rng.randf() < 0.65 else 0) if is_prime else 0
+	_a60_prime_rebounds = 0
+	_a60_prime_table_burned = false
+	_a60_prime_hit_cd = 0.0
 	_a60_scare_snd_cd = 0.0
-	_a60_hint_timer = 2.4 if _highest_opened < 100 else 0.0
+	_a60_hint_timer = (2.4 if _highest_opened < 100 else 0.0) if not is_prime else 0.0
+	if is_prime:
+		_a60_prime_flicker_active = true
+		_a60_prime_flicker_gap_t = 0.0
 
 	if is_prime:
 		_a60_light.light_color = Color(0.22, 0.84, 1.0)
@@ -3392,10 +3619,6 @@ func _spawn_a120() -> void:
 	if _rooms.is_empty():
 		return
 	var spawn_idx := mini(_highest_opened + 3, _rooms[-1].index)
-	var spawn_r: RoomBuilder.RoomInstance = _room_by_idx.get(spawn_idx)
-	if spawn_r == null:
-		spawn_r = _rooms[-1]
-
 	var roll := _rng.randf()
 	var rb := 0
 	if roll < 0.22:
@@ -3406,6 +3629,21 @@ func _spawn_a120() -> void:
 		rb = 2
 	else:
 		rb = 3
+	_start_a120_local(spawn_idx, rb)
+	if _is_entity_authority() and _net != null and _net.is_online():
+		_net.broadcast_entity_event({
+			"k": "a120_spawn",
+			"room": spawn_idx,
+			"rb": rb,
+		}, true)
+
+
+func _start_a120_local(spawn_idx: int, rb: int) -> void:
+	if _rooms.is_empty():
+		return
+	var spawn_r: RoomBuilder.RoomInstance = _room_by_idx.get(spawn_idx)
+	if spawn_r == null:
+		spawn_r = _rooms[-1]
 
 	_a120_active = true
 	_a120_phase = 1
@@ -3422,6 +3660,7 @@ func _spawn_a120() -> void:
 	_a120_sprite.position = Vector3.ZERO
 	_a120_sprite.scale = Vector3.ONE
 	_a120_node.position = spawn_r.center_pos + Vector3(0.0, 1.55, 0.0)
+	_net_a120_tgt = _a120_node.position
 	_a120_node.visible = true
 	_flicker_nearby_lights(1.6)
 	audio.start_a120_spawn()
@@ -3453,10 +3692,21 @@ func _get_room_idx_near(pos: Vector3) -> int:
 
 
 func _get_a120_live_target() -> Vector3:
-	if _is_hiding:
-		var front := _locker_eye + _locker_fwd * 0.95
-		return Vector3(front.x, 1.55, front.z)
-	return Vector3(player_body.global_position.x, 1.55, player_body.global_position.z)
+	var best_pos := (_locker_eye + _locker_fwd * 0.95) if _is_hiding else player_body.global_position
+	var best_exposed := not _is_hiding
+	var best_d := _a120_node.global_position.distance_squared_to(best_pos)
+	for pk in _remote_players.keys():
+		var rp: Dictionary = _remote_players[pk]
+		if bool(rp.get("dead", false)):
+			continue
+		var r_exp := not bool(rp.get("hiding", false))
+		var rp_pos: Vector3 = rp.get("tgt_pos", Vector3.ZERO)
+		var d := _a120_node.global_position.distance_squared_to(rp_pos)
+		if (r_exp and not best_exposed) or (r_exp == best_exposed and d < best_d):
+			best_exposed = r_exp
+			best_pos = rp_pos
+			best_d = d
+	return Vector3(best_pos.x, 1.55, best_pos.z)
 
 
 func _handle_a120_hit() -> void:
@@ -3532,13 +3782,18 @@ func _physics_process(delta: float) -> void:
 	_process_doors(delta)
 	_process_flashlight(delta)
 
-	if _highest_opened >= 5 and not _a60_active and not _a120_active:
-		_a60_random_timer -= delta
-		if _a60_random_timer <= 0.0:
-			var max_cd := maxf(24.0, 52.0 - float(_highest_opened) * 0.12)
-			var min_cd := maxf(14.0, max_cd * 0.52)
-			_a60_random_timer = _rng.randf_range(min_cd, max_cd)
-			_spawn_a60()
+	if _is_entity_authority():
+		if _a60_prime_pending_timer > 0.0 and not _a60_active and not _a120_active:
+			_a60_prime_pending_timer -= delta
+			if _a60_prime_pending_timer <= 0.0:
+				_spawn_a60(true)
+		elif _highest_opened >= 5 and not _a60_active and not _a120_active and not _a60_prime_flicker_active:
+			_a60_random_timer -= delta
+			if _a60_random_timer <= 0.0:
+				var max_cd := maxf(24.0, 52.0 - float(_highest_opened) * 0.12)
+				var min_cd := maxf(14.0, max_cd * 0.52)
+				_a60_random_timer = _rng.randf_range(min_cd, max_cd)
+				_spawn_a60(false)
 
 	_process_entities(delta)
 	_process_player_movement(delta)
@@ -3562,18 +3817,35 @@ func _process_doors(delta: float) -> void:
 
 
 func _process_flashlight(delta: float) -> void:
-	if not _is_hiding and _std_low_power and (not _light_on or _active_tool != 0):
-		_std_low_power_regen += delta
-		if _std_low_power_regen >= 14.0:
-			_std_low_power = false
-			_std_low_power_regen = 0.0
+	if _std_low_flicker_t > 0.0:
+		_std_low_flicker_t = maxf(_std_low_flicker_t - delta, 0.0)
+	if _a60_prime_flicker_gap_t > 0.0:
+		_a60_prime_flicker_gap_t = maxf(_a60_prime_flicker_gap_t - delta, 0.0)
+	if _a60_prime_flicker_snd_cd > 0.0:
+		_a60_prime_flicker_snd_cd = maxf(_a60_prime_flicker_snd_cd - delta, 0.0)
 
-	var has_charge := (_std_battery > 0.05) if _active_tool == 0 else (_gummy_battery > 0.05)
+	# Shakerlight [2] cannot be turned off while equipped
+	if _active_tool == 1:
+		_light_on = true
+
+	var has_charge := (_std_battery > 0.0) if _active_tool == 0 else (_gummy_battery > 0.05)
 	var is_lit := _light_on and has_charge
 	if is_lit:
 		var power_mult := 1.0
 		if _active_tool == 0:
-			_std_battery = maxf(_std_battery - delta * 1.45, 0.0)
+			# Before A-050 battery won't drain! From A-050+: 120s normal (>30s) + 30s Low Battery Mode (<=30s)
+			if _highest_opened >= 50:
+				var prev_bat := _std_battery
+				_std_battery = maxf(_std_battery - delta, 0.0)
+				if prev_bat > 30.0 and _std_battery <= 30.0 and not _std_low_power:
+					_std_low_power = true
+					_std_low_flicker_t = 0.85
+					audio.play_flashlight_low_power()
+					_show_toast("Низкий заряд фонарика! Нажмите [R] с 2 батарейками.", 2.6)
+				if _std_battery <= 0.0:
+					_light_on = false
+					audio.play_flashlight_click()
+					_show_toast("Фонарик сел! Соберите 2 батарейки и нажмите [R].", 2.8)
 			if _std_low_power:
 				flashlight.light_color = Color(1.0, 0.78, 0.56)
 				flashlight.spot_range = 14.0
@@ -3591,10 +3863,18 @@ func _process_flashlight(delta: float) -> void:
 
 		var cur_bat := _std_battery if _active_tool == 0 else _gummy_battery
 		var flicker := 1.0
-		if cur_bat < 16.0 and _rng.randf() < 0.22:
+		if _std_low_flicker_t > 0.0 and _active_tool == 0:
+			flicker = _rng.randf_range(0.05, 0.75)
+		elif _a60_prime_flicker_active and _a60_prime_flicker_gap_t <= 0.0:
+			# A-60' constant flashlight flicker warning (visual + auditory cue!)
+			flicker = _rng.randf_range(0.04, 0.92) if _rng.randf() < 0.72 else 1.0
+			if _a60_prime_flicker_snd_cd <= 0.0:
+				_a60_prime_flicker_snd_cd = _rng.randf_range(0.11, 0.19)
+				audio.play_flashlight_flicker()
+		elif cur_bat < 8.0 and _rng.randf() < 0.22:
 			flicker = _rng.randf_range(0.25, 0.85)
 		flashlight.light_energy = 2.6 * power_mult * flicker
-		flashlight.visible = true
+		flashlight.visible = not (_active_tool == 0 and _std_battery <= 0.0)
 	else:
 		flashlight.visible = false
 
@@ -3610,15 +3890,17 @@ func _process_darkness_in_hiding(delta: float) -> void:
 		dk_rect.visible = false
 		if not _a60_active and not _a120_active:
 			_hide_time += delta
-			if _hide_time > 18.0:
+			if _hide_time > 24.0:
 				_show_toast("Пора выходить из укрытия!", 1.2)
 		return
 
 	_hide_time += delta
-	var prog := clampf(float(_highest_opened - 21) / 29.0, 0.0, 1.0)
-	var disturb_delay := 1.2 if _power_out else lerpf(7.5, 1.4, prog)
+	# Very gradual Darkness progression (A-021 = ~24s, slowing gently down to ~4.5s / ~3s in late power-out rooms)
+	var prog := clampf(float(_highest_opened - 21) / 600.0, 0.0, 1.0)
+	var base_delay := lerpf(24.0, 4.5, prog)
+	var disturb_delay := maxf(3.0, base_delay * 0.72) if _power_out else base_delay
 	if _darkness_quick_return:
-		disturb_delay = 2.0 if (_light_on and _active_tool == 0) else 0.6
+		disturb_delay = 4.5 if (_light_on and _active_tool == 0) else 2.0
 
 	if _darkness_phase == 0:
 		dk_rect.visible = false
@@ -3631,7 +3913,7 @@ func _process_darkness_in_hiding(delta: float) -> void:
 			dk_rect.visible = true
 			dk_rect.modulate = Color(1.0, 1.0, 1.0, 0.05)
 	elif _darkness_phase == 1:
-		var ramp_dur := 1.2 if _power_out else 2.0
+		var ramp_dur := lerpf(5.5, 2.2, prog) * (0.82 if _power_out else 1.0)
 		_darkness_whisper_t = minf(_darkness_whisper_t + delta / ramp_dur, 1.0)
 		audio.update_darkness(_darkness_whisper_t)
 		dk_rect.visible = true
@@ -3641,7 +3923,7 @@ func _process_darkness_in_hiding(delta: float) -> void:
 		dk_rect.modulate = Color(1.0, 1.0, 1.0, pow(_darkness_whisper_t, 1.15) * 0.94)
 		if _darkness_whisper_t >= 1.0:
 			_darkness_phase = 2
-			_darkness_dmg_accum = 0.36
+			_darkness_dmg_accum = 0.45
 	elif _darkness_phase == 2:
 		audio.update_darkness(1.0)
 		dk_rect.visible = true
@@ -3649,11 +3931,11 @@ func _process_darkness_in_hiding(delta: float) -> void:
 		dk_rect.scale = Vector2(pulse_s, pulse_s)
 		dk_rect.pivot_offset = dk_rect.size * 0.5
 		dk_rect.modulate = Color(1.0, 1.0, 1.0, 0.98)
-		_shake_amount = maxf(_shake_amount, 0.038)
+		_shake_amount = maxf(_shake_amount, 0.030)
 		_darkness_dmg_accum += delta
-		if _darkness_dmg_accum >= 0.42:
-			_darkness_dmg_accum -= 0.42
-			_hp -= 18
+		if _darkness_dmg_accum >= 0.65:
+			_darkness_dmg_accum -= 0.65
+			_hp -= 12
 			audio.low_hp_mode = (_hp <= 25 and _hp > 0)
 			(_ui["dmg_flash"] as ColorRect).color = Color(0.88, 0.04, 0.04, 0.56)
 			if _hp <= 0:
@@ -3778,8 +4060,18 @@ func _process_entities(delta: float) -> void:
 	var static_rect: ColorRect = _ui["static_rect"]
 	var static_mat: ShaderMaterial = _ui["static_mat"]
 	var a60_scare_rect: TextureRect = _ui["a60_scare_rect"]
+	var is_auth := _is_entity_authority()
 	if _a60_scare_snd_cd > 0.0:
 		_a60_scare_snd_cd = maxf(_a60_scare_snd_cd - delta, 0.0)
+	if _a60_prime_hit_cd > 0.0:
+		_a60_prime_hit_cd = maxf(_a60_prime_hit_cd - delta, 0.0)
+
+	var send_ent_sync := false
+	if is_auth and (_a60_active or _a120_active):
+		_ent_sync_accum += delta
+		if _ent_sync_accum >= 0.08:
+			_ent_sync_accum = 0.0
+			send_ent_sync = true
 
 	if _a60_active:
 		_a60_anim_timer += delta
@@ -3793,7 +4085,7 @@ func _process_entities(delta: float) -> void:
 			_a60_sprite.pixel_size = 2.65 / float(maxi(f60.get_width(), 1))
 
 		var d_player := _a60_node.global_position.distance_to(cam.global_position)
-		audio.a60_intensity = clampf(16.0 / maxf(d_player, 2.0), 0.12, 1.0)
+		audio.a60_intensity = 0.0 if _a60_is_prime else clampf(16.0 / maxf(d_player, 2.0), 0.12, 1.0)
 		audio.update_a60_mix(delta, d_player, _a60_phase, _a60_is_prime)
 
 		var prime_col := Vector3(0.25, 0.85, 1.0) if _a60_is_prime else Vector3(1.0, 0.22, 0.18)
@@ -3803,16 +4095,18 @@ func _process_entities(delta: float) -> void:
 			_a60_hint_timer = maxf(_a60_hint_timer - delta, 0.0)
 
 		if _a60_phase == 2:
-			# Before A-100 arrival hint static & near static (NO red/dark vignette per user request)
 			var near_prox := clampf(1.0 - (d_player - 2.0) / 22.0, 0.0, 1.0)
-			_shake_amount = maxf(_shake_amount, near_prox * (0.14 if _a60_is_prime else 0.11))
+			if not _a60_is_prime:
+				_shake_amount = maxf(_shake_amount, near_prox * 0.11)
+			else:
+				_shake_amount = maxf(_shake_amount, near_prox * 0.045)
 
 			var hint_static := 0.0
-			if _a60_hint_timer > 0.0 and _highest_opened < 100:
+			if not _a60_is_prime and _a60_hint_timer > 0.0 and _highest_opened < 100:
 				var fade := clampf(_a60_hint_timer / 0.85, 0.0, 1.0)
 				hint_static = fade * (0.55 + 0.22 * sin(float(Time.get_ticks_msec()) * 0.015))
 
-			var total_static := maxf(hint_static, near_prox * 0.65)
+			var total_static := maxf(hint_static, near_prox * (0.35 if _a60_is_prime else 0.65))
 			if total_static > 0.03:
 				static_rect.visible = true
 				static_mat.set_shader_parameter("static_amt", total_static)
@@ -3820,60 +4114,95 @@ func _process_entities(delta: float) -> void:
 			else:
 				static_rect.visible = false
 
-			# Keep tracking the FIRST still-closed door in case player opened target mid-rush
-			var live_closed_r: RoomBuilder.RoomInstance = _room_by_idx.get(_a60_target_door_idx)
-			if live_closed_r != null and (live_closed_r.door_opened or live_closed_r.door_broken):
-				var next_closed := _find_first_closed_door_room()
-				if next_closed != null and next_closed.index > _a60_target_door_idx:
-					var old_idx := _a60_target_door_idx
-					_a60_target_door_idx = next_closed.index
-					for r in _rooms:
-						if r.index > old_idx and r.index <= _a60_target_door_idx:
-							_a60_path.append(r.center_pos + Vector3(0.0, 1.55, 0.0))
-							if r.index < _a60_target_door_idx:
-								_a60_path.append(r.exit_pos + Vector3(0.0, 1.55, 0.0))
-					_a60_path.append(next_closed.exit_pos + Vector3(0.0, 1.55, 0.0))
+			if is_auth:
+				# Keep tracking the FIRST still-closed door in case any player opened target mid-rush
+				var live_closed_r: RoomBuilder.RoomInstance = _room_by_idx.get(_a60_target_door_idx)
+				if live_closed_r != null and (live_closed_r.door_opened or live_closed_r.door_broken):
+					var next_closed := _find_first_closed_door_room()
+					if next_closed != null and next_closed.index > _a60_target_door_idx:
+						var old_idx := _a60_target_door_idx
+						_a60_target_door_idx = next_closed.index
+						for r in _rooms:
+							if r.index > old_idx and r.index <= _a60_target_door_idx:
+								_a60_path.append(r.center_pos + Vector3(0.0, 1.55, 0.0))
+								if r.index < _a60_target_door_idx:
+									_a60_path.append(r.exit_pos + Vector3(0.0, 1.55, 0.0))
+						_a60_path.append(next_closed.exit_pos + Vector3(0.0, 1.55, 0.0))
 
-			var rush_speed := 78.0 if _a60_is_prime else 60.0
-			if _a60_path_idx < _a60_path.size():
-				var tgt := _a60_path[_a60_path_idx]
-				var to_t := tgt - _a60_node.position
-				if to_t.length() <= rush_speed * delta:
-					_a60_node.position = tgt
-					_a60_path_idx += 1
-				else:
-					_a60_node.position += to_t.normalized() * rush_speed * delta
-			else:
-				if _a60_is_prime and _a60_prime_rebounds > 0:
-					_a60_prime_rebounds -= 1
-					audio.play_a60_door_break(true)
-					_a60_path_idx = maxi(1, _a60_path.size() - 5)
+				var rush_speed := 72.0 if _a60_is_prime else 60.0
+				if _a60_path_idx < _a60_path.size():
+					var tgt := _a60_path[_a60_path_idx]
+					var to_t := tgt - _a60_node.position
+					if to_t.length() <= rush_speed * delta:
+						_a60_node.position = tgt
+						_a60_path_idx += 1
+					else:
+						_a60_node.position += to_t.normalized() * rush_speed * delta
 				else:
 					var smash_r: RoomBuilder.RoomInstance = _room_by_idx.get(_a60_target_door_idx)
 					if smash_r != null and not smash_r.door_opened and not smash_r.door_broken:
 						_break_door_by_a60(_a60_target_door_idx, _a60_is_prime)
+						if _net != null and _net.is_online():
+							_net.broadcast_entity_event({"k": "a60_brk", "door": _a60_target_door_idx, "prime": _a60_is_prime}, true)
 					_a60_phase = 3
 					_a60_sink_timer = 0.42
 					a60_scare_rect.visible = false
+					if _net != null and _net.is_online():
+						_net.broadcast_entity_event({"k": "a60_end"}, true)
 
-			# Raycast line-of-sight ONE-SHOT kill if player is exposed and not hiding
+				if send_ent_sync and _net != null and _net.is_online():
+					var p60 := _a60_node.position
+					_net.broadcast_entity_event({
+						"k": "a60_pos",
+						"p": [p60.x, p60.y, p60.z],
+						"ph": _a60_phase,
+						"door": _a60_target_door_idx,
+						"prime": _a60_is_prime,
+					}, false)
+
+			# Table Burn from A-60' (90% chance to deal 20 damage when hiding under a table!)
+			if _a60_phase == 2 and _a60_is_prime and _is_hiding and _hiding_kind == "under_desk" and d_player <= 11.5 and not _a60_prime_table_burned:
+				_a60_prime_table_burned = true
+				if _rng.randf() < 0.90:
+					_hp -= 20
+					audio.low_hp_mode = (_hp <= 25 and _hp > 0)
+					(_ui["dmg_flash"] as ColorRect).color = Color(0.95, 0.32, 0.14, 0.62)
+					_shake_amount = maxf(_shake_amount, 0.06)
+					_show_toast("Ожог от A-60' под столом (-20 HP!)", 2.2)
+					if _hp <= 0:
+						_trigger_death("A-60'", "", {"distance": d_player, "table_burn": true})
+						return
+
+			# Raycast line-of-sight attack if player is exposed and not hiding
 			if _a60_phase == 2 and d_player <= 11.5 and not _is_hiding:
 				var space := get_world_3d().direct_space_state
 				var q := PhysicsRayQueryParameters3D.create(_a60_node.global_position, cam.global_position)
 				q.exclude = [player_body.get_rid()]
 				var hit := space.intersect_ray(q)
 				if hit.is_empty():
-					a60_scare_rect.visible = true
-					a60_scare_rect.texture = _a60_sprite.texture
-					a60_scare_rect.modulate = Color(0.55, 0.95, 1.0, 0.96) if _a60_is_prime else Color(1.0, 0.92, 0.92, 0.96)
-					var vp := get_viewport().get_visible_rect().size
-					a60_scare_rect.position = vp * 0.5 - Vector2(270, 270)
-					audio.play_a60_jumpscare(_a60_is_prime)
-					_hp = 0
-					audio.low_hp_mode = false
-					(_ui["dmg_flash"] as ColorRect).color = Color(0.35, 0.90, 1.0, 0.72) if _a60_is_prime else Color(0.92, 0.08, 0.08, 0.78)
-					_trigger_death("A-60'" if _a60_is_prime else "A-60", "", {"distance": d_player})
-					return
+					if _a60_is_prime:
+						if _a60_prime_hit_cd <= 0.0:
+							_a60_prime_hit_cd = 1.2
+							_hp -= 35
+							audio.low_hp_mode = (_hp <= 25 and _hp > 0)
+							(_ui["dmg_flash"] as ColorRect).color = Color(0.35, 0.90, 1.0, 0.65)
+							_shake_amount = maxf(_shake_amount, 0.08)
+							_show_toast("A-60' (Prime) нанёс 35 урона! Прячьтесь в шкаф!", 2.4)
+							if _hp <= 0:
+								_trigger_death("A-60'", "", {"distance": d_player})
+								return
+					else:
+						a60_scare_rect.visible = true
+						a60_scare_rect.texture = _a60_sprite.texture
+						a60_scare_rect.modulate = Color(1.0, 0.92, 0.92, 0.96)
+						var vp := get_viewport().get_visible_rect().size
+						a60_scare_rect.position = vp * 0.5 - Vector2(270, 270)
+						audio.play_a60_jumpscare(false)
+						_hp = 0
+						audio.low_hp_mode = false
+						(_ui["dmg_flash"] as ColorRect).color = Color(0.92, 0.08, 0.08, 0.78)
+						_trigger_death("A-60", "", {"distance": d_player})
+						return
 				else:
 					a60_scare_rect.visible = false
 			else:
@@ -3886,11 +4215,44 @@ func _process_entities(delta: float) -> void:
 			_a60_node.position.y = lerpf(1.55, -1.85, ease(sink_p, 2.0))
 			_a60_sprite.modulate.a = 1.0 - sink_p
 			if _a60_sink_timer <= 0.0:
+				var was_prime := _a60_is_prime
 				_a60_active = false
 				_a60_phase = 0
 				_a60_node.visible = false
 				_a60_sprite.modulate.a = 1.0
 				audio.stop_a60()
+
+				# MultiMonster Prime (A-60') follows regular A-60 starting after A-049 (A-50+)!
+				if is_auth:
+					if not was_prime and _highest_opened >= 50:
+						var p_prog := clampf(float(_highest_opened - 50) / 850.0, 0.0, 1.0)
+						var spawn_ch := lerpf(0.45, 0.90, p_prog)
+						if _rng.randf() < spawn_ch:
+							var max_chains := mini(1 + int(floor(p_prog * 3.0)), 4)
+							var chains := 1
+							for _c in range(max_chains - 1):
+								if _rng.randf() < lerpf(0.25, 0.72, p_prog):
+									chains += 1
+							var delay := lerpf(5.0, 3.0, p_prog)
+							_a60_prime_pending_timer = delay
+							_a60_prime_chains_left = chains - 1
+							_a60_prime_flicker_active = true
+							_a60_prime_flicker_gap_t = 0.0
+							if _net != null and _net.is_online():
+								_net.broadcast_entity_event({"k": "a60p_warn", "gap": 0.0}, true)
+					elif was_prime:
+						if _a60_prime_chains_left > 0:
+							_a60_prime_chains_left -= 1
+							var p_prog2 := clampf(float(_highest_opened - 50) / 850.0, 0.0, 1.0)
+							_a60_prime_flicker_active = true
+							_a60_prime_flicker_gap_t = 0.5
+							_a60_prime_pending_timer = lerpf(3.6, 2.6, p_prog2)
+							if _net != null and _net.is_online():
+								_net.broadcast_entity_event({"k": "a60p_warn", "gap": 0.5}, true)
+						else:
+							_a60_prime_flicker_active = false
+							if _net != null and _net.is_online():
+								_net.broadcast_entity_event({"k": "a60p_end"}, true)
 	else:
 		audio.a60_intensity = lerpf(audio.a60_intensity, 0.0, minf(delta * 4.0, 1.0))
 		static_rect.visible = false
@@ -3922,7 +4284,9 @@ func _process_entities(delta: float) -> void:
 			_a120_sprite.position.y = 0.0
 			_a120_sprite.scale = Vector3.ONE
 
-		if _a120_phase == 1:
+		if not is_auth:
+			_a120_node.position = _a120_node.position.lerp(_net_a120_tgt, clampf(1.0 - exp(-16.0 * delta), 0.0, 1.0))
+		elif _a120_phase == 1:
 			_a120_warn_timer -= delta
 			_shake_amount = maxf(_shake_amount, 0.012)
 			if _a120_warn_timer <= 0.0:
@@ -3937,21 +4301,22 @@ func _process_entities(delta: float) -> void:
 				var spd120 := 15.0
 				if _a120_substage == 0:
 					var live_tgt := _get_a120_live_target()
+					var tgt_room := _get_room_idx_near(live_tgt)
 					var move_tgt := live_tgt
-					if _a120_path_idx < _a120_path.size() and _get_room_idx_near(_a120_node.position) != _current_room_idx:
+					if _a120_path_idx < _a120_path.size() and _get_room_idx_near(_a120_node.position) != tgt_room:
 						move_tgt = _a120_path[_a120_path_idx]
 					var to_m := move_tgt - _a120_node.position
 					if to_m.length() <= spd120 * delta:
 						_a120_node.position = move_tgt
 						if move_tgt.distance_to(live_tgt) < 1.25:
 							var min_room := _rooms[0].index if not _rooms.is_empty() else 0
-							var prev_idx := maxi(min_room, _current_room_idx - _rng.randi_range(2, 4))
-							if prev_idx == _current_room_idx and min_room < _current_room_idx:
-								prev_idx = _current_room_idx - 1
+							var prev_idx := maxi(min_room, tgt_room - _rng.randi_range(2, 4))
+							if prev_idx == tgt_room and min_room < tgt_room:
+								prev_idx = tgt_room - 1
 							_a120_substage = 1
-							_a120_path = _build_a120_corridor_path(_current_room_idx, prev_idx)
-							if prev_idx == _current_room_idx and _room_by_idx.has(_current_room_idx):
-								var cr: RoomBuilder.RoomInstance = _room_by_idx[_current_room_idx]
+							_a120_path = _build_a120_corridor_path(tgt_room, prev_idx)
+							if prev_idx == tgt_room and _room_by_idx.has(tgt_room):
+								var cr: RoomBuilder.RoomInstance = _room_by_idx[tgt_room]
 								_a120_path = [cr.center_pos - cr.in_dir * 4.5 + Vector3(0.0, 1.55, 0.0)]
 							_a120_path_idx = 0
 						else:
@@ -3972,7 +4337,8 @@ func _process_entities(delta: float) -> void:
 							_a120_rebounds -= 1
 							_a120_pause_timer = 0.38
 							_a120_substage = 0
-							_a120_path = _build_a120_corridor_path(_get_room_idx_near(_a120_node.position), _current_room_idx)
+							var tgt_room2 := _get_room_idx_near(_get_a120_live_target())
+							_a120_path = _build_a120_corridor_path(_get_room_idx_near(_a120_node.position), tgt_room2)
 							_a120_path_idx = 0
 						else:
 							# Smooth retreat backwards into the far distance until completely inaudible
@@ -3999,10 +4365,22 @@ func _process_entities(delta: float) -> void:
 						_a120_substage = 0
 						_a120_node.visible = false
 						audio.stop_a120()
+						if _net != null and _net.is_online():
+							_net.broadcast_entity_event({"k": "a120_end"}, true)
 
-			if _a120_active and _a120_node.global_position.distance_to(cam.global_position) < 2.15 and not _is_hiding and _a120_hit_cd <= 0.0:
-				_handle_a120_hit()
-				return
+		if is_auth and send_ent_sync and _a120_active and _net != null and _net.is_online():
+			var p120 := _a120_node.position
+			_net.broadcast_entity_event({
+				"k": "a120_pos",
+				"p": [p120.x, p120.y, p120.z],
+				"ph": _a120_phase,
+				"ss": _a120_substage,
+				"room": _current_room_idx,
+			}, false)
+
+		if _a120_active and _a120_phase == 2 and _a120_node.global_position.distance_to(cam.global_position) < 2.15 and not _is_hiding and _a120_hit_cd <= 0.0:
+			_handle_a120_hit()
+			return
 
 	# --- A-90 / Paralysis (Freeze check, starts around A-009+) ---
 	if _a90_scare_timer > 0.0:
@@ -4089,6 +4467,8 @@ func _process_entities(delta: float) -> void:
 
 
 func _update_ui(delta: float) -> void:
+	if _state != State.PLAYING:
+		return
 	var dmg: ColorRect = _ui["dmg_flash"]
 	if dmg.color.a > 0.005:
 		dmg.color.a = maxf(dmg.color.a - delta * 1.4, 0.0)
@@ -4132,11 +4512,11 @@ func _update_ui(delta: float) -> void:
 		if _reticle_ring != null:
 			_reticle_ring.visible = false
 		if _hiding_kind == "under_desk":
-			prompt.text = "[W / S / E] Вылезти из-под тумбочки"
+			prompt.text = "[W / S] Вылезти из-под тумбочки"
 		elif _hiding_kind == "fridge":
-			prompt.text = "[W / E] Выйти вперёд  |  [S] Выйти лицом к холодильнику"
+			prompt.text = "[W] Выйти вперёд  |  [S] Выйти лицом к холодильнику"
 		else:
-			prompt.text = "[W / E] Выйти вперёд  |  [S] Выйти лицом к шкафу"
+			prompt.text = "[W] Выйти вперёд  |  [S] Выйти лицом к шкафу"
 		want_prompt = true
 	else:
 		interact_tgt = _find_smart_reticle_target()
@@ -4181,11 +4561,25 @@ func _update_ui(delta: float) -> void:
 		var rem: Label = _ui["reminder_lbl"]
 		var want_rem := (not _reminder_dismissed and not _is_hiding)
 		if want_rem:
-			rem.text = "Reminder: [WHITE] to turn flashlight." if _mobile_controls_enabled else "Reminder: [F] to turn flashlight."
+			rem.text = "Reminder: [WHITE] to turn flashlight." if _mobile_controls_enabled else "Reminder: [RMB] to turn flashlight."
 		var rem_rate := 6.5 if want_rem else 5.5
 		_reminder_alpha = lerpf(_reminder_alpha, 1.0 if want_rem else 0.0, clampf(1.0 - exp(-rem_rate * delta), 0.0, 1.0))
 		rem.modulate.a = _reminder_alpha
 		rem.visible = (_reminder_alpha > 0.01)
+
+	if _ui.has("bat_lbl"):
+		var bat_lbl: Label = _ui["bat_lbl"]
+		var show_bat := (_batteries > 0 or _std_low_power or _std_battery <= 30.0)
+		bat_lbl.visible = show_bat
+		if show_bat:
+			var b_txt := "Батарейки: %d" % _batteries
+			if _std_battery <= 0.05:
+				b_txt += "  |  Фонарик разряжен [R]"
+			elif _std_low_power or _std_battery <= 30.0:
+				b_txt += "  |  Слабый заряд [R]"
+			elif _batteries >= 2 and _std_battery < 149.9:
+				b_txt += "  |  [R] Зарядить"
+			bat_lbl.text = b_txt
 
 	_update_mobile_ui(interact_tgt)
 
@@ -4203,11 +4597,14 @@ func _update_mobile_ui(_interact_tgt: Dictionary) -> void:
 	var b_sprint: RoomsUI.RingButton = _ui["m_btn_sprint"]
 	var b_light: RoomsUI.RingButton = _ui["m_btn_light"]
 	var b_gummy: RoomsUI.RingButton = _ui["m_btn_gummy"]
+	var b_reload := _ui.get("m_btn_reload") as Control
 
 	if _is_hiding:
-		b_light.visible = false
+		b_light.visible = (_active_tool == 1)
 		b_sprint.visible = false
 		b_gummy.visible = false
+		if b_reload != null:
+			b_reload.visible = false
 		b_fwd.visible = true
 		b_back.visible = (_hiding_kind != "under_desk")
 	else:
@@ -4216,6 +4613,8 @@ func _update_mobile_ui(_interact_tgt: Dictionary) -> void:
 		b_light.visible = true
 		b_sprint.visible = true
 		b_gummy.visible = _has_gummy
+		if b_reload != null:
+			b_reload.visible = (_batteries >= 2 and _std_battery < 149.9)
 
 	b_light.ring_color = Color(1.0, 1.0, 1.0, 0.96) if _light_on else Color(0.88, 0.90, 0.94, 0.65)
 	b_light.queue_redraw()

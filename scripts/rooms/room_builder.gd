@@ -448,14 +448,14 @@ static func _populate_room_type(
 ) -> void:
 	if rtype == "lobby":
 		_build_desk(room_node, assets, Vector3(-2.7, 0.0, 0.8), PI * 0.5, r)
-		_build_pickup(room_node, assets, Vector3(-2.55, 0.78, 0.45), "battery", "Батарейка (+35%)")
-		_build_pickup(room_node, assets, Vector3(-2.75, 0.78, 1.10), "gummy", "Трясущийся фонарик [2]")
+		_build_pickup(room_node, assets, Vector3(-2.55, 0.78, 0.45), "battery", "Батарейка (+1)")
+		_build_pickup(room_node, assets, Vector3(-2.75, 0.78, 1.10), "gummy", "Трясосвет [2]")
 		_build_cardboard_box(room_node, assets, Vector3(-3.3, 0.42, -2.5), 0.84)
 		_build_cardboard_box(room_node, assets, Vector3(-3.2, 1.15, -2.4), 0.62)
 		_build_potted_plant(room_node, assets, Vector3(3.3, 0.0, -4.5))
 		_build_locker(room_node, assets, Vector3(HALF_W - 0.48, 0.0, -0.5), -PI * 0.5, r)
 		var sign := Label3D.new()
-		sign.text = "СЕКЦИЯ A — ВХОД A-000\n\n[E / ЛКМ] — Открывать двери, прятаться (шкаф/холодильник/тумбочка)\n[F] — Фонарик   |   [R] — Потрясти фонарик [2]   |   [Shift] — Бег\nСледите за статикой и светом!"
+		sign.text = "СЕКЦИЯ A — ВХОД A-000\n\n[ЛКМ] — Открывать двери, прятаться (шкаф/холодильник/тумбочка)\n[ПКМ] — Вкл/выкл фонарик или зажать для зарядки Трясосвета [2]\n[R] — Зарядить фонарик (2 батарейки)   |   [Shift] — Бег"
 		sign.font_size = 34
 		sign.pixel_size = 0.0044
 		sign.position = Vector3(-HALF_W + 0.05, 2.05, -1.6)
@@ -625,7 +625,7 @@ static func _populate_room_type(
 
 static func _maybe_spawn_loot(room_node: Node3D, assets: SharedAssets, pos: Vector3, room_index: int, rng: RandomNumberGenerator) -> void:
 	if rng.randf() < 0.34:
-		_build_pickup(room_node, assets, pos, "battery", "Батарейка (+35%)")
+		_build_pickup(room_node, assets, pos, "battery", "Батарейка (+1)")
 	elif room_index > 8 and rng.randf() < 0.14:
 		_build_pickup(room_node, assets, pos, "medkit", "Аптечка (+45 HP)")
 
@@ -664,7 +664,7 @@ static func _build_locker(room_node: Node3D, assets: SharedAssets, local_pos: Ve
 		"door_pivot": door_pivot,
 		"eye_local": Vector3(0.0, 1.48, 0.05),
 		"exit_local": Vector3(0.0, 0.05, 1.05),
-		"label": "[E] Спрятаться в шкафу",
+		"label": "[ЛКМ] Спрятаться в шкафу",
 	})
 
 
@@ -718,7 +718,7 @@ static func _build_fridge_hider(room_node: Node3D, assets: SharedAssets, local_p
 		"door_pivot": door_pivot,
 		"eye_local": Vector3(0.0, 1.44, 0.08),
 		"exit_local": Vector3(0.0, 0.05, 1.15),
-		"label": "[E] Спрятаться в холодильнике",
+		"label": "[ЛКМ] Спрятаться в холодильнике",
 	})
 
 
@@ -743,7 +743,7 @@ static func _build_desk(room_node: Node3D, assets: SharedAssets, local_pos: Vect
 			"door_pivot": null,
 			"eye_local": Vector3(0.0, 0.46, 0.0),
 			"exit_local": Vector3(0.0, 0.05, 1.02),
-			"label": "[E] Залезть под тумбочку",
+			"label": "[ЛКМ] Залезть под тумбочку",
 		})
 
 
