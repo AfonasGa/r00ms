@@ -16,7 +16,6 @@
       --card-border: rgba(255, 255, 255, 0.1);
       --card-border-hover: rgba(255, 255, 255, 0.35);
       
-      /* Strict palette: Black, White, Grays + Crimson Red */
       --white: #ffffff;
       --gray-100: #e5e5eb;
       --gray-200: #cccccc;
@@ -37,6 +36,7 @@
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+      cursor: none !important; /* Hide native cursor */
     }
 
     html {
@@ -51,6 +51,75 @@
       overflow-x: hidden;
       line-height: 1.6;
       position: relative;
+    }
+
+    /* CUSTOM IN-GAME CROSSHAIR CURSOR */
+    #cursor-dot {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 4px;
+      background: #ffffff;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 10000;
+      transform: translate(-50%, -50%);
+      transition: opacity 0.2s;
+    }
+
+    #cursor-ring {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 28px;
+      height: 28px;
+      border: 2px solid rgba(255, 255, 255, 0.75);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -50%);
+      transition: width 0.22s cubic-bezier(0.165, 0.84, 0.44, 1),
+                  height 0.22s cubic-bezier(0.165, 0.84, 0.44, 1),
+                  border-color 0.22s,
+                  background-color 0.22s,
+                  transform 0.08s ease-out;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+    }
+
+    /* Cursor states */
+    #cursor-ring.hover-active {
+      width: 46px;
+      height: 46px;
+      border-color: rgba(255, 255, 255, 1);
+      background-color: rgba(255, 255, 255, 0.08);
+      box-shadow: 0 0 18px rgba(255, 255, 255, 0.5);
+    }
+
+    #cursor-ring.danger-active {
+      width: 52px;
+      height: 52px;
+      border-color: var(--red);
+      background-color: rgba(255, 43, 43, 0.12);
+      box-shadow: 0 0 20px var(--red);
+    }
+
+    #cursor-ring.clicking {
+      transform: translate(-50%, -50%) scale(0.8);
+      border-width: 3px;
+    }
+
+    /* FLASHLIGHT SPOTLIGHT ON MOUSE */
+    #flashlight {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 3;
+      background: radial-gradient(circle 380px at var(--mx, 50vw) var(--my, 50vh), 
+                  rgba(255, 255, 255, 0.04) 0%, 
+                  rgba(255, 255, 255, 0.015) 50%, 
+                  transparent 80%);
+      transition: opacity 0.3s;
     }
 
     /* Subtle background grid & noise */
@@ -72,7 +141,6 @@
       z-index: 2;
     }
 
-    /* Ambient vignettes & scanlines */
     .scanlines {
       position: fixed;
       inset: 0;
@@ -285,7 +353,7 @@
       flex-direction: column;
       justify-content: space-between;
       backdrop-filter: blur(25px);
-      transition: all 0.3s ease;
+      transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
       position: relative;
     }
 
@@ -336,7 +404,7 @@
       flex-grow: 1;
     }
 
-    /* Buttons: Monochromatic White/Gray with Red Accent */
+    /* Buttons */
     .btn {
       display: inline-flex;
       align-items: center;
@@ -350,7 +418,6 @@
       font-weight: 600;
       text-decoration: none;
       transition: all 0.25s ease;
-      cursor: pointer;
     }
 
     .btn-white {
@@ -377,7 +444,7 @@
       transform: translateY(-2px);
     }
 
-    /* Entities */
+    /* Entities Interactive Cards */
     .entities-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -392,11 +459,13 @@
       padding: 22px;
       backdrop-filter: blur(15px);
       transition: all 0.3s;
+      position: relative;
     }
 
     .entity-card:hover {
-      border-color: rgba(255, 255, 255, 0.3);
-      transform: translateY(-3px);
+      border-color: rgba(255, 43, 43, 0.45);
+      transform: translateY(-4px);
+      box-shadow: 0 10px 30px rgba(255, 43, 43, 0.12);
     }
 
     .entity-name {
@@ -430,6 +499,106 @@
       border: 1px solid rgba(255, 255, 255, 0.12);
       text-transform: uppercase;
       font-weight: 600;
+    }
+
+    /* INTERACTIVE SIMULATOR CARD */
+    .sim-card {
+      background: rgba(14, 14, 18, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      padding: 28px;
+      margin-bottom: 85px;
+      backdrop-filter: blur(20px);
+    }
+
+    .sim-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 12px;
+    }
+
+    .sim-title {
+      font-family: var(--mono);
+      font-size: 1.15rem;
+      color: var(--white);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sim-status {
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      color: var(--gray-400);
+    }
+
+    .sim-screen {
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 24px;
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: background-color 0.3s, border-color 0.3s;
+    }
+
+    .sim-screen.alert {
+      background: rgba(255, 43, 43, 0.1);
+      border-color: var(--red);
+    }
+
+    .sim-main-text {
+      font-family: var(--mono);
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: 8px;
+      letter-spacing: 2px;
+    }
+
+    .sim-sub-text {
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      color: var(--gray-400);
+    }
+
+    .sim-actions {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .sim-btn {
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--white);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      transition: all 0.2s;
+    }
+
+    .sim-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.35);
+    }
+
+    .sim-btn.active {
+      background: var(--white);
+      color: #000;
+      border-color: var(--white);
     }
 
     /* Mechanics */
@@ -527,10 +696,17 @@
       .nav-links { display: none; }
       .container { padding-top: 15px; }
       h1.hero-title { letter-spacing: 8px; }
+      #cursor-dot, #cursor-ring { display: none; }
+      * { cursor: auto !important; }
     }
   </style>
 </head>
 <body>
+  <!-- IN-GAME CUSTOM CURSOR -->
+  <div id="cursor-dot"></div>
+  <div id="cursor-ring"></div>
+  <div id="flashlight"></div>
+
   <div class="bg-grid"></div>
   <canvas id="particles"></canvas>
   <div class="scanlines"></div>
@@ -539,36 +715,66 @@
   <div class="container">
     <!-- NAV -->
     <nav class="nav">
-      <a href="#" class="nav-brand">
+      <a href="#" class="nav-brand interactive">
         <img src="icon.png" alt="r00ms Logo">
         <span>R00MS</span>
       </a>
       <div class="nav-links">
-        <a href="#downloads">Скачать</a>
-        <a href="#entities">Сущности</a>
-        <a href="#mechanics">Механики</a>
-        <a href="#controls">Управление</a>
-        <a href="https://github.com/AfonasGa/r00ms" target="_blank">GitHub</a>
+        <a href="#downloads" class="interactive">Скачать</a>
+        <a href="#simulator" class="interactive">Симулятор</a>
+        <a href="#entities" class="interactive">Сущности</a>
+        <a href="#mechanics" class="interactive">Механики</a>
+        <a href="#controls" class="interactive">Управление</a>
+        <a href="https://github.com/AfonasGa/r00ms" target="_blank" class="interactive">GitHub</a>
       </div>
     </nav>
 
     <!-- HERO -->
     <section class="hero">
-      <div class="hero-badge">
+      <div class="hero-badge danger-target">
         <span class="dot"></span>
         <span>Version 1.0.0 Stable</span>
       </div>
 
-      <div class="logo-container">
+      <div class="logo-container interactive">
         <img src="icon.png" alt="r00ms" class="logo-img">
       </div>
 
-      <h1 class="hero-title">R00MS</h1>
+      <h1 class="hero-title interactive">R00MS</h1>
       <p class="hero-subtitle">
         Психологический сурвайвал-хоррор от первого лица на Godot 4. Бесконечные пустые коридоры, менеджмент света и охота сущностей.
       </p>
-      <div class="quote-box">
-        &gt; Тысяча комнат. Двенадцать шагов до темноты. Если свет начал мерцать — у тебя считанные секунды.
+      <div class="quote-box danger-target">
+        &gt; Тысяча комнат. Двенадцать шагов до темноты. Наведите прицел, чтобы осмотреться.
+      </div>
+    </section>
+
+    <!-- INTERACTIVE SIMULATOR SECTION -->
+    <section id="simulator">
+      <div class="section-header">
+        <h2 class="section-title">Интерактивный симулятор выживания</h2>
+        <span class="section-tag">Interactive Terminal</span>
+      </div>
+
+      <div class="sim-card">
+        <div class="sim-header">
+          <div class="sim-title">
+            <span>КОМНАТА: <span id="room-num" style="color:var(--white);">A-024</span></span>
+          </div>
+          <div class="sim-status" id="sim-status">Статус: Норма</div>
+        </div>
+
+        <div class="sim-screen" id="sim-screen">
+          <div class="sim-main-text" id="sim-main">КОРИДОР ЧИСТ</div>
+          <div class="sim-sub-text" id="sim-sub">Свет стабилен. Впереди дверь A-025.</div>
+        </div>
+
+        <div class="sim-actions">
+          <button class="sim-btn interactive" id="btn-next-room">&gt; Открыть следующую дверь</button>
+          <button class="sim-btn interactive" id="btn-locker">&gt; Залезть в шкаф [Hide]</button>
+          <button class="sim-btn interactive" id="btn-flashlight">&gt; Вкл/Выкл фонарь</button>
+          <button class="sim-btn interactive danger-target" id="btn-trigger-a60" style="border-color:var(--red-border);color:var(--red);">&gt; Вызвать сущность A-60</button>
+        </div>
       </div>
     </section>
 
@@ -581,7 +787,7 @@
 
       <div class="downloads-grid">
         <!-- Windows -->
-        <div class="card">
+        <div class="card interactive">
           <div>
             <div class="card-top">
               <span class="card-platform">PC / Windows</span>
@@ -592,13 +798,13 @@
               Версия для ПК с максимальным качеством рендера Forward+, поддержкой мыши, клавиатуры и Steam P2P кооператива.
             </p>
           </div>
-          <a href="https://github.com/AfonasGa/r00ms/releases/download/stable/stable1.0.0.rar" class="btn btn-white">
+          <a href="https://github.com/AfonasGa/r00ms/releases/download/stable/stable1.0.0.rar" class="btn btn-white interactive">
             Скачать для Windows
           </a>
         </div>
 
         <!-- Android -->
-        <div class="card">
+        <div class="card interactive">
           <div>
             <div class="card-top">
               <span class="card-platform">Android</span>
@@ -609,13 +815,13 @@
               Сборка для мобильных устройств с экранным сенсорным джойстиком, кнопками действий и поддержкой полного экрана.
             </p>
           </div>
-          <a href="https://github.com/AfonasGa/r00ms/releases/download/stable/r00ms.apk" class="btn btn-outline">
+          <a href="https://github.com/AfonasGa/r00ms/releases/download/stable/r00ms.apk" class="btn btn-outline interactive">
             Скачать APK (Android)
           </a>
         </div>
 
         <!-- iOS -->
-        <div class="card">
+        <div class="card interactive">
           <div>
             <div class="card-top">
               <span class="card-platform">iOS</span>
@@ -626,7 +832,7 @@
               Пакет IPA без подписи (unsigned). Установка через Sideloadly, AltStore, SideStore или TrollStore без платного аккаунта разработчика.
             </p>
           </div>
-          <a href="https://github.com/AfonasGa/r00ms/releases/download/stable/r00ms-iOS-unsigned.ipa" class="btn btn-outline">
+          <a href="https://github.com/AfonasGa/r00ms/releases/download/stable/r00ms-iOS-unsigned.ipa" class="btn btn-outline interactive">
             Скачать IPA (iOS)
           </a>
         </div>
@@ -641,7 +847,7 @@
       </div>
 
       <div class="entities-grid">
-        <div class="entity-card">
+        <div class="entity-card danger-target">
           <div class="entity-name">
             <span>A-60</span>
             <span class="tag-red">Fatal</span>
@@ -651,7 +857,7 @@
           </p>
         </div>
 
-        <div class="entity-card">
+        <div class="entity-card danger-target">
           <div class="entity-name">
             <span>A-60′</span>
             <span class="tag-red">Prime</span>
@@ -661,7 +867,7 @@
           </p>
         </div>
 
-        <div class="entity-card">
+        <div class="entity-card danger-target">
           <div class="entity-name">
             <span>A-120</span>
             <span class="tag-gray">Agile</span>
@@ -671,7 +877,7 @@
           </p>
         </div>
 
-        <div class="entity-card">
+        <div class="entity-card interactive">
           <div class="entity-name">
             <span>Архитектор</span>
             <span class="tag-gray">Terminal</span>
@@ -691,17 +897,17 @@
       </div>
 
       <div class="mechanics-grid">
-        <div class="mechanic-card">
+        <div class="mechanic-card interactive">
           <h3>Синхронная генерация</h3>
           <p class="card-desc">Все комнаты от A-000 до A-1000 генерируются на общем семени. В мультиплеере у всех участников маршрут полностью идентичен.</p>
         </div>
 
-        <div class="mechanic-card">
+        <div class="mechanic-card interactive">
           <h3>Два типа фонарей</h3>
           <p class="card-desc">Батарейный фонарь (2 минуты работы, тусклый режим с мерцанием за 30 сек до отключения) и динамо-трясосвет с ручной подзарядкой.</p>
         </div>
 
-        <div class="mechanic-card">
+        <div class="mechanic-card interactive">
           <h3>Укрытия и Спектатор</h3>
           <p class="card-desc">Шкафы и столы с проверкой занятости (только один игрок в укрытии) и режим наблюдения за выжившими напарниками после смерти.</p>
         </div>
@@ -715,7 +921,7 @@
         <span class="section-tag">Keybindings</span>
       </div>
 
-      <div class="controls-box">
+      <div class="controls-box interactive">
         <table class="controls-table">
           <thead>
             <tr>
@@ -772,13 +978,148 @@
 
     <!-- FOOTER -->
     <footer>
-      <div>r00ms &copy; 2026. Распространяется под лицензией <a href="https://github.com/AfonasGa/r00ms/blob/main/LICENSE" target="_blank">MIT</a>.</div>
-      <div>Репозиторий проекта: <a href="https://github.com/AfonasGa/r00ms" target="_blank">github.com/AfonasGa/r00ms</a></div>
+      <div>r00ms &copy; 2026. Распространяется под лицензией <a href="https://github.com/AfonasGa/r00ms/blob/main/LICENSE" target="_blank" class="interactive">MIT</a>.</div>
+      <div>Репозиторий проекта: <a href="https://github.com/AfonasGa/r00ms" target="_blank" class="interactive">github.com/AfonasGa/r00ms</a></div>
     </footer>
   </div>
 
   <script>
-    // Minimalist monochrome particle system
+    // 1. SMART CUSTOM CROSSHAIR CURSOR (FROM THE GAME)
+    const dot = document.getElementById('cursor-dot');
+    const ring = document.getElementById('cursor-ring');
+    const flashlight = document.getElementById('flashlight');
+
+    let mouseX = window.innerWidth / 2;
+    let mouseY = window.innerHeight / 2;
+    let ringX = mouseX;
+    let ringY = mouseY;
+
+    window.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+
+      dot.style.transform = `translate(${mouseX}px, ${mouseY}px) translate(-50%, -50%)`;
+      flashlight.style.setProperty('--mx', mouseX + 'px');
+      flashlight.style.setProperty('--my', mouseY + 'px');
+    });
+
+    window.addEventListener('mousedown', () => {
+      ring.classList.add('clicking');
+    });
+
+    window.addEventListener('mouseup', () => {
+      ring.classList.remove('clicking');
+    });
+
+    // Smooth physics ring follow
+    function updateCursor() {
+      ringX += (mouseX - ringX) * 0.22;
+      ringY += (mouseY - ringY) * 0.22;
+      ring.style.left = `${ringX}px`;
+      ring.style.top = `${ringY}px`;
+      requestAnimationFrame(updateCursor);
+    }
+    updateCursor();
+
+    // Smart context detection for cursor states
+    function setupCursorListeners() {
+      document.querySelectorAll('.interactive, a, button, input, .card').forEach((el) => {
+        el.addEventListener('mouseenter', () => ring.classList.add('hover-active'));
+        el.addEventListener('mouseleave', () => ring.classList.remove('hover-active'));
+      });
+
+      document.querySelectorAll('.danger-target').forEach((el) => {
+        el.addEventListener('mouseenter', () => {
+          ring.classList.add('danger-active');
+        });
+        el.addEventListener('mouseleave', () => {
+          ring.classList.remove('danger-active');
+        });
+      });
+    }
+    setupCursorListeners();
+
+    // 2. INTERACTIVE IN-GAME ROOM SIMULATOR
+    let currentRoom = 24;
+    let inLocker = false;
+    let flashOn = true;
+    let a60Attacking = false;
+
+    const roomNumEl = document.getElementById('room-num');
+    const simScreen = document.getElementById('sim-screen');
+    const simMain = document.getElementById('sim-main');
+    const simSub = document.getElementById('sim-sub');
+    const simStatus = document.getElementById('sim-status');
+    const btnLocker = document.getElementById('btn-locker');
+    const btnFlash = document.getElementById('btn-flashlight');
+
+    document.getElementById('btn-next-room').addEventListener('click', () => {
+      if (inLocker) {
+        alert("Вы сидите в шкафу! Сначала выйдите наружу.");
+        return;
+      }
+      if (a60Attacking) {
+        simScreen.classList.add('alert');
+        simMain.innerText = "ПОГИБЕЛЬ: A-60";
+        simSub.innerText = "Вы открыли дверь во время пролета сущности.";
+        simStatus.innerText = "Статус: DEAD";
+        return;
+      }
+      currentRoom++;
+      roomNumEl.innerText = "A-" + String(currentRoom).padStart(3, '0');
+      simMain.innerText = "КОРИДОР A-" + String(currentRoom).padStart(3, '0');
+      simSub.innerText = "Дверь с тихим щелчком открыта. Идите вперед.";
+      simStatus.innerText = "Статус: Исследование";
+    });
+
+    btnLocker.addEventListener('click', () => {
+      inLocker = !inLocker;
+      if (inLocker) {
+        btnLocker.innerText = "> Выйти из шкафа [Exit]";
+        btnLocker.classList.add('active');
+        simMain.innerText = "ВЫ В УКТЫТИИ (ШКАФ)";
+        simSub.innerText = "Камера зафиксирована. Не сидите слишком долго, чтобы не пришла Тьма.";
+        simStatus.innerText = "Статус: Спрятан";
+      } else {
+        btnLocker.innerText = "> Залезть в шкаф [Hide]";
+        btnLocker.classList.remove('active');
+        simMain.innerText = "КОРИДОР";
+        simSub.innerText = "Вы вышли наружу в комнату.";
+        simStatus.innerText = "Статус: В комнате";
+      }
+    });
+
+    btnFlash.addEventListener('click', () => {
+      flashOn = !flashOn;
+      flashlight.style.opacity = flashOn ? '1' : '0.1';
+      btnFlash.innerText = flashOn ? "> Выключить фонарь" : "> Включить фонарь";
+      simSub.innerText = flashOn ? "Фонарик включен (заряд расходуется)." : "Фонарик выключен (полная темнота).";
+    });
+
+    document.getElementById('btn-trigger-a60').addEventListener('click', () => {
+      if (a60Attacking) return;
+      a60Attacking = true;
+      simScreen.classList.add('alert');
+      simMain.innerText = "⚠️ ВНИМАНИЕ: A-60 ПРИБЛИЖАЕТСЯ!";
+      simSub.innerText = "Слышен грохот за стеной! Срочно прячьтесь в шкаф!";
+      simStatus.innerText = "Статус: АТАКА СУЩНОСТИ";
+
+      setTimeout(() => {
+        if (inLocker) {
+          simScreen.classList.remove('alert');
+          simMain.innerText = "A-60 ПРОМЧАЛСЯ МИМО";
+          simSub.innerText = "Вы успешно переждали атаку в укрытии. Выжили!";
+          simStatus.innerText = "Статус: В безопасности";
+        } else {
+          simMain.innerText = "ВЫ ПОГИБЛИ ОТ A-60";
+          simSub.innerText = "Вы не успели залезть в шкаф. Архитектор фиксирует смерть...";
+          simStatus.innerText = "Статус: FATAL";
+        }
+        a60Attacking = false;
+      }, 3500);
+    });
+
+    // 3. BACKGROUND PARTICLES
     const canvas = document.getElementById('particles');
     const ctx = canvas.getContext('2d');
     let width, height;
