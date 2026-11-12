@@ -146,28 +146,44 @@ jobs:
       - name: Import & Export iOS Xcode Project
         run: |
           set -euo pipefail
-          GODOT_BIN="/tmp/godot-macos/Godot.app/Contents/MacOS/Godot"
+          GODOT_BIN=$(find /tmp/godot-macos -type f -name "Godot" -path "*/Contents/MacOS/*" | head -n1)
+          if [ -z "$GODOT_BIN" ]; then
+            GODOT_BIN="/tmp/godot-macos/Godot.app/Contents/MacOS/Godot"
+          fi
+          chmod +x "$GODOT_BIN" || true
+          echo "Using Godot macOS binary: $GODOT_BIN"
           mkdir -p build/ios
-          "$GODOT_BIN" --headless --import --quit-after 300
+          "$GODOT_BIN" --headless --import --quit-after 300 || true
           "$GODOT_BIN" --headless --export-release "iOS" build/ios/r00ms.ipa
           test -d build/ios/r00ms.xcodeproj
 
       - name: Build Unsigned iOS App & Package IPA
         run: |
           set -euo pipefail
+          SCHEME=$(xcodebuild -list -project build/ios/r00ms.xcodeproj 2>/dev/null | awk '/Schemes:/{flag=1; next} flag && NF {print $1; exit}')
+          if [ -z "$SCHEME" ]; then
+            SCHEME="r00ms"
+          fi
+          echo "Building Scheme: $SCHEME"
           xcodebuild \
             -project build/ios/r00ms.xcodeproj \
-            -scheme r00ms \
+            -scheme "$SCHEME" \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build/ios/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
             DEVELOPMENT_TEAM="" \
             build
           mkdir -p build/ios/ipa_stage/Payload build/ios/out
-          cp -R build/ios/DerivedData/Build/Products/Release-iphoneos/r00ms.app build/ios/ipa_stage/Payload/
+          APP_PATH=$(find build/ios/DerivedData -name "*.app" -type d | head -n1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH="build/ios/DerivedData/Build/Products/Release-iphoneos/r00ms.app"
+          fi
+          echo "Found app at: $APP_PATH"
+          cp -R "$APP_PATH" build/ios/ipa_stage/Payload/
           (cd build/ios/ipa_stage && zip -qry ../out/r00ms-iOS-unsigned.ipa Payload)
           test -s build/ios/out/r00ms-iOS-unsigned.ipa
           ls -lh build/ios/out/r00ms-iOS-unsigned.ipa
