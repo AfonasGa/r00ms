@@ -720,6 +720,7 @@
         <span>R00MS</span>
       </a>
       <div class="nav-links">
+        <a href="play/" class="interactive" style="color:var(--white);font-weight:700;">▶ Играть в браузере</a>
         <a href="#downloads" class="interactive">Скачать</a>
         <a href="#simulator" class="interactive">Симулятор</a>
         <a href="#entities" class="interactive">Сущности</a>
@@ -785,7 +786,24 @@
         <span class="section-tag">Stable Releases</span>
       </div>
 
-      <div class="downloads-grid">
+      <div class="downloads-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
+        <!-- Play in Web -->
+        <div class="card interactive" style="border-color: rgba(255, 255, 255, 0.4); background: rgba(25, 25, 32, 0.85);">
+          <div>
+            <div class="card-top">
+              <span class="card-platform" style="background: rgba(255, 255, 255, 0.15); color: var(--white);">WEB / ONLINE</span>
+            </div>
+            <div class="card-title">Веб-версия</div>
+            <div class="card-file">HTML5 / WebAssembly</div>
+            <p class="card-desc">
+              Запуск игры прямо в браузере без скачивания и установки. Поддерживает клавиатуру и мышь.
+            </p>
+          </div>
+          <a href="play/" class="btn btn-white interactive" style="background:var(--white);color:#000;font-weight:700;">
+            ▶ Играть онлайн
+          </a>
+        </div>
+
         <!-- Windows -->
         <div class="card interactive">
           <div>
