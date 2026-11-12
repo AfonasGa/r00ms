@@ -30,6 +30,12 @@ var _a60_door_break: AudioStreamPlayer
 var _a60_jumpscare: AudioStreamPlayer
 var _death_player: AudioStreamPlayer
 var _darkness_whisper: AudioStreamPlayer
+var _foot_iron: AudioStreamPlayer
+var _foot_carpet: AudioStreamPlayer
+var _foot_iron_cutoff := 0.0
+var _foot_carpet_cutoff := 0.0
+var _foot_iron_cursor := 0
+var _foot_carpet_cursor := 0
 var _a60_stream_active := false
 var _hs_pitch_timer := 0.0
 var _hs_pitch_cur := 1.0
@@ -86,6 +92,8 @@ func _setup_a120_players() -> void:
 	_a60_door_break = _make_stream_player("res://assets/sound/a60/A60BreakingDoor.ogg", false, "Master")
 	_a60_jumpscare = _make_stream_player("res://assets/sound/a60/A60_Jumpscare.ogg", false, "Master")
 	_darkness_whisper = _make_stream_player("res://assets/sound/darkness/darkness_whisper.ogg", true, "Master")
+	_foot_iron = _make_stream_player("res://assets/sound/foot/footsteps-iron-record.mp3", false, "Master")
+	_foot_carpet = _make_stream_player("res://assets/sound/foot/hard-carpet-footwork-shoes-footsteps-walking-ntg3.mp3", false, "Master")
 
 
 func _make_stream_player(res_path: String, should_loop: bool, bus_name: String) -> AudioStreamPlayer:
@@ -349,10 +357,43 @@ func update_a120_mix(delta: float, distance: float, phase: int) -> bool:
 	return drum_hit
 
 
-func play_step(sprinting: bool) -> void:
+func play_step(sprinting: bool, surface: String = "carpet") -> void:
 	if muted:
 		return
-	_add_voice(95.0 if not sprinting else 120.0, 42.0, 0.09, 0.16 if not sprinting else 0.22, "noise_thud")
+	var m_db := linear_to_db(clampf(master_volume, 0.05, 1.0))
+	var is_metal := (surface == "metal")
+	var player: AudioStreamPlayer = _foot_iron if is_metal else _foot_carpet
+	if player != null and player.stream != null:
+		var stream_len := player.stream.get_length()
+		var slice_dur := 0.23 if sprinting else 0.27
+		var start_sec := 0.12
+		if stream_len > 1.2:
+			var step_slots := 6
+			var cursor := _foot_iron_cursor if is_metal else _foot_carpet_cursor
+			cursor = (cursor + 1 + _hs_rng.randi_range(0, 1)) % step_slots
+			if is_metal:
+				_foot_iron_cursor = cursor
+			else:
+				_foot_carpet_cursor = cursor
+			var usable := maxf(stream_len - slice_dur - 0.35, 0.4)
+			start_sec = 0.14 + (float(cursor) / float(step_slots)) * usable
+		player.pitch_scale = _hs_rng.randf_range(1.06, 1.18) if sprinting else _hs_rng.randf_range(0.92, 1.04)
+		if is_metal:
+			# Louder metallic iron footsteps as requested!
+			player.volume_db = (-2.0 if sprinting else -4.8) + m_db
+			_foot_iron_cutoff = slice_dur
+			if _foot_carpet != null:
+				_foot_carpet.stop()
+		else:
+			player.volume_db = (-10.5 if sprinting else -13.5) + m_db
+			_foot_carpet_cutoff = slice_dur
+			if _foot_iron != null:
+				_foot_iron.stop()
+		player.play(start_sec)
+		return
+	# Fallback synthesized step if stream missing
+	var amp := (0.28 if is_metal else 0.16) if not sprinting else (0.38 if is_metal else 0.22)
+	_add_voice(180.0 if is_metal else 95.0, 56.0 if is_metal else 42.0, 0.09, amp, "square_thud" if is_metal else "noise_thud")
 
 
 func play_door_open() -> void:
@@ -455,6 +496,14 @@ func _next_noise() -> float:
 
 
 func _process(delta: float) -> void:
+	if _foot_iron_cutoff > 0.0:
+		_foot_iron_cutoff -= delta
+		if _foot_iron_cutoff <= 0.0 and _foot_iron != null and _foot_iron.playing:
+			_foot_iron.stop()
+	if _foot_carpet_cutoff > 0.0:
+		_foot_carpet_cutoff -= delta
+		if _foot_carpet_cutoff <= 0.0 and _foot_carpet != null and _foot_carpet.playing:
+			_foot_carpet.stop()
 	if _playback == null:
 		_playback = get_stream_playback() as AudioStreamGeneratorPlayback
 		if _playback == null:

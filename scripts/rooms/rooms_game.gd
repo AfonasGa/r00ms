@@ -65,6 +65,10 @@ var _hide_time := 0.0
 var _locker_blend := 0.0
 var _locker_transition_t := 1.0
 var _locker_transition_entering := false
+var _locker_transition_duration := 0.50
+var _locker_exit_face_locker := false
+var _locker_exit_from_yaw := 0.0
+var _locker_exit_to_yaw := 0.0
 var _locker_cam_from := Vector3.ZERO
 var _hiding_kind := "locker"
 var _hiding_door_pivot: Node3D = null
@@ -78,8 +82,8 @@ var _vm_std: Node3D = null
 var _vm_gummy: Node3D = null
 var _vm_std_bulb: MeshInstance3D = null
 var _vm_gummy_bulb: MeshInstance3D = null
-var _vm_crank: Node3D = null
-var _vm_crank_spin := 0.0
+var _vm_shake_time := 0.0
+var _gummy_hold_accum := 0.0
 var _vm_bulb_on_mat: StandardMaterial3D
 var _vm_bulb_off_mat: StandardMaterial3D
 var _vm_gummy_on_mat: StandardMaterial3D
@@ -158,22 +162,36 @@ var _arch_blip_acc := 0
 # Door swing animations
 var _opening_doors: Array[Dictionary] = []
 
-# UI refs
+# UI refs & Smart Reticle
 var _ui := {}
 var _toast_timer := 0.0
+var _reticle_ring: RoomsUI.ReticleRing = null
+var _reticle_screen_pos := Vector2.ZERO
+var _reticle_radius := 6.5
+var _smart_reticle_target: Dictionary = {}
+var _reminder_dismissed := false
 
 # Mobile multitouch controls
 var _mobile_controls_enabled := false
 var _mobile_override := 0 # 0=auto, 1=force on, -1=force off
 var _joy_touch_id := -1
 var _look_touch_id := -1
+var _tap_touch_id := -1
+var _tap_start_pos := Vector2.ZERO
+var _tap_start_time_ms := 0
 var _joy_origin := Vector2.ZERO
 var _joy_vec := Vector2.ZERO
 var _joy_sprint := false
-var _mobile_sprint_toggle := false
+var _mobile_sprint_held := false
+var _mobile_gummy_held := false
 var _joy_ring: Panel = null
 var _joy_knob: Panel = null
 var _mobile_btns: Array[Control] = []
+
+# Online Multiplayer (Steam Spacewar 480 + ENet)
+var _net: RoomsNet = null
+var _remote_players: Dictionary = {}
+var _lobby_list_box: VBoxContainer = null
 
 
 func _ready() -> void:
@@ -183,9 +201,132 @@ func _ready() -> void:
 	_setup_environment()
 	_build_entity_nodes()
 	_build_viewmodel()
+	_build_net()
 	_build_ui()
 	_refresh_mobile_mode()
 	_reset_run()
+
+
+func _build_net() -> void:
+	_net = RoomsNet.new()
+	_net.name = "RoomsNet"
+	add_child(_net)
+	_net.status_changed.connect(func(txt: String) -> void:
+		if _ui.has("net_status"):
+			(_ui["net_status"] as Label).text = txt
+	)
+	_net.lobbies_updated.connect(_on_net_lobbies_updated)
+	_net.state_received.connect(_on_remote_state)
+	_net.door_opened_remote.connect(_on_remote_door_opened)
+	_net.peer_disconnected.connect(_on_remote_peer_disconnected)
+
+
+func _on_net_lobbies_updated(lobbies: Array) -> void:
+	if _lobby_list_box == null:
+		return
+	for ch in _lobby_list_box.get_children():
+		ch.queue_free()
+	for raw_item in lobbies:
+		var item: Dictionary = raw_item
+		var lid := int(item.get("id", 0))
+		var lname := String(item.get("name", "Lobby"))
+		var members := int(item.get("members", 1))
+		var btn := Button.new()
+		btn.text = "Войти: %s (%d чел.)" % [lname, members]
+		RoomsUI.style_button(btn, Color(0.45, 0.88, 1.0), 12)
+		btn.pressed.connect(func() -> void:
+			if _net != null:
+				_net.join_steam_lobby(lid)
+		)
+		_lobby_list_box.add_child(btn)
+
+
+func _on_remote_door_opened(room_index: int) -> void:
+	for idx in range(maxi(room_index - 1, 0), room_index + 1):
+		var r: RoomBuilder.RoomInstance = _room_by_idx.get(idx)
+		if r != null and not r.door_opened:
+			_open_room_door(idx, true)
+
+
+func _on_remote_peer_disconnected(peer_key: String) -> void:
+	if _remote_players.has(peer_key):
+		var rp: Dictionary = _remote_players[peer_key]
+		var node: Variant = rp.get("node")
+		if node is Node3D and is_instance_valid(node):
+			(node as Node3D).queue_free()
+		_remote_players.erase(peer_key)
+
+
+func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
+	var rp: Dictionary
+	if _remote_players.has(peer_key):
+		rp = _remote_players[peer_key]
+	else:
+		var root_node := Node3D.new()
+		root_node.name = "Remote_" + peer_key
+		add_child(root_node)
+		var body_mat := StandardMaterial3D.new()
+		body_mat.albedo_color = Color(0.16, 0.45, 0.72)
+		body_mat.roughness = 0.55
+		var torso := RoomBuilder._add_cyl(root_node, "Torso", Vector3(0.0, 0.92, 0.0), 0.24, 1.15, body_mat)
+		torso.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var head_mat := StandardMaterial3D.new()
+		head_mat.albedo_color = Color(0.82, 0.72, 0.62)
+		var head := RoomBuilder._add_box(root_node, "Head", Vector3(0.0, 1.66, 0.0), Vector3(0.32, 0.34, 0.32), head_mat, false)
+		RoomBuilder._add_box(head, "Visor", Vector3(0.0, 0.02, -0.17), Vector3(0.24, 0.08, 0.04), _vm_bulb_on_mat, false)
+		var name_lbl := Label3D.new()
+		name_lbl.position = Vector3(0.0, 2.08, 0.0)
+		name_lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		name_lbl.font_size = 30
+		name_lbl.pixel_size = 0.004
+		name_lbl.modulate = Color(0.75, 0.94, 1.0)
+		name_lbl.text = String(msg.get("n", "Player"))
+		root_node.add_child(name_lbl)
+		var spot := SpotLight3D.new()
+		spot.position = Vector3(0.22, 1.38, -0.18)
+		spot.light_color = Color(1.0, 0.96, 0.88)
+		spot.light_energy = 1.8
+		spot.spot_range = 16.0
+		spot.spot_angle = 36.0
+		root_node.add_child(spot)
+		rp = {
+			"node": root_node,
+			"head": head,
+			"spot": spot,
+			"lbl": name_lbl,
+			"tgt_pos": Vector3.ZERO,
+			"tgt_yaw": 0.0,
+			"tgt_pitch": 0.0,
+		}
+		_remote_players[peer_key] = rp
+
+	var p_arr: Variant = msg.get("p", [0.0, 0.0, 0.0])
+	if p_arr is Array and (p_arr as Array).size() >= 3:
+		var a: Array = p_arr
+		rp["tgt_pos"] = Vector3(float(a[0]), float(a[1]), float(a[2]))
+	rp["tgt_yaw"] = float(msg.get("y", 0.0))
+	rp["tgt_pitch"] = float(msg.get("pt", 0.0))
+	var spot_node: SpotLight3D = rp["spot"]
+	spot_node.visible = bool(msg.get("l", false)) and not bool(msg.get("h", false))
+	var lbl_node: Label3D = rp["lbl"]
+	lbl_node.text = "%s [A-%03d]" % [String(msg.get("n", "Player")), int(msg.get("r", 0))]
+	var root_n: Node3D = rp["node"]
+	root_n.visible = not bool(msg.get("h", false))
+
+
+func _process_remote_players(delta: float) -> void:
+	var a := 1.0 - exp(-14.0 * delta)
+	for pk in _remote_players.keys():
+		var rp: Dictionary = _remote_players[pk]
+		var n: Node3D = rp["node"]
+		if not is_instance_valid(n):
+			continue
+		n.position = n.position.lerp(rp["tgt_pos"], a)
+		n.rotation.y = lerp_angle(n.rotation.y, float(rp["tgt_yaw"]), a)
+		var hd: Node3D = rp["head"]
+		hd.rotation.x = lerpf(hd.rotation.x, float(rp["tgt_pitch"]), a)
+		var sp: SpotLight3D = rp["spot"]
+		sp.rotation.x = hd.rotation.x
 
 
 func _load_entity_sprites() -> void:
@@ -292,7 +433,7 @@ func _build_viewmodel() -> void:
 	_vm_std_bulb.rotation.x = PI * 0.5
 	RoomBuilder._add_box(_vm_std, "StdBtn", Vector3(0.0, 0.025, -0.04), Vector3(0.016, 0.012, 0.024), _assets.medkit_mat, false)
 
-	# Emerald Gummy / Dynamo Flashlight model with spinning crank
+	# Emerald Gummy / Shaker Flashlight model (no crank, shaken directly)
 	_vm_gummy = Node3D.new()
 	_vm_gummy.visible = false
 	_vm_holder.add_child(_vm_gummy)
@@ -302,11 +443,6 @@ func _build_viewmodel() -> void:
 	gum_head.rotation.x = PI * 0.5
 	_vm_gummy_bulb = RoomBuilder._add_cyl(_vm_gummy, "GumLens", Vector3(0.0, 0.0, -0.136), 0.032, 0.008, _vm_gummy_on_mat)
 	_vm_gummy_bulb.rotation.x = PI * 0.5
-	_vm_crank = Node3D.new()
-	_vm_crank.position = Vector3(0.042, 0.0, 0.01)
-	_vm_gummy.add_child(_vm_crank)
-	RoomBuilder._add_box(_vm_crank, "CrankArm", Vector3(0.012, 0.028, 0.0), Vector3(0.015, 0.065, 0.015), _assets.fridge_mat, false)
-	RoomBuilder._add_box(_vm_crank, "CrankKnob", Vector3(0.026, 0.055, 0.0), Vector3(0.026, 0.016, 0.016), _assets.metal_mat, false)
 
 	# Stylized First-Person Hand / Arm for opening & closing lockers and fridges
 	_anim_hand = Node3D.new()
@@ -443,7 +579,7 @@ void fragment() {
 	root.add_child(hud_group)
 	_ui["hud_group"] = hud_group
 
-	# Diegetic Vitals Vignette (low HP crimson pulse + vivid blue sprint/exhaustion + The Darkness red vignette)
+	# Diegetic Static Vitals Vignette (NO heartbeat oscillation: static steady crimson HP/Darkness + vivid blue sprint/exhaustion)
 	var vitals_sh := Shader.new()
 	vitals_sh.code = """shader_type canvas_item;
 uniform float hp_loss : hint_range(0.0, 1.0) = 0.0;
@@ -454,20 +590,18 @@ uniform float darkness_amt : hint_range(0.0, 1.0) = 0.0;
 void fragment() {
 	vec2 p = (UV - 0.5) * vec2(1.45, 1.05);
 	float dist = length(p);
-	float breath = 0.5 + 0.5 * sin(TIME * 7.2);
-	float pulse = 0.5 + 0.5 * sin(TIME * 10.5);
 
 	float red_drive = max(clamp((hp_loss - 0.12) / 0.88, 0.0, 1.0), darkness_amt);
 	float red_edge = smoothstep(0.68 - red_drive * 0.36, 0.96, dist);
-	float red_a = red_edge * red_drive * (0.72 + 0.26 * pulse * clamp(red_drive * 1.4, 0.0, 1.0));
+	float red_a = red_edge * red_drive * 0.84;
 
 	float st_trigger = max(clamp((stam_loss - 0.04) / 0.96, 0.0, 1.0), exhausted_amt);
-	float st_edge = smoothstep(0.74 - st_trigger * 0.34 - exhausted_amt * 0.08 * breath, 0.97, dist);
-	float st_a = st_edge * st_trigger * (0.62 + 0.30 * exhausted_amt * breath);
+	float st_edge = smoothstep(0.74 - st_trigger * 0.34 - exhausted_amt * 0.06, 0.97, dist);
+	float st_a = st_edge * st_trigger * (0.68 + 0.24 * exhausted_amt);
 
 	float total_a = clamp(red_a + st_a * 0.85, 0.0, 0.90);
-	vec3 blood_col = mix(vec3(0.75, 0.03, 0.03), vec3(1.0, 0.06, 0.06), pulse);
-	vec3 sprint_col = mix(vec3(0.08, 0.38, 0.95), vec3(0.20, 0.62, 1.0), 0.35 + 0.65 * exhausted_amt * breath);
+	vec3 blood_col = vec3(0.88, 0.04, 0.04);
+	vec3 sprint_col = mix(vec3(0.08, 0.42, 0.98), vec3(0.22, 0.65, 1.0), 0.35 + 0.65 * exhausted_amt);
 	float w_red = red_a / (red_a + st_a + 0.0001);
 	vec3 col = mix(sprint_col, blood_col, clamp(w_red * 1.35, 0.0, 1.0));
 	COLOR = vec4(col, total_a);
@@ -506,26 +640,43 @@ void fragment() {
 	hud_group.add_child(darkness_rect)
 	_ui["darkness_rect"] = darkness_rect
 
-	# Center Dot Crosshair & Interaction Prompt
-	var crosshair := ColorRect.new()
-	crosshair.set_anchors_preset(Control.PRESET_CENTER)
-	crosshair.offset_left = -2
-	crosshair.offset_top = -2
-	crosshair.offset_right = 2
-	crosshair.offset_bottom = 2
-	crosshair.color = Color(1.0, 1.0, 1.0, 0.78)
-	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud_group.add_child(crosshair)
+	# Smart Hollow Ring Reticle (small normally, expands & glides to interactable center)
+	_reticle_ring = RoomsUI.ReticleRing.new()
+	_reticle_ring.ring_radius = 6.5
+	_reticle_ring.stroke_width = 1.9
+	var init_vp := get_viewport().get_visible_rect().size
+	_reticle_screen_pos = init_vp * 0.5
+	_reticle_ring.position = _reticle_screen_pos - _reticle_ring.size * 0.5
+	hud_group.add_child(_reticle_ring)
+	_ui["reticle_ring"] = _reticle_ring
+
+	# Diegetic crisp reminder (PC [F] / Mobile [WHITE]) matching screenshots
+	var reminder_lbl := Label.new()
+	reminder_lbl.set_anchors_preset(Control.PRESET_CENTER)
+	reminder_lbl.offset_left = -280
+	reminder_lbl.offset_right = 280
+	reminder_lbl.offset_top = 104
+	reminder_lbl.offset_bottom = 138
+	reminder_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	reminder_lbl.add_theme_font_size_override("font_size", 20)
+	reminder_lbl.add_theme_color_override("font_color", Color(0.96, 0.97, 0.99, 0.92))
+	reminder_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
+	reminder_lbl.add_theme_constant_override("outline_size", 4)
+	reminder_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_group.add_child(reminder_lbl)
+	_ui["reminder_lbl"] = reminder_lbl
 
 	var prompt_lbl := Label.new()
 	prompt_lbl.set_anchors_preset(Control.PRESET_CENTER)
-	prompt_lbl.offset_left = -200
-	prompt_lbl.offset_right = 200
-	prompt_lbl.offset_top = 24
-	prompt_lbl.offset_bottom = 58
+	prompt_lbl.offset_left = -220
+	prompt_lbl.offset_right = 220
+	prompt_lbl.offset_top = 60
+	prompt_lbl.offset_bottom = 92
 	prompt_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	prompt_lbl.add_theme_font_size_override("font_size", 16)
-	prompt_lbl.add_theme_color_override("font_color", Color(1.0, 0.96, 0.65))
+	prompt_lbl.add_theme_font_size_override("font_size", 15)
+	prompt_lbl.add_theme_color_override("font_color", Color(1.0, 0.96, 0.72))
+	prompt_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
+	prompt_lbl.add_theme_constant_override("outline_size", 3)
 	prompt_lbl.visible = false
 	hud_group.add_child(prompt_lbl)
 	_ui["prompt_lbl"] = prompt_lbl
@@ -660,6 +811,88 @@ void fragment() {
 	m_box.add_child(btn_mobile)
 	_ui["btn_mobile"] = btn_mobile
 
+	# Online Test Panel (Steam Spacewar 480 + ENet LAN)
+	var net_sep := Label.new()
+	net_sep.text = "── ОНЛАЙН ТЕСТ (STEAM SPACEWAR 480) ──"
+	net_sep.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	net_sep.add_theme_font_size_override("font_size", 13)
+	net_sep.add_theme_color_override("font_color", Color(0.62, 0.88, 1.0))
+	m_box.add_child(net_sep)
+
+	var net_status := Label.new()
+	net_status.text = _net.get_summary_status() if _net != null else "Offline"
+	net_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	net_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	net_status.add_theme_font_size_override("font_size", 13)
+	net_status.add_theme_color_override("font_color", Color(0.88, 0.95, 1.0))
+	m_box.add_child(net_status)
+	_ui["net_status"] = net_status
+
+	var steam_row := HBoxContainer.new()
+	steam_row.add_theme_constant_override("separation", 6)
+	m_box.add_child(steam_row)
+
+	var btn_steam_host := Button.new()
+	btn_steam_host.text = "Steam Лобби (480)"
+	btn_steam_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	RoomsUI.style_button(btn_steam_host, Color(0.40, 0.80, 1.0), 13)
+	btn_steam_host.pressed.connect(func() -> void:
+		if _net != null:
+			_net.host_steam_lobby(int(_rng.seed))
+	)
+	steam_row.add_child(btn_steam_host)
+
+	var btn_steam_find := Button.new()
+	btn_steam_find.text = "Найти Steam лобби"
+	btn_steam_find.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	RoomsUI.style_button(btn_steam_find, Color(0.45, 0.92, 0.72), 13)
+	btn_steam_find.pressed.connect(func() -> void:
+		if _net != null:
+			_net.search_steam_lobbies()
+	)
+	steam_row.add_child(btn_steam_find)
+
+	var enet_row := HBoxContainer.new()
+	enet_row.add_theme_constant_override("separation", 6)
+	m_box.add_child(enet_row)
+
+	var btn_lan_host := Button.new()
+	btn_lan_host.text = "Тест Хост (27480)"
+	btn_lan_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	RoomsUI.style_button(btn_lan_host, Color(0.75, 0.85, 1.0), 12)
+	btn_lan_host.pressed.connect(func() -> void:
+		if _net != null:
+			_net.host_enet(int(_rng.seed))
+	)
+	enet_row.add_child(btn_lan_host)
+
+	var btn_lan_join := Button.new()
+	btn_lan_join.text = "Войти 127.0.0.1"
+	btn_lan_join.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	RoomsUI.style_button(btn_lan_join, Color(0.75, 0.95, 0.80), 12)
+	btn_lan_join.pressed.connect(func() -> void:
+		if _net != null:
+			_net.join_enet("127.0.0.1")
+	)
+	enet_row.add_child(btn_lan_join)
+
+	var btn_net_disc := Button.new()
+	btn_net_disc.text = "Пригласить / Отключиться"
+	RoomsUI.style_button(btn_net_disc, Color(1.0, 0.55, 0.45), 12)
+	btn_net_disc.pressed.connect(func() -> void:
+		if _net != null:
+			if _net.mode == "steam" and _net.current_lobby_id > 0:
+				_net.open_steam_invite_overlay()
+			else:
+				_net.disconnect_session()
+	)
+	m_box.add_child(btn_net_disc)
+	_ui["btn_net_disc"] = btn_net_disc
+
+	_lobby_list_box = VBoxContainer.new()
+	_lobby_list_box.add_theme_constant_override("separation", 4)
+	m_box.add_child(_lobby_list_box)
+
 	# Architect Death Void (Curious Light gold star, god-rays, rim-lit silhouette & floating text)
 	var arch_overlay := Control.new()
 	arch_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -779,23 +1012,19 @@ void fragment() {
 	_ui["btn_arch_retry"] = btn_arch_retry
 
 
-func _make_touch_btn(parent: Control, text: String, accent: Color, font_sz: int, right_off: float, top_off: float, w: float, h: float, anchor_preset: Control.LayoutPreset = Control.PRESET_BOTTOM_RIGHT, corner: int = 18) -> Button:
-	var b := Button.new()
-	b.text = text
+func _make_ring_btn(parent: Control, accent: Color, stroke_w: float, right_off: float, top_off: float, diameter: float, anchor_preset: Control.LayoutPreset = Control.PRESET_BOTTOM_RIGHT, label_txt: String = "") -> RoomsUI.RingButton:
+	var b := RoomsUI.RingButton.new()
+	b.ring_color = accent
+	b.stroke_width = stroke_w
+	b.text = label_txt
 	b.set_anchors_preset(anchor_preset)
-	b.offset_left = right_off - w
+	b.offset_left = right_off - diameter
 	b.offset_right = right_off
-	b.offset_top = top_off - h
+	b.offset_top = top_off - diameter
 	b.offset_bottom = top_off
-	b.focus_mode = Control.FOCUS_NONE
-	b.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
-	b.add_theme_font_size_override("font_size", font_sz)
-	b.add_theme_color_override("font_color", Color(0.95, 0.98, 1.0))
-	var sb_norm := RoomsUI.make_panel_style(Color(0.05, 0.08, 0.12, 0.62), Color(accent.r, accent.g, accent.b, 0.72), corner, 2)
-	var sb_press := RoomsUI.make_panel_style(Color(accent.r, accent.g, accent.b, 0.38), accent, corner, 2)
-	b.add_theme_stylebox_override("normal", sb_norm)
-	b.add_theme_stylebox_override("hover", sb_norm)
-	b.add_theme_stylebox_override("pressed", sb_press)
+	if not label_txt.is_empty():
+		b.add_theme_font_size_override("font_size", 15)
+		b.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.92))
 	parent.add_child(b)
 	_mobile_btns.append(b)
 	return b
@@ -814,65 +1043,71 @@ func _build_mobile_ui(hud_group: Control) -> void:
 	_joy_ring.size = Vector2(156, 156)
 	_joy_ring.position = Vector2(46, 520)
 	_joy_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_joy_ring.add_theme_stylebox_override("panel", RoomsUI.make_panel_style(Color(0.04, 0.07, 0.12, 0.38), Color(0.45, 0.85, 1.0, 0.48), 78, 2))
-	_joy_ring.modulate = Color(1.0, 1.0, 1.0, 0.72)
+	_joy_ring.add_theme_stylebox_override("panel", RoomsUI.make_panel_style(Color(0.04, 0.07, 0.12, 0.28), Color(1.0, 1.0, 1.0, 0.36), 78, 2))
+	_joy_ring.modulate = Color(1.0, 1.0, 1.0, 0.65)
 	mobile_group.add_child(_joy_ring)
 
 	_joy_knob = Panel.new()
-	_joy_knob.size = Vector2(64, 64)
-	_joy_knob.position = Vector2(46, 46)
+	_joy_knob.size = Vector2(58, 58)
+	_joy_knob.position = Vector2(49, 49)
 	_joy_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_joy_knob.add_theme_stylebox_override("panel", RoomsUI.make_panel_style(Color(0.48, 0.86, 1.0, 0.75), Color(0.85, 0.96, 1.0, 0.95), 32, 2))
+	_joy_knob.add_theme_stylebox_override("panel", RoomsUI.make_panel_style(Color(1.0, 1.0, 1.0, 0.42), Color(1.0, 1.0, 1.0, 0.85), 29, 2))
 	_joy_ring.add_child(_joy_knob)
 
-	# Pause Button Top Right
-	var btn_pause := _make_touch_btn(mobile_group, "||", Color(0.65, 0.82, 0.95), 18, -28, 78, 56, 50, Control.PRESET_TOP_RIGHT, 14)
+	# Brutal minimal top-right pause ring
+	var btn_pause := _make_ring_btn(mobile_group, Color(0.85, 0.90, 0.96, 0.85), 3.0, -24, 72, 48, Control.PRESET_TOP_RIGHT, "||")
 	btn_pause.pressed.connect(func() -> void:
 		if _state == State.PLAYING:
 			_set_state(State.PAUSED)
 	)
 	_ui["m_btn_pause"] = btn_pause
 
-	# Right Thumb Contextual Action Cluster
-	var btn_act := _make_touch_btn(mobile_group, "ОТКРЫТЬ", Color(1.0, 0.92, 0.42), 16, -34, -38, 128, 128, Control.PRESET_BOTTOM_RIGHT, 64)
-	btn_act.pressed.connect(_try_interact)
-	_ui["m_btn_interact"] = btn_act
+	# Brutal Large WHITE hollow circle -> Flashlight (bottom-right)
+	var btn_light := _make_ring_btn(mobile_group, Color(1.0, 1.0, 1.0, 0.96), 7.5, -24, -22, 126)
+	btn_light.pressed.connect(_toggle_flashlight)
+	_ui["m_btn_light"] = btn_light
 
-	var btn_exit_fwd := _make_touch_btn(mobile_group, "ВПЕРЁД", Color(0.42, 0.98, 0.68), 15, -34, -108, 128, 62, Control.PRESET_BOTTOM_RIGHT, 18)
+	# Brutal smaller BLUE hollow circle -> HOLD TO SPRINT (above-right of white ring)
+	var btn_sprint := _make_ring_btn(mobile_group, Color(0.14, 0.44, 1.0, 0.98), 6.0, -22, -162, 68)
+	btn_sprint.button_down.connect(func() -> void:
+		_mobile_sprint_held = true
+	)
+	btn_sprint.button_up.connect(func() -> void:
+		_mobile_sprint_held = false
+	)
+	_ui["m_btn_sprint"] = btn_sprint
+
+	# Optional emerald hollow circle when Gummy [2] is picked up (tap switches, hold shakes!)
+	var btn_gummy := _make_ring_btn(mobile_group, Color(0.24, 0.98, 0.48, 0.95), 5.5, -168, -42, 68)
+	btn_gummy.button_down.connect(func() -> void:
+		if _has_gummy:
+			if _active_tool != 1:
+				_active_tool = 1
+				audio.play_flashlight_click()
+			else:
+				_mobile_gummy_held = true
+				_try_shake_gummy()
+	)
+	btn_gummy.button_up.connect(func() -> void:
+		_mobile_gummy_held = false
+	)
+	btn_gummy.visible = false
+	_ui["m_btn_gummy"] = btn_gummy
+
+	# Clean exit directional rings ONLY when hiding (W outward 0.5s, S facing locker 0.3s)
+	var btn_exit_fwd := _make_ring_btn(mobile_group, Color(0.32, 0.98, 0.58, 0.95), 5.5, -26, -158, 72, Control.PRESET_BOTTOM_RIGHT, "W")
 	btn_exit_fwd.pressed.connect(func() -> void:
 		if _is_hiding:
 			_exit_locker(false)
 	)
 	_ui["m_btn_exit_fwd"] = btn_exit_fwd
 
-	var btn_exit_back := _make_touch_btn(mobile_group, "К ШКАФУ", Color(0.95, 0.76, 0.35), 15, -34, -36, 128, 62, Control.PRESET_BOTTOM_RIGHT, 18)
+	var btn_exit_back := _make_ring_btn(mobile_group, Color(1.0, 0.68, 0.24, 0.95), 5.5, -26, -26, 72, Control.PRESET_BOTTOM_RIGHT, "S")
 	btn_exit_back.pressed.connect(func() -> void:
 		if _is_hiding:
 			_exit_locker(true)
 	)
 	_ui["m_btn_exit_back"] = btn_exit_back
-
-	var btn_light := _make_touch_btn(mobile_group, "СВЕТ", Color(1.0, 0.90, 0.50), 14, -178, -42, 86, 86, Control.PRESET_BOTTOM_RIGHT, 43)
-	btn_light.pressed.connect(_toggle_flashlight)
-	_ui["m_btn_light"] = btn_light
-
-	var btn_sprint := _make_touch_btn(mobile_group, "БЕГ", Color(0.32, 0.68, 1.0), 14, -178, -142, 86, 62, Control.PRESET_BOTTOM_RIGHT, 18)
-	btn_sprint.pressed.connect(func() -> void:
-		_mobile_sprint_toggle = not _mobile_sprint_toggle
-	)
-	_ui["m_btn_sprint"] = btn_sprint
-
-	var btn_crank := _make_touch_btn(mobile_group, "ЗАРЯД", Color(0.35, 1.0, 0.56), 13, -278, -42, 86, 86, Control.PRESET_BOTTOM_RIGHT, 43)
-	btn_crank.pressed.connect(_try_shake_gummy)
-	_ui["m_btn_crank"] = btn_crank
-
-	var btn_tool := _make_touch_btn(mobile_group, "1 / 2", Color(0.42, 0.95, 0.80), 13, -278, -142, 86, 62, Control.PRESET_BOTTOM_RIGHT, 18)
-	btn_tool.pressed.connect(func() -> void:
-		if _has_gummy:
-			_active_tool = 1 - _active_tool
-			audio.play_flashlight_click()
-	)
-	_ui["m_btn_tool"] = btn_tool
 
 
 func _refresh_mobile_mode() -> void:
@@ -951,7 +1186,10 @@ func _reset_run() -> void:
 	_gummy_battery = 100.0
 	_std_low_power = false
 	_std_low_power_regen = 0.0
-	_vm_crank_spin = 0.0
+	_vm_shake_time = 0.0
+	_gummy_hold_accum = 0.0
+	_reminder_dismissed = false
+	_locker_transition_duration = 0.50
 	if _vm_holder != null:
 		_vm_holder.visible = true
 	if _anim_hand != null:
@@ -1199,9 +1437,11 @@ func _advance_architect_dialogue() -> void:
 func _reset_touch_state() -> void:
 	_joy_touch_id = -1
 	_look_touch_id = -1
+	_tap_touch_id = -1
 	_joy_vec = Vector2.ZERO
 	_joy_sprint = false
-	_mobile_sprint_toggle = false
+	_mobile_sprint_held = false
+	_mobile_gummy_held = false
 	if _joy_ring != null and _joy_knob != null:
 		var vp_sz := get_viewport().get_visible_rect().size
 		_joy_ring.position = Vector2(46.0, maxf(vp_sz.y - 202.0, 80.0))
@@ -1245,6 +1485,10 @@ func _input(event: InputEvent) -> void:
 		if te.pressed:
 			if _point_hits_mobile_btn(te.position):
 				return
+			if _tap_touch_id == -1:
+				_tap_touch_id = te.index
+				_tap_start_pos = te.position
+				_tap_start_time_ms = Time.get_ticks_msec()
 			if te.position.x < vp_sz.x * 0.44 and _joy_touch_id == -1:
 				_joy_touch_id = te.index
 				var half := Vector2(78.0, 78.0)
@@ -1259,6 +1503,12 @@ func _input(event: InputEvent) -> void:
 			elif _look_touch_id == -1:
 				_look_touch_id = te.index
 		else:
+			if te.index == _tap_touch_id:
+				var dt_ms := Time.get_ticks_msec() - _tap_start_time_ms
+				var dist_px := te.position.distance_to(_tap_start_pos)
+				_tap_touch_id = -1
+				if dt_ms <= 300 and dist_px <= 20.0 and not _is_hiding and not _point_hits_mobile_btn(te.position):
+					_try_tap_world_interact(te.position)
 			if te.index == _joy_touch_id:
 				_joy_touch_id = -1
 				_joy_vec = Vector2.ZERO
@@ -1348,10 +1598,10 @@ func _input(event: InputEvent) -> void:
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			elif _try_interact():
+				pass
 			elif _active_tool == 1:
 				_try_shake_gummy()
-			else:
-				_try_interact()
 
 
 func _apply_camera_rotation() -> void:
@@ -1382,30 +1632,38 @@ func _process(delta: float) -> void:
 	cam.fov = _fov
 
 	if _locker_transition_t < 1.0:
-		var dur := 0.56 if (_locker_transition_entering and _hiding_kind != "under_desk") else (0.36 if _hiding_kind == "under_desk" else 0.30)
+		var dur := maxf(_locker_transition_duration, 0.05)
 		_locker_transition_t = minf(_locker_transition_t + delta / dur, 1.0)
+
+	if (_mobile_gummy_held or Input.is_key_pressed(KEY_R)) and _active_tool == 1 and _has_gummy and not _is_hiding:
+		_gummy_hold_accum += delta
+		if _gummy_hold_accum >= 0.28:
+			_gummy_hold_accum -= 0.28
+			_try_shake_gummy(4.7)
+	else:
+		_gummy_hold_accum = 0.0
 
 	var lock_mask: ColorRect = _ui["locker_mask"]
 	if _is_hiding:
 		if _locker_transition_t < 1.0:
-			var prev_t := maxf(_locker_transition_t - delta / (0.56 if _hiding_kind != "under_desk" else 0.36), 0.0)
+			var prev_t := maxf(_locker_transition_t - delta / maxf(_locker_transition_duration, 0.05), 0.0)
 			if _locker_transition_t >= 0.72 and prev_t < 0.72:
 				_light_on = false
 		if _anim_hand != null:
-			if _hiding_kind != "under_desk" and _locker_transition_t < 0.96:
+			if _hiding_kind != "under_desk" and _locker_transition_t < 0.98:
 				_anim_hand.visible = true
 				var p := _locker_transition_t
 				if p < 0.30:
 					var rp := ease(p / 0.30, 0.35)
-					_anim_hand.position = Vector3(0.24, -0.18, -0.22).lerp(Vector3(-0.06, -0.05, -0.46), rp)
-					_anim_hand.rotation = Vector3(0.08, 0.15 * rp, -0.18 * rp)
+					_anim_hand.position = Vector3(0.22, -0.12, -0.22).lerp(Vector3(-0.05, -0.02, -0.45), rp)
+					_anim_hand.rotation = Vector3(0.08, 0.16 * rp, -0.18 * rp)
 				elif p < 0.68:
 					var sp := (p - 0.30) / 0.38
-					_anim_hand.position = Vector3(-0.06, -0.05, -0.46).lerp(Vector3(-0.24, -0.08, -0.34), sin(sp * PI * 0.5))
-					_anim_hand.rotation = Vector3(0.0, 0.42 * sp, -0.10)
+					_anim_hand.position = Vector3(-0.05, -0.02, -0.45).lerp(Vector3(-0.22, -0.05, -0.34), sin(sp * PI * 0.5))
+					_anim_hand.rotation = Vector3(0.0, 0.44 * sp, -0.10)
 				else:
 					var cp := (p - 0.68) / 0.32
-					_anim_hand.position = Vector3(-0.24, -0.08, -0.34).lerp(Vector3(0.22, -0.24, -0.18), cp)
+					_anim_hand.position = Vector3(-0.22, -0.05, -0.34).lerp(Vector3(0.20, -0.18, -0.18), cp)
 					_anim_hand.rotation = Vector3(-0.12 * cp, -0.15 * cp, 0.0)
 			else:
 				_anim_hand.visible = false
@@ -1417,7 +1675,7 @@ func _process(delta: float) -> void:
 		var base_yaw := atan2(-_locker_fwd.x, -_locker_fwd.z)
 		player_body.global_position = _locker_eye - Vector3(0.0, _hiding_eye_local_y, 0.0)
 		if _locker_transition_t < 1.0 and _hiding_kind != "under_desk":
-			var turn_p := ease(clampf((_locker_transition_t - 0.28) / 0.56, 0.0, 1.0), -2.0)
+			var turn_p := ease(clampf((_locker_transition_t - 0.26) / 0.58, 0.0, 1.0), -2.0)
 			player_body.rotation.y = lerp_angle(_locker_enter_from_yaw, base_yaw + _hide_yaw_offset, turn_p)
 		else:
 			player_body.rotation.y = lerp_angle(player_body.rotation.y, base_yaw + _hide_yaw_offset, clampf(1.0 - exp(-14.0 * delta) + t_ease * 0.25, 0.0, 1.0))
@@ -1443,6 +1701,10 @@ func _process(delta: float) -> void:
 			cam.global_position = tgt_eye
 			lock_mask.color = Color(0.0, 0.0, 0.0, max_mask)
 	else:
+		if _locker_transition_t < 1.0 and not _locker_transition_entering:
+			var exit_turn_p := ease(clampf(_locker_transition_t, 0.0, 1.0), -1.8)
+			_yaw = lerp_angle(_locker_exit_from_yaw, _locker_exit_to_yaw, exit_turn_p)
+			_target_yaw = _locker_exit_to_yaw
 		_apply_camera_rotation()
 		var fl_lag_x := clampf((_target_pitch - _pitch) * 0.45, -0.14, 0.14)
 		var fl_lag_y := clampf((_target_yaw - _yaw) * 0.45, -0.18, 0.18)
@@ -1450,11 +1712,28 @@ func _process(delta: float) -> void:
 		flashlight.rotation.y = lerpf(flashlight.rotation.y, fl_lag_y, 1.0 - exp(-14.0 * delta))
 
 		if _anim_hand != null:
-			if _locker_transition_t < 0.70 and not _locker_transition_entering:
+			if _locker_transition_t < 0.96 and not _locker_transition_entering:
 				_anim_hand.visible = true
-				var ep := _locker_transition_t / 0.70
-				_anim_hand.position = Vector3(0.06, -0.10, -0.44).lerp(Vector3(0.26, -0.26, -0.18), ep)
-				_anim_hand.rotation = Vector3(0.05, -0.2 * ep, 0.0)
+				var p_out := _locker_transition_t
+				if _locker_exit_face_locker:
+					# Fast 0.3s S exit animation: push door wide while twisting back toward locker
+					var s_p := sin(p_out * PI)
+					_anim_hand.position = Vector3(-0.08, -0.05, -0.45).lerp(Vector3(0.24, -0.22, -0.20), p_out) + Vector3(-0.14 * s_p, 0.04 * s_p, 0.0)
+					_anim_hand.rotation = Vector3(0.06, 0.38 * s_p - 0.25 * p_out, -0.16 * s_p)
+				else:
+					# Full 0.5s W exit animation: reach door latch -> swing open -> step out & lower hand
+					if p_out < 0.32:
+						var r_p := ease(p_out / 0.32, 0.35)
+						_anim_hand.position = Vector3(0.20, -0.20, -0.20).lerp(Vector3(-0.05, -0.04, -0.46), r_p)
+						_anim_hand.rotation = Vector3(0.08 * r_p, 0.16 * r_p, -0.15 * r_p)
+					elif p_out < 0.68:
+						var o_p := (p_out - 0.32) / 0.36
+						_anim_hand.position = Vector3(-0.05, -0.04, -0.46).lerp(Vector3(-0.26, -0.08, -0.32), sin(o_p * PI * 0.5))
+						_anim_hand.rotation = Vector3(0.0, 0.48 * o_p, -0.10)
+					else:
+						var d_p := (p_out - 0.68) / 0.32
+						_anim_hand.position = Vector3(-0.26, -0.08, -0.32).lerp(Vector3(0.24, -0.26, -0.16), d_p)
+						_anim_hand.rotation = Vector3(-0.10 * d_p, -0.18 * d_p, 0.0)
 			else:
 				_anim_hand.visible = false
 
@@ -1470,17 +1749,36 @@ func _process(delta: float) -> void:
 			_vm_holder.position = _vm_holder.position.lerp(Vector3(0.24 + bx, -0.21 + by, -0.34), 1.0 - exp(-14.0 * delta))
 			_vm_holder.rotation.x = lerpf(_vm_holder.rotation.x, fl_lag_x * 0.75, 1.0 - exp(-14.0 * delta))
 			_vm_holder.rotation.y = lerpf(_vm_holder.rotation.y, fl_lag_y * 0.75, 1.0 - exp(-14.0 * delta))
-			if _vm_crank_spin > 0.0 and _vm_crank != null:
-				_vm_crank.rotation.x += delta * 18.0
-				_vm_crank_spin = maxf(_vm_crank_spin - delta, 0.0)
+			if _vm_shake_time > 0.0:
+				_vm_shake_time = maxf(_vm_shake_time - delta, 0.0)
+				var s_env := clampf(_vm_shake_time / 0.30, 0.0, 1.0)
+				_vm_gummy.position = Vector3(sin(t_sec_vm * 46.0) * 0.018 * s_env, cos(t_sec_vm * 62.0) * 0.032 * s_env, 0.0)
+				_vm_gummy.rotation = Vector3(sin(t_sec_vm * 58.0) * 0.28 * s_env, 0.0, cos(t_sec_vm * 48.0) * 0.22 * s_env)
+			else:
+				_vm_gummy.position = _vm_gummy.position.lerp(Vector3.ZERO, 1.0 - exp(-16.0 * delta))
+				_vm_gummy.rotation = _vm_gummy.rotation.lerp(Vector3.ZERO, 1.0 - exp(-16.0 * delta))
 
 		if _locker_transition_t < 1.0:
 			var t_out := ease(_locker_transition_t, 0.26)
 			var tgt_pos := player_body.global_position + Vector3(0.0, 1.48, 0.0)
 			cam.global_position = _locker_cam_from.lerp(tgt_pos, t_out)
+			cam.rotation.z = lerpf(cam.rotation.z, sin(_locker_transition_t * PI) * (-0.05 if _locker_exit_face_locker else 0.03), 1.0 - exp(-14.0 * delta))
 			lock_mask.color = Color(0.0, 0.0, 0.0, lerpf(0.32, 0.0, t_out))
 		else:
 			lock_mask.color = Color(0.0, 0.0, 0.0, 0.0)
+
+	if _net != null and _net.is_online():
+		var gp := player_body.global_position
+		_net.update_local_state({
+			"pos": [gp.x, gp.y, gp.z],
+			"yaw": _yaw,
+			"pitch": _pitch,
+			"light": _light_on and (_active_tool == 0 and _std_battery > 0.05 or _active_tool == 1 and _gummy_battery > 0.05),
+			"hide": _is_hiding,
+			"room": _highest_opened,
+			"hp": _hp,
+		})
+	_process_remote_players(delta)
 
 
 func _process_architect_and_scare(delta: float) -> void:
@@ -1517,6 +1815,7 @@ func _process_architect_and_scare(delta: float) -> void:
 
 func _toggle_flashlight() -> void:
 	_light_on = not _light_on
+	_reminder_dismissed = true
 	audio.play_flashlight_click()
 	if _is_hiding and _light_on and _darkness_phase > 0:
 		if _active_tool == 0 and not _std_low_power and _std_battery > 0.5:
@@ -1533,34 +1832,43 @@ func _toggle_flashlight() -> void:
 			_show_toast("Обычный фонарик отпугнул Тьму (слабый режим)!", 2.2)
 
 
-func _try_shake_gummy() -> void:
+func _try_shake_gummy(amount: float = 10.0) -> void:
 	if _active_tool != 1 or not _has_gummy or _is_hiding:
 		return
-	_gummy_battery = minf(_gummy_battery + 18.0, 100.0)
-	_shake_amount = maxf(_shake_amount, 0.025)
-	_vm_crank_spin = 0.45
+	_gummy_battery = minf(_gummy_battery + amount, 100.0)
+	_shake_amount = maxf(_shake_amount, 0.022)
+	_vm_shake_time = 0.34
 	audio.play_gummy_shake()
 
 
-func _try_interact() -> void:
+func _try_interact() -> bool:
 	if _is_hiding:
-		_exit_locker()
-		return
+		_exit_locker(false)
+		return true
 
-	var target := _find_interact_target()
+	var target := _smart_reticle_target if not _smart_reticle_target.is_empty() else _find_smart_reticle_target()
 	if target.is_empty():
-		return
+		return false
+	return _execute_interact_target(target)
 
+
+func _execute_interact_target(target: Dictionary) -> bool:
+	if target.is_empty():
+		return false
 	var kind := String(target["type"])
 	if kind == "door":
 		var r_idx := int(target["room_index"])
 		_open_room_door(r_idx)
+		return true
 	elif kind == "locker":
 		var r_idx := int(target["room_index"])
 		var l_idx := int(target["locker_index"])
 		_enter_locker(r_idx, l_idx)
+		return true
 	elif kind == "pickup":
 		var node := target["node"] as Node3D
+		if not is_instance_valid(node):
+			return false
 		var pkind := String(target["pickup_kind"])
 		if pkind == "battery":
 			_std_battery = minf(_std_battery + 35.0, 100.0)
@@ -1571,50 +1879,171 @@ func _try_interact() -> void:
 			_has_gummy = true
 			_active_tool = 1
 			_gummy_battery = 100.0
-			_show_toast("Подобран Динамо-фонарик [2]! Жмите [R] для зарядки.", 3.2)
+			_show_toast("Подобран Зелёный фонарик [2]! Зажмите [R] чтобы потрясти.", 3.2)
 		elif pkind == "medkit":
 			_hp = mini(_hp + 45, 100)
 			audio.low_hp_mode = (_hp <= 25)
 			_show_toast("+45 HP восстановлено")
 		audio.play_pickup()
 		node.queue_free()
+		return true
+	return false
+
+
+func _try_tap_world_interact(screen_pos: Vector2) -> void:
+	var origin := cam.project_ray_origin(screen_pos)
+	var dir := cam.project_ray_normal(screen_pos)
+	var space_state := get_world_3d().direct_space_state
+	if space_state != null:
+		var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * 4.5, 0xFFFFFFFF, [player_body.get_rid()])
+		var hit := space_state.intersect_ray(q)
+		if not hit.is_empty():
+			var col: Object = hit.get("collider")
+			if col != null and col.has_meta("interact_type"):
+				var parsed := _collider_to_interact_dict(col)
+				if not parsed.is_empty():
+					_execute_interact_target(parsed)
+					return
+
+	if not _smart_reticle_target.is_empty() and screen_pos.distance_to(_reticle_screen_pos) <= 115.0:
+		_execute_interact_target(_smart_reticle_target)
+
+
+func _collider_to_interact_dict(col: Object) -> Dictionary:
+	if col == null or not col.has_meta("interact_type"):
+		return {}
+	var itype := String(col.get_meta("interact_type"))
+	if itype == "door":
+		var r_idx := int(col.get_meta("room_index"))
+		var room_inst: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
+		if room_inst != null and not room_inst.door_opened:
+			return {"type": "door", "room_index": r_idx, "label": "Открыть дверь A-%03d" % (r_idx + 1)}
+	elif itype == "locker":
+		var r_idx := int(col.get_meta("room_index"))
+		var l_idx := int(col.get_meta("locker_index"))
+		var r_inst: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
+		var lbl := "Спрятаться"
+		if r_inst != null and l_idx >= 0 and l_idx < r_inst.lockers.size():
+			lbl = String(r_inst.lockers[l_idx].get("label", lbl))
+		return {
+			"type": "locker",
+			"room_index": r_idx,
+			"locker_index": l_idx,
+			"label": lbl,
+		}
+	elif itype == "pickup":
+		return {
+			"type": "pickup",
+			"node": col,
+			"pickup_kind": String(col.get_meta("pickup_kind")),
+			"label": "Взять: %s" % String(col.get_meta("pickup_prompt")),
+		}
+	return {}
 
 
 func _find_interact_target() -> Dictionary:
 	interact_ray.force_raycast_update()
 	if interact_ray.is_colliding():
-		var col := interact_ray.get_collider()
-		if col != null and col.has_meta("interact_type"):
-			var itype := String(col.get_meta("interact_type"))
-			if itype == "door":
-				var r_idx := int(col.get_meta("room_index"))
-				var room_inst: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
-				if room_inst != null and not room_inst.door_opened:
-					return {"type": "door", "room_index": r_idx, "label": "[E] Открыть дверь A-%03d" % (r_idx + 1)}
-			elif itype == "locker":
-				var r_idx := int(col.get_meta("room_index"))
-				var l_idx := int(col.get_meta("locker_index"))
-				var r_inst: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
-				var lbl := "[E] Спрятаться"
-				if r_inst != null and l_idx >= 0 and l_idx < r_inst.lockers.size():
-					lbl = String(r_inst.lockers[l_idx].get("label", lbl))
-				return {
-					"type": "locker",
-					"room_index": r_idx,
-					"locker_index": l_idx,
-					"label": lbl,
-				}
-			elif itype == "pickup":
-				return {
-					"type": "pickup",
-					"node": col,
-					"pickup_kind": String(col.get_meta("pickup_kind")),
-					"label": "[E] Взять: %s" % String(col.get_meta("pickup_prompt")),
-				}
+		return _collider_to_interact_dict(interact_ray.get_collider())
 	return {}
 
 
-func _open_room_door(r_idx: int) -> void:
+func _target_anchor_world_pos(tgt: Dictionary) -> Vector3:
+	var kind := String(tgt.get("type", ""))
+	if kind == "locker":
+		var r: RoomBuilder.RoomInstance = _room_by_idx.get(int(tgt["room_index"]))
+		var li := int(tgt["locker_index"])
+		if r != null and li >= 0 and li < r.lockers.size():
+			var ld: Dictionary = r.lockers[li]
+			var ln: Node3D = ld["node"]
+			var lk := String(ld.get("kind", "locker"))
+			var loc := Vector3(0.0, 0.56, 0.22) if lk == "under_desk" else Vector3(0.0, 1.16, 0.34)
+			return ln.global_transform * loc
+	elif kind == "door":
+		var r: RoomBuilder.RoomInstance = _room_by_idx.get(int(tgt["room_index"]))
+		if r != null and is_instance_valid(r.exit_anchor):
+			return r.exit_anchor.global_position + Vector3(0.0, 1.15, 0.0)
+	elif kind == "pickup":
+		var n := tgt.get("node") as Node3D
+		if is_instance_valid(n):
+			return n.global_position
+	return cam.global_position - cam.global_transform.basis.z * 2.0
+
+
+func _find_smart_reticle_target() -> Dictionary:
+	var vp_sz := get_viewport().get_visible_rect().size
+	var vp_center := vp_sz * 0.5
+	var direct := _find_interact_target()
+	if not direct.is_empty():
+		var wp := _target_anchor_world_pos(direct)
+		if not cam.is_position_behind(wp):
+			direct["screen_pos"] = cam.unproject_position(wp)
+			direct["world_pos"] = wp
+			return direct
+
+	# Smart cone scan around center: snaps reticle UI ring onto nearby locker/door/item even when aiming slightly beside it
+	var best_tgt: Dictionary = {}
+	var best_screen_d := minf(vp_sz.x, vp_sz.y) * 0.24
+	var space_state := get_world_3d().direct_space_state
+	var cam_pos := cam.global_position
+
+	for r in _rooms:
+		if abs(r.index - _current_room_idx) > 1:
+			continue
+		for li in range(r.lockers.size()):
+			var ld: Dictionary = r.lockers[li]
+			var ln: Node3D = ld["node"]
+			if not is_instance_valid(ln):
+				continue
+			var lk := String(ld.get("kind", "locker"))
+			var loc := Vector3(0.0, 0.56, 0.22) if lk == "under_desk" else Vector3(0.0, 1.16, 0.34)
+			var wp := ln.global_transform * loc
+			if cam_pos.distance_to(wp) > 3.85 or cam.is_position_behind(wp):
+				continue
+			var sp := cam.unproject_position(wp)
+			var sd := sp.distance_to(vp_center)
+			if sd < best_screen_d and _has_los_to_interact(space_state, cam_pos, wp, r.index):
+				best_screen_d = sd
+				best_tgt = {
+					"type": "locker",
+					"room_index": r.index,
+					"locker_index": li,
+					"label": String(ld.get("label", "Спрятаться")),
+					"screen_pos": sp,
+					"world_pos": wp,
+				}
+		if not r.door_opened and is_instance_valid(r.exit_anchor):
+			var dwp := r.exit_anchor.global_position + Vector3(0.0, 1.15, 0.0)
+			if cam_pos.distance_to(dwp) <= 3.85 and not cam.is_position_behind(dwp):
+				var dsp := cam.unproject_position(dwp)
+				var dsd := dsp.distance_to(vp_center)
+				if dsd < best_screen_d and _has_los_to_interact(space_state, cam_pos, dwp, r.index):
+					best_screen_d = dsd
+					best_tgt = {
+						"type": "door",
+						"room_index": r.index,
+						"label": "Открыть дверь A-%03d" % (r.index + 1),
+						"screen_pos": dsp,
+						"world_pos": dwp,
+					}
+	return best_tgt
+
+
+func _has_los_to_interact(space_state: PhysicsDirectSpaceState3D, from_pos: Vector3, to_pos: Vector3, _room_idx: int) -> bool:
+	if space_state == null:
+		return true
+	var q := PhysicsRayQueryParameters3D.create(from_pos, to_pos, 0xFFFFFFFF, [player_body.get_rid()])
+	var hit := space_state.intersect_ray(q)
+	if hit.is_empty():
+		return true
+	var col: Object = hit.get("collider")
+	if col != null and col.has_meta("interact_type"):
+		return true
+	var hp: Vector3 = hit.get("position", from_pos)
+	return hp.distance_to(to_pos) < 0.65
+
+
+func _open_room_door(r_idx: int, from_remote: bool = false) -> void:
 	var r: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
 	if r == null or r.door_opened:
 		return
@@ -1624,7 +2053,9 @@ func _open_room_door(r_idx: int) -> void:
 		r.door_collider.collision_mask = 0
 	_opening_doors.append({"pivot": r.door_pivot, "progress": 0.0})
 	audio.play_door_open()
-	_advance_door_progress(r_idx, true)
+	if not from_remote and _net != null and _net.is_online():
+		_net.broadcast_door_opened(r_idx)
+	_advance_door_progress(r_idx, not from_remote)
 
 
 func _advance_door_progress(r_idx: int, allow_spawn: bool) -> void:
@@ -1780,6 +2211,7 @@ func _enter_locker(r_idx: int, l_idx: int) -> void:
 	_locker_cam_from = cam.global_position
 	_locker_transition_t = 0.0
 	_locker_transition_entering = true
+	_locker_transition_duration = 0.50
 
 	var eye_loc: Vector3 = locker_data.get("eye_local", Vector3(0.0, 1.48, 0.05))
 	var exit_loc: Vector3 = locker_data.get("exit_local", Vector3(0.0, 0.05, 1.05))
@@ -1794,9 +2226,9 @@ func _enter_locker(r_idx: int, l_idx: int) -> void:
 	if is_instance_valid(_hiding_door_pivot):
 		var dp := _hiding_door_pivot
 		var tw := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-		tw.tween_property(dp, "rotation:y", -PI * 0.64, 0.16)
-		tw.tween_interval(0.22)
-		tw.tween_property(dp, "rotation:y", -0.05, 0.18)
+		tw.tween_property(dp, "rotation:y", -PI * 0.64, 0.14)
+		tw.tween_interval(0.20)
+		tw.tween_property(dp, "rotation:y", -0.05, 0.16)
 
 	if _hiding_kind == "under_desk":
 		audio.play_desk_crawl(true)
@@ -1810,6 +2242,8 @@ func _exit_locker(face_locker: bool = false) -> void:
 	_locker_cam_from = cam.global_position
 	_locker_transition_t = 0.0
 	_locker_transition_entering = false
+	_locker_exit_face_locker = face_locker
+	_locker_transition_duration = 0.30 if face_locker else 0.50
 
 	_is_hiding = false
 	_hiding_room_idx = -1
@@ -1828,9 +2262,11 @@ func _exit_locker(face_locker: bool = false) -> void:
 	player_col.disabled = false
 
 	var exit_yaw := atan2(_locker_fwd.x, _locker_fwd.z) if face_locker else atan2(-_locker_fwd.x, -_locker_fwd.z)
-	_target_yaw = exit_yaw + (0.0 if face_locker else _hide_yaw_offset)
+	_locker_exit_from_yaw = player_body.rotation.y
+	_locker_exit_to_yaw = exit_yaw + (0.0 if face_locker else _hide_yaw_offset)
+	_target_yaw = _locker_exit_to_yaw
 	_target_pitch = 0.0 if face_locker else _hide_pitch_offset
-	_yaw = exit_yaw
+	_yaw = _locker_exit_from_yaw
 	_pitch = cam.rotation.x
 	_target_hide_yaw = 0.0
 	_target_hide_pitch = 0.0
@@ -1842,9 +2278,14 @@ func _exit_locker(face_locker: bool = false) -> void:
 
 	if is_instance_valid(prev_door_pivot):
 		var tw := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-		tw.tween_property(prev_door_pivot, "rotation:y", -PI * 0.62, 0.14)
-		tw.tween_interval(0.08)
-		tw.tween_property(prev_door_pivot, "rotation:y", 0.0, 0.24)
+		if face_locker:
+			tw.tween_property(prev_door_pivot, "rotation:y", -PI * 0.62, 0.09)
+			tw.tween_interval(0.09)
+			tw.tween_property(prev_door_pivot, "rotation:y", 0.0, 0.12)
+		else:
+			tw.tween_property(prev_door_pivot, "rotation:y", -PI * 0.64, 0.15)
+			tw.tween_interval(0.16)
+			tw.tween_property(prev_door_pivot, "rotation:y", 0.0, 0.19)
 
 	if prev_kind == "under_desk":
 		audio.play_desk_crawl(false)
@@ -2104,7 +2545,7 @@ func _process_flashlight(delta: float) -> void:
 				flashlight.spot_range = 24.0
 				flashlight.spot_angle = 36.0
 		else:
-			_gummy_battery = maxf(_gummy_battery - delta * 4.4, 0.0)
+			_gummy_battery = maxf(_gummy_battery - delta * 10.0, 0.0)
 			flashlight.light_color = Color(0.35, 1.0, 0.52)
 			flashlight.spot_range = 20.0
 			flashlight.spot_angle = 40.0
@@ -2136,9 +2577,9 @@ func _process_darkness_in_hiding(delta: float) -> void:
 
 	_hide_time += delta
 	var prog := clampf(float(_highest_opened - 21) / 29.0, 0.0, 1.0)
-	var disturb_delay := 3.0 if _power_out else lerpf(10.5, 3.2, prog)
+	var disturb_delay := 1.2 if _power_out else lerpf(7.5, 1.4, prog)
 	if _darkness_quick_return:
-		disturb_delay = 4.2 if (_light_on and _active_tool == 0) else 1.0
+		disturb_delay = 2.0 if (_light_on and _active_tool == 0) else 0.6
 
 	if _darkness_phase == 0:
 		dk_rect.visible = false
@@ -2151,7 +2592,7 @@ func _process_darkness_in_hiding(delta: float) -> void:
 			dk_rect.visible = true
 			dk_rect.modulate = Color(1.0, 1.0, 1.0, 0.05)
 	elif _darkness_phase == 1:
-		var ramp_dur := 1.7 if _power_out else 2.5
+		var ramp_dur := 1.2 if _power_out else 2.0
 		_darkness_whisper_t = minf(_darkness_whisper_t + delta / ramp_dur, 1.0)
 		audio.update_darkness(_darkness_whisper_t)
 		dk_rect.visible = true
@@ -2201,7 +2642,7 @@ func _process_player_movement(delta: float) -> void:
 		inp = inp.normalized()
 
 	var moving := inp.length_squared() > 0.01
-	var wants_sprint := (Input.is_key_pressed(KEY_SHIFT) or _joy_sprint or _mobile_sprint_toggle) and moving and (not _exhausted) and _stamina > 0.01
+	var wants_sprint := (Input.is_key_pressed(KEY_SHIFT) or _joy_sprint or _mobile_sprint_held) and moving and (not _exhausted) and _stamina > 0.01
 	if wants_sprint:
 		_stamina = maxf(_stamina - delta * 0.34, 0.0)
 		_stamina_regen_delay = 0.65
@@ -2242,14 +2683,14 @@ func _process_player_movement(delta: float) -> void:
 
 	player_body.move_and_slide()
 
-	# Footsteps & camera bobbing
+	# Footsteps & camera bobbing (surface-aware: metal grate floors play louder iron footsteps!)
 	var horiz_spd := Vector2(player_body.velocity.x, player_body.velocity.z).length()
 	if horiz_spd > 0.7:
 		_bob_phase += delta * (10.5 if wants_sprint else 6.8)
 		_step_timer -= delta * (1.42 if wants_sprint else 0.90)
 		if _step_timer <= 0.0:
 			_step_timer = 0.48
-			audio.play_step(wants_sprint)
+			audio.play_step(wants_sprint, _detect_floor_surface())
 	else:
 		_bob_phase = lerpf(_bob_phase, 0.0, delta * 5.0)
 
@@ -2268,6 +2709,25 @@ func _process_player_movement(delta: float) -> void:
 		if r.center_pos.distance_to(player_body.position) < RoomBuilder.CELL_SIZE * 0.52:
 			_current_room_idx = r.index
 			break
+
+
+func _detect_floor_surface() -> String:
+	for i in range(player_body.get_slide_collision_count()):
+		var kc := player_body.get_slide_collision(i)
+		if kc != null and kc.get_normal().y > 0.5:
+			var col := kc.get_collider()
+			if col != null and col.has_meta("floor_surface"):
+				return String(col.get_meta("floor_surface"))
+	var space_state := get_world_3d().direct_space_state
+	if space_state != null:
+		var p := player_body.global_position
+		var q := PhysicsRayQueryParameters3D.create(p + Vector3(0, 0.35, 0), p - Vector3(0, 0.55, 0), 0xFFFFFFFF, [player_body.get_rid()])
+		var hit := space_state.intersect_ray(q)
+		if not hit.is_empty():
+			var c: Object = hit.get("collider")
+			if c != null and c.has_meta("floor_surface"):
+				return String(c.get_meta("floor_surface"))
+	return "carpet"
 
 
 func _process_entities(delta: float) -> void:
@@ -2610,7 +3070,13 @@ func _update_ui(delta: float) -> void:
 
 	var interact_tgt := {}
 	var prompt: Label = _ui["prompt_lbl"]
+	var vp_sz := get_viewport().get_visible_rect().size
+	var vp_center := vp_sz * 0.5
+
 	if _is_hiding:
+		_smart_reticle_target = {}
+		if _reticle_ring != null:
+			_reticle_ring.visible = false
 		if _hiding_kind == "under_desk":
 			prompt.text = "[W / S / E] Вылезти из-под тумбочки"
 		elif _hiding_kind == "fridge":
@@ -2619,17 +3085,47 @@ func _update_ui(delta: float) -> void:
 			prompt.text = "[W / E] Выйти вперёд  |  [S] Выйти лицом к шкафу"
 		prompt.visible = true
 	else:
-		interact_tgt = _find_interact_target()
+		interact_tgt = _find_smart_reticle_target()
+		_smart_reticle_target = interact_tgt
+		var tgt_r := 6.5
+		var tgt_stroke := 1.9
+		var tgt_pos := vp_center
 		if not interact_tgt.is_empty():
+			tgt_r = 19.5
+			tgt_stroke = 2.8
+			if interact_tgt.has("world_pos"):
+				var wp: Vector3 = interact_tgt["world_pos"]
+				if not cam.is_position_behind(wp):
+					tgt_pos = cam.unproject_position(wp)
 			prompt.text = String(interact_tgt["label"])
-			prompt.visible = true
+			prompt.visible = not _mobile_controls_enabled
 		else:
 			prompt.visible = false
+
+		if _reticle_ring != null:
+			_reticle_ring.visible = true
+			var ret_a := clampf(1.0 - exp(-22.0 * delta), 0.0, 1.0)
+			if _reticle_screen_pos == Vector2.ZERO:
+				_reticle_screen_pos = tgt_pos
+			_reticle_screen_pos = _reticle_screen_pos.lerp(tgt_pos, ret_a)
+			_reticle_radius = lerpf(_reticle_radius, tgt_r, ret_a)
+			_reticle_ring.ring_radius = _reticle_radius
+			_reticle_ring.stroke_width = lerpf(_reticle_ring.stroke_width, tgt_stroke, ret_a)
+			_reticle_ring.position = _reticle_screen_pos - _reticle_ring.size * 0.5
+			_reticle_ring.queue_redraw()
+
+	if _ui.has("reminder_lbl"):
+		var rem: Label = _ui["reminder_lbl"]
+		if _reminder_dismissed or _is_hiding:
+			rem.visible = false
+		else:
+			rem.visible = true
+			rem.text = "Reminder: [WHITE] to turn flashlight." if _mobile_controls_enabled else "Reminder: [F] to turn flashlight."
 
 	_update_mobile_ui(interact_tgt)
 
 
-func _update_mobile_ui(interact_tgt: Dictionary) -> void:
+func _update_mobile_ui(_interact_tgt: Dictionary) -> void:
 	if not _mobile_controls_enabled or not _ui.has("mobile_group"):
 		return
 	var mg: Control = _ui["mobile_group"]
@@ -2637,42 +3133,32 @@ func _update_mobile_ui(interact_tgt: Dictionary) -> void:
 	if not mg.visible:
 		return
 
-	var b_act: Button = _ui["m_btn_interact"]
-	var b_fwd: Button = _ui["m_btn_exit_fwd"]
-	var b_back: Button = _ui["m_btn_exit_back"]
-	var b_sprint: Button = _ui["m_btn_sprint"]
-	var b_light: Button = _ui["m_btn_light"]
-	var b_crank: Button = _ui["m_btn_crank"]
-	var b_tool: Button = _ui["m_btn_tool"]
+	var b_fwd: RoomsUI.RingButton = _ui["m_btn_exit_fwd"]
+	var b_back: RoomsUI.RingButton = _ui["m_btn_exit_back"]
+	var b_sprint: RoomsUI.RingButton = _ui["m_btn_sprint"]
+	var b_light: RoomsUI.RingButton = _ui["m_btn_light"]
+	var b_gummy: RoomsUI.RingButton = _ui["m_btn_gummy"]
 
 	if _is_hiding:
-		b_act.visible = false
+		b_light.visible = false
+		b_sprint.visible = false
+		b_gummy.visible = false
 		b_fwd.visible = true
-		b_fwd.text = "ВЫЛЕЗТИ" if _hiding_kind == "under_desk" else "ВПЕРЁД"
 		b_back.visible = (_hiding_kind != "under_desk")
-		b_back.text = "К ХОЛОД." if _hiding_kind == "fridge" else "К ШКАФУ"
 	else:
 		b_fwd.visible = false
 		b_back.visible = false
-		if not interact_tgt.is_empty():
-			b_act.visible = true
-			var itype := String(interact_tgt.get("type", ""))
-			if itype == "door":
-				b_act.text = "ОТКРЫТЬ"
-			elif itype == "pickup":
-				b_act.text = "ВЗЯТЬ"
-			else:
-				b_act.text = "СПРЯТ."
-		else:
-			b_act.visible = false
+		b_light.visible = true
+		b_sprint.visible = true
+		b_gummy.visible = _has_gummy
 
-	b_light.text = "СВЕТ\nВКЛ" if _light_on else "СВЕТ\nВЫКЛ"
-	b_light.modulate = Color(1.0, 0.96, 0.72) if _light_on else Color(0.75, 0.78, 0.85)
-	b_sprint.modulate = Color(0.55, 0.90, 1.0) if (_mobile_sprint_toggle or _joy_sprint) else Color(0.82, 0.85, 0.92)
-	b_tool.visible = _has_gummy
-	b_crank.visible = _has_gummy and (_active_tool == 1) and (not _is_hiding)
+	b_light.ring_color = Color(1.0, 1.0, 1.0, 0.96) if _light_on else Color(0.88, 0.90, 0.94, 0.65)
+	b_light.queue_redraw()
+	b_sprint.ring_color = Color(0.28, 0.62, 1.0, 1.0) if (_mobile_sprint_held or _joy_sprint) else Color(0.14, 0.44, 1.0, 0.95)
+	b_sprint.queue_redraw()
 	if _has_gummy:
-		b_tool.text = "ДИНАМО" if _active_tool == 1 else "ФОНАРЬ"
+		b_gummy.ring_color = Color(0.32, 1.0, 0.56, 1.0) if _active_tool == 1 else Color(0.22, 0.78, 0.44, 0.68)
+		b_gummy.queue_redraw()
 
 
 func _show_toast(msg: String, duration: float = 2.6) -> void:

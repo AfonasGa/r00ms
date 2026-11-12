@@ -299,7 +299,12 @@ static func build_room(
 		if rtype == "bridge_room":
 			_build_bridge_shell(room_node, assets, r)
 		else:
-			_add_box(room_node, "Floor", Vector3(0.0, -0.1, 0.0), Vector3(HALF_W * 2.0, 0.2, CELL_SIZE), floor_m)
+			var floor_body := _add_box(room_node, "Floor", Vector3(0.0, -0.1, 0.0), Vector3(HALF_W * 2.0, 0.2, CELL_SIZE), floor_m)
+			if rtype == "storage_room" or rtype == "locker_room":
+				var grate_strip := _add_box(room_node, "MetalWalkway", Vector3(0.0, 0.008, 0.0), Vector3(3.1, 0.025, CELL_SIZE - 0.15), assets.grate_mat)
+				grate_strip.set_meta("floor_surface", "metal")
+			elif rtype == "kitchen":
+				floor_body.set_meta("floor_surface", "carpet")
 		_add_box(room_node, "Ceiling", Vector3(0.0, CEIL_H + 0.1, 0.0), Vector3(HALF_W * 2.0, 0.2, CELL_SIZE), assets.ceiling_mat)
 		_add_box(room_node, "WallLeft", Vector3(-HALF_W - WALL_THICK * 0.5, CEIL_H * 0.5, 0.0), Vector3(WALL_THICK, CEIL_H, CELL_SIZE), assets.wall_mat)
 		_add_box(room_node, "WallRight", Vector3(HALF_W + WALL_THICK * 0.5, CEIL_H * 0.5, 0.0), Vector3(WALL_THICK, CEIL_H, CELL_SIZE), assets.wall_mat)
@@ -362,7 +367,7 @@ static func _build_bridge_shell(room_node: Node3D, assets: SharedAssets, r: Room
 	_add_box(room_node, "EntryCarpet", Vector3(0.0, -0.04, 4.4), Vector3(HALF_W * 2.0, 0.08, 3.2), assets.floor_mat, false)
 	_add_box(room_node, "ExitCarpet", Vector3(0.0, -0.04, -4.7), Vector3(HALF_W * 2.0, 0.08, 2.6), assets.floor_mat, false)
 
-	_add_box(room_node, "BridgeDeck", Vector3(0.0, -0.08, -0.3), Vector3(2.8, 0.16, 6.4), assets.grate_mat)
+	_add_box(room_node, "BridgeDeck", Vector3(0.0, -0.08, -0.3), Vector3(2.8, 0.16, 6.4), assets.grate_mat).set_meta("floor_surface", "metal")
 	# Steel safety rails on bridge
 	for side_s in [-1.0, 1.0]:
 		var rx: float = side_s * 1.32
@@ -451,13 +456,13 @@ static func _populate_room_type(
 	if rtype == "lobby":
 		_build_desk(room_node, assets, Vector3(-2.7, 0.0, 0.8), PI * 0.5, r)
 		_build_pickup(room_node, assets, Vector3(-2.55, 0.78, 0.45), "battery", "Батарейка (+35%)")
-		_build_pickup(room_node, assets, Vector3(-2.75, 0.78, 1.10), "gummy", "Динамо-фонарик [2]")
+		_build_pickup(room_node, assets, Vector3(-2.75, 0.78, 1.10), "gummy", "Трясущийся фонарик [2]")
 		_build_cardboard_box(room_node, assets, Vector3(-3.3, 0.42, -2.5), 0.84)
 		_build_cardboard_box(room_node, assets, Vector3(-3.2, 1.15, -2.4), 0.62)
 		_build_potted_plant(room_node, assets, Vector3(3.3, 0.0, -4.5))
 		_build_locker(room_node, assets, Vector3(HALF_W - 0.48, 0.0, -0.5), -PI * 0.5, r)
 		var sign := Label3D.new()
-		sign.text = "СЕКЦИЯ A — ВХОД A-000\n\n[E] — Открывать двери, прятаться (шкаф/холодильник/тумбочка)\n[F] — Фонарик   |   [R] — Динамо-заряд   |   [Shift] — Бег\nСледите за статикой и светом!"
+		sign.text = "СЕКЦИЯ A — ВХОД A-000\n\n[E / ЛКМ] — Открывать двери, прятаться (шкаф/холодильник/тумбочка)\n[F] — Фонарик   |   [R] — Потрясти фонарик [2]   |   [Shift] — Бег\nСледите за статикой и светом!"
 		sign.font_size = 34
 		sign.pixel_size = 0.0044
 		sign.position = Vector3(-HALF_W + 0.05, 2.05, -1.6)
@@ -832,12 +837,11 @@ static func _build_pickup(room_node: Node3D, assets: SharedAssets, local_pos: Ve
 		_add_box(body, "CrossV", Vector3(0.0, 0.072, 0.0), Vector3(0.05, 0.02, 0.16), assets.medkit_mat, false)
 		_add_box(body, "Handle", Vector3(0.0, 0.03, 0.14), Vector3(0.14, 0.04, 0.04), assets.locker_mat, false)
 	else:
-		# Emerald Gummy / Dynamo Flashlight + silver lens barrel + dynamo crank lever
+		# Emerald Gummy / Shaker Flashlight (no crank handle!)
 		_add_box(body, "Chassis", Vector3.ZERO, Vector3(0.11, 0.11, 0.26), assets.gummy_mat, false)
 		_add_box(body, "Grip", Vector3(0.0, -0.02, -0.04), Vector3(0.12, 0.08, 0.14), assets.locker_mat, false)
 		var lens := _add_cyl(body, "Head", Vector3(0.0, 0.0, 0.14), 0.062, 0.06, assets.fridge_mat)
 		lens.rotation.x = PI * 0.5
-		_add_box(body, "Crank", Vector3(0.075, 0.0, -0.02), Vector3(0.03, 0.03, 0.12), assets.metal_mat, false)
 
 	body.set_meta("interact_type", "pickup")
 	body.set_meta("pickup_kind", kind)
