@@ -2537,12 +2537,13 @@ func _set_state(new_state: State) -> void:
 		(_ui["spectate_bar"] as Control).visible = (_state == State.SPECTATING)
 	if _ui.has("mobile_group"):
 		(_ui["mobile_group"] as Control).visible = _mobile_controls_enabled and (_state == State.PLAYING)
-	if _state == State.PLAYING:
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if _mobile_controls_enabled else Input.MOUSE_MODE_CAPTURED
 	if _ui.has("btn_arch_next"):
 		_style_arch_terminal_buttons()
 		if _state == State.DEAD:
 			_refresh_architect_controls()
+
+	if _state == State.PLAYING:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if _mobile_controls_enabled else Input.MOUSE_MODE_CAPTURED
 		(_ui["modal"] as Control).visible = false
 		(_ui["architect_overlay"] as Control).visible = false
 		if _ui.has("death_iris"):
