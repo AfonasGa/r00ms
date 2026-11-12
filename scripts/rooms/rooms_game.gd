@@ -212,6 +212,17 @@ var _room_vis_radius := 7
 var _render_backend := "forward_plus"
 var _active_render_backend := "forward_plus"
 
+# Audio & gameplay settings (persisted in user://rooms_settings.cfg)
+var _audio_master := 0.75
+var _audio_entities := 1.0
+var _audio_sfx := 1.0
+var _audio_ambient := 1.0
+var _audio_muted := false
+var _mouse_sens_mult := 1.0
+var _base_fov := 75.0
+var _head_bob_enabled := true
+var _is_shaking_gummy := false
+
 # Mobile multitouch controls
 var _mobile_controls_enabled := false
 var _mobile_override := 0 # 0=auto, 1=force on, -1=force off
@@ -242,11 +253,13 @@ func _ready() -> void:
 	_load_entity_sprites()
 
 	_load_render_settings()
+	_apply_audio_settings(false)
 	_setup_environment()
 	_build_entity_nodes()
 	_build_viewmodel()
 	_build_net()
 	_build_ui()
+	_sync_settings_ui()
 	_apply_render_quality(_render_quality, false)
 	_refresh_mobile_mode()
 	_reset_run()
@@ -977,6 +990,14 @@ func _load_render_settings() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SETTINGS_PATH) == OK:
 		_render_quality = clampi(int(cfg.get_value("graphics", "quality", _render_quality)), RenderQuality.MOBILE_OPT, RenderQuality.HIGH)
+		_audio_master = clampf(float(cfg.get_value("audio", "master", 0.75)), 0.0, 1.0)
+		_audio_entities = clampf(float(cfg.get_value("audio", "entities", 1.0)), 0.0, 1.0)
+		_audio_sfx = clampf(float(cfg.get_value("audio", "sfx", 1.0)), 0.0, 1.0)
+		_audio_ambient = clampf(float(cfg.get_value("audio", "ambient", 1.0)), 0.0, 1.0)
+		_audio_muted = bool(cfg.get_value("audio", "muted", false))
+		_mouse_sens_mult = clampf(float(cfg.get_value("controls", "sensitivity", 1.0)), 0.4, 2.2)
+		_base_fov = clampf(float(cfg.get_value("controls", "fov", 75.0)), 65.0, 95.0)
+		_head_bob_enabled = bool(cfg.get_value("controls", "head_bob", true))
 
 	var ov := ConfigFile.new()
 	if ov.load(OVERRIDE_PATH) == OK:
@@ -989,7 +1010,86 @@ func _save_render_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SETTINGS_PATH)
 	cfg.set_value("graphics", "quality", _render_quality)
+	cfg.set_value("audio", "master", _audio_master)
+	cfg.set_value("audio", "entities", _audio_entities)
+	cfg.set_value("audio", "sfx", _audio_sfx)
+	cfg.set_value("audio", "ambient", _audio_ambient)
+	cfg.set_value("audio", "muted", _audio_muted)
+	cfg.set_value("controls", "sensitivity", _mouse_sens_mult)
+	cfg.set_value("controls", "fov", _base_fov)
+	cfg.set_value("controls", "head_bob", _head_bob_enabled)
 	cfg.save(SETTINGS_PATH)
+
+
+func _apply_audio_settings(save_cfg: bool = true) -> void:
+	if audio != null:
+		audio.muted = _audio_muted
+		audio.master_volume = _audio_master
+		audio.entity_volume = _audio_entities
+		audio.sfx_volume = _audio_sfx
+		audio.ambient_volume = _audio_ambient
+		audio.apply_volume_settings()
+	if save_cfg:
+		_save_render_settings()
+
+
+func _reset_audio_defaults() -> void:
+	_audio_master = 0.75
+	_audio_entities = 1.0
+	_audio_sfx = 1.0
+	_audio_ambient = 1.0
+	_audio_muted = false
+	_apply_audio_settings(true)
+	_sync_settings_ui()
+	_show_toast("Громкость сброшена по умолчанию", 1.8)
+
+
+func _open_settings_panel(open: bool) -> void:
+	if _ui.has("m_main_box") and _ui.has("m_settings_box"):
+		(_ui["m_main_box"] as Control).visible = not open
+		(_ui["m_settings_box"] as Control).visible = open
+	if _ui.has("m_title") and _ui.has("m_desc") and _state == State.PAUSED:
+		var title: Label = _ui["m_title"]
+		var desc: Label = _ui["m_desc"]
+		if open:
+			title.text = "НАСТРОЙКИ"
+			title.add_theme_color_override("font_color", Color(0.55, 0.95, 1.0))
+			desc.text = "Звук, чувствительность и камера сохраняются автоматически."
+		else:
+			title.text = "ПАУЗА  (A-%03d)" % _highest_opened
+			title.add_theme_color_override("font_color", Color(0.55, 0.95, 1.0))
+			desc.text = "Секция A. Переживите A-60, A-90 и A-120 до комнаты A-200!"
+
+
+func _sync_settings_ui() -> void:
+	if _ui.has("sld_master"):
+		(_ui["sld_master"] as HSlider).set_value_no_signal(_audio_master * 100.0)
+	if _ui.has("lbl_master"):
+		(_ui["lbl_master"] as Label).text = "%d%%" % int(round(_audio_master * 100.0))
+	if _ui.has("sld_entities"):
+		(_ui["sld_entities"] as HSlider).set_value_no_signal(_audio_entities * 100.0)
+	if _ui.has("lbl_entities"):
+		(_ui["lbl_entities"] as Label).text = "%d%%" % int(round(_audio_entities * 100.0))
+	if _ui.has("sld_sfx"):
+		(_ui["sld_sfx"] as HSlider).set_value_no_signal(_audio_sfx * 100.0)
+	if _ui.has("lbl_sfx"):
+		(_ui["lbl_sfx"] as Label).text = "%d%%" % int(round(_audio_sfx * 100.0))
+	if _ui.has("sld_ambient"):
+		(_ui["sld_ambient"] as HSlider).set_value_no_signal(_audio_ambient * 100.0)
+	if _ui.has("lbl_ambient"):
+		(_ui["lbl_ambient"] as Label).text = "%d%%" % int(round(_audio_ambient * 100.0))
+	if _ui.has("btn_mute_audio"):
+		(_ui["btn_mute_audio"] as Button).text = "Звук: ВЫКЛ [M]" if _audio_muted else "Звук: ВКЛ [M]"
+	if _ui.has("sld_sens"):
+		(_ui["sld_sens"] as HSlider).set_value_no_signal(_mouse_sens_mult)
+	if _ui.has("lbl_sens"):
+		(_ui["lbl_sens"] as Label).text = "%.2fx" % _mouse_sens_mult
+	if _ui.has("sld_fov"):
+		(_ui["sld_fov"] as HSlider).set_value_no_signal(_base_fov)
+	if _ui.has("lbl_fov"):
+		(_ui["lbl_fov"] as Label).text = "%d°" % int(round(_base_fov))
+	if _ui.has("btn_head_bob"):
+		(_ui["btn_head_bob"] as Button).text = "Покачивание камеры: %s" % ("ВКЛ" if _head_bob_enabled else "ВЫКЛ")
 
 
 func _quality_label(q: int) -> String:
@@ -1601,32 +1701,46 @@ void fragment() {
 	m_box.add_child(m_desc)
 	_ui["m_desc"] = m_desc
 
+	var m_main_box := VBoxContainer.new()
+	m_main_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	m_main_box.add_theme_constant_override("separation", 9)
+	m_box.add_child(m_main_box)
+	_ui["m_main_box"] = m_main_box
+
 	var btn_resume := Button.new()
 	btn_resume.text = "Продолжить"
 	btn_resume.custom_minimum_size = Vector2(0, 42)
 	RoomsUI.style_button(btn_resume, Color(0.35, 0.95, 0.68), 15)
 	btn_resume.pressed.connect(func(): _set_state(State.PLAYING))
-	m_box.add_child(btn_resume)
+	m_main_box.add_child(btn_resume)
 	_ui["btn_resume"] = btn_resume
+
+	var btn_settings := Button.new()
+	btn_settings.text = "Настройки (Звук и Игра)"
+	btn_settings.custom_minimum_size = Vector2(0, 40)
+	RoomsUI.style_button(btn_settings, Color(0.55, 0.88, 1.0), 15)
+	btn_settings.pressed.connect(func(): _open_settings_panel(true))
+	m_main_box.add_child(btn_settings)
+	_ui["btn_settings"] = btn_settings
 
 	var btn_restart := Button.new()
 	btn_restart.text = "Начать заново (A-000)"
 	btn_restart.custom_minimum_size = Vector2(0, 42)
 	RoomsUI.style_button(btn_restart, Color(1.0, 0.75, 0.28), 15)
 	btn_restart.pressed.connect(_reset_run)
-	m_box.add_child(btn_restart)
+	m_main_box.add_child(btn_restart)
 
 	var btn_mobile := Button.new()
 	btn_mobile.text = "Сенсорное управление: АВТО"
 	btn_mobile.custom_minimum_size = Vector2(0, 38)
 	RoomsUI.style_button(btn_mobile, Color(0.55, 0.78, 1.0), 14)
 	btn_mobile.pressed.connect(_cycle_mobile_mode)
-	m_box.add_child(btn_mobile)
+	m_main_box.add_child(btn_mobile)
 	_ui["btn_mobile"] = btn_mobile
 
 	var ren_row := HBoxContainer.new()
 	ren_row.add_theme_constant_override("separation", 6)
-	m_box.add_child(ren_row)
+	m_main_box.add_child(ren_row)
 
 	var btn_quality := Button.new()
 	btn_quality.text = "Рендер / Графика: %s" % _quality_label(_render_quality)
@@ -1652,7 +1766,7 @@ void fragment() {
 	btn_restart_render.visible = (_render_backend != _active_render_backend)
 	RoomsUI.style_button(btn_restart_render, Color(1.0, 0.56, 0.25), 13)
 	btn_restart_render.pressed.connect(_restart_for_render)
-	m_box.add_child(btn_restart_render)
+	m_main_box.add_child(btn_restart_render)
 	_ui["btn_restart_render"] = btn_restart_render
 
 	# Online Test Panel (Steam Spacewar 480 + ENet LAN)
@@ -1661,7 +1775,7 @@ void fragment() {
 	net_sep.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	net_sep.add_theme_font_size_override("font_size", 13)
 	net_sep.add_theme_color_override("font_color", Color(0.62, 0.88, 1.0))
-	m_box.add_child(net_sep)
+	m_main_box.add_child(net_sep)
 
 	var net_status := Label.new()
 	net_status.text = _net.get_summary_status() if _net != null else "Offline"
@@ -1669,12 +1783,12 @@ void fragment() {
 	net_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	net_status.add_theme_font_size_override("font_size", 13)
 	net_status.add_theme_color_override("font_color", Color(0.88, 0.95, 1.0))
-	m_box.add_child(net_status)
+	m_main_box.add_child(net_status)
 	_ui["net_status"] = net_status
 
 	var steam_row := HBoxContainer.new()
 	steam_row.add_theme_constant_override("separation", 6)
-	m_box.add_child(steam_row)
+	m_main_box.add_child(steam_row)
 
 	var btn_steam_host := Button.new()
 	btn_steam_host.text = "Steam Лобби (480)"
@@ -1698,7 +1812,7 @@ void fragment() {
 
 	var enet_row := HBoxContainer.new()
 	enet_row.add_theme_constant_override("separation", 6)
-	m_box.add_child(enet_row)
+	m_main_box.add_child(enet_row)
 
 	var btn_lan_host := Button.new()
 	btn_lan_host.text = "Тест Хост (27480)"
@@ -1722,7 +1836,7 @@ void fragment() {
 
 	var steam_act_row := HBoxContainer.new()
 	steam_act_row.add_theme_constant_override("separation", 6)
-	m_box.add_child(steam_act_row)
+	m_main_box.add_child(steam_act_row)
 
 	var btn_net_invite := Button.new()
 	btn_net_invite.text = "Пригласить (Shift+Tab)"
@@ -1748,7 +1862,131 @@ void fragment() {
 
 	_lobby_list_box = VBoxContainer.new()
 	_lobby_list_box.add_theme_constant_override("separation", 4)
-	m_box.add_child(_lobby_list_box)
+	m_main_box.add_child(_lobby_list_box)
+
+	# Sub-panel: Audio & Gameplay Settings
+	var m_settings_box := VBoxContainer.new()
+	m_settings_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	m_settings_box.add_theme_constant_override("separation", 8)
+	m_settings_box.visible = false
+	m_box.add_child(m_settings_box)
+	_ui["m_settings_box"] = m_settings_box
+
+	var audio_hdr := Label.new()
+	audio_hdr.text = "── ЗВУК ──"
+	audio_hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	audio_hdr.add_theme_font_size_override("font_size", 13)
+	audio_hdr.add_theme_color_override("font_color", Color(0.55, 0.92, 1.0))
+	m_settings_box.add_child(audio_hdr)
+
+	var make_slider := func(title_str: String, s_key: String, l_key: String, min_v: float, max_v: float, step_v: float, init_v: float, accent: Color, on_chg: Callable) -> void:
+		var row := HBoxContainer.new()
+		m_settings_box.add_child(row)
+		var t_lbl := Label.new()
+		t_lbl.text = title_str
+		t_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		t_lbl.add_theme_font_size_override("font_size", 14)
+		row.add_child(t_lbl)
+		var v_lbl := Label.new()
+		v_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		v_lbl.add_theme_font_size_override("font_size", 14)
+		v_lbl.add_theme_color_override("font_color", accent)
+		row.add_child(v_lbl)
+		var sld := HSlider.new()
+		sld.min_value = min_v
+		sld.max_value = max_v
+		sld.step = step_v
+		sld.value = init_v
+		sld.custom_minimum_size = Vector2(0, 24)
+		sld.value_changed.connect(on_chg)
+		m_settings_box.add_child(sld)
+		_ui[s_key] = sld
+		_ui[l_key] = v_lbl
+
+	make_slider.call("Общая громкость", "sld_master", "lbl_master", 0.0, 100.0, 1.0, _audio_master * 100.0, Color(0.55, 0.95, 1.0), func(val: float) -> void:
+		_audio_master = clampf(val / 100.0, 0.0, 1.0)
+		_apply_audio_settings(true)
+		_sync_settings_ui()
+	)
+	make_slider.call("Монстры (A-60 / A-90 / A-120 / Darkness)", "sld_entities", "lbl_entities", 0.0, 100.0, 1.0, _audio_entities * 100.0, Color(1.0, 0.58, 0.45), func(val: float) -> void:
+		_audio_entities = clampf(val / 100.0, 0.0, 1.0)
+		_apply_audio_settings(true)
+		_sync_settings_ui()
+	)
+	make_slider.call("Эффекты, фонарик и шаги", "sld_sfx", "lbl_sfx", 0.0, 100.0, 1.0, _audio_sfx * 100.0, Color(0.45, 0.94, 0.72), func(val: float) -> void:
+		_audio_sfx = clampf(val / 100.0, 0.0, 1.0)
+		_apply_audio_settings(true)
+		_sync_settings_ui()
+	)
+	make_slider.call("Атмосфера и сердцебиение", "sld_ambient", "lbl_ambient", 0.0, 100.0, 1.0, _audio_ambient * 100.0, Color(0.75, 0.85, 1.0), func(val: float) -> void:
+		_audio_ambient = clampf(val / 100.0, 0.0, 1.0)
+		_apply_audio_settings(true)
+		_sync_settings_ui()
+	)
+
+	var audio_btn_row := HBoxContainer.new()
+	audio_btn_row.add_theme_constant_override("separation", 6)
+	m_settings_box.add_child(audio_btn_row)
+
+	var btn_mute_audio := Button.new()
+	btn_mute_audio.text = "Звук: ВКЛ [M]"
+	btn_mute_audio.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_mute_audio.custom_minimum_size = Vector2(0, 36)
+	RoomsUI.style_button(btn_mute_audio, Color(1.0, 0.78, 0.35), 13)
+	btn_mute_audio.pressed.connect(func() -> void:
+		_audio_muted = not _audio_muted
+		_apply_audio_settings(true)
+		_sync_settings_ui()
+	)
+	audio_btn_row.add_child(btn_mute_audio)
+	_ui["btn_mute_audio"] = btn_mute_audio
+
+	var btn_reset_audio := Button.new()
+	btn_reset_audio.text = "Сбросить звук"
+	btn_reset_audio.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_reset_audio.custom_minimum_size = Vector2(0, 36)
+	RoomsUI.style_button(btn_reset_audio, Color(0.75, 0.82, 0.95), 13)
+	btn_reset_audio.pressed.connect(_reset_audio_defaults)
+	audio_btn_row.add_child(btn_reset_audio)
+	_ui["btn_reset_audio"] = btn_reset_audio
+
+	var cam_hdr := Label.new()
+	cam_hdr.text = "── КАМЕРА И УПРАВЛЕНИЕ ──"
+	cam_hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cam_hdr.add_theme_font_size_override("font_size", 13)
+	cam_hdr.add_theme_color_override("font_color", Color(0.55, 0.92, 1.0))
+	m_settings_box.add_child(cam_hdr)
+
+	make_slider.call("Чувствительность обзора", "sld_sens", "lbl_sens", 0.4, 2.2, 0.05, _mouse_sens_mult, Color(0.55, 0.92, 1.0), func(val: float) -> void:
+		_mouse_sens_mult = clampf(val, 0.4, 2.2)
+		_save_render_settings()
+		_sync_settings_ui()
+	)
+	make_slider.call("Поле зрения (FOV)", "sld_fov", "lbl_fov", 65.0, 95.0, 1.0, _base_fov, Color(0.55, 0.92, 1.0), func(val: float) -> void:
+		_base_fov = clampf(val, 65.0, 95.0)
+		_save_render_settings()
+		_sync_settings_ui()
+	)
+
+	var btn_head_bob := Button.new()
+	btn_head_bob.text = "Покачивание камеры: ВКЛ"
+	btn_head_bob.custom_minimum_size = Vector2(0, 36)
+	RoomsUI.style_button(btn_head_bob, Color(0.45, 0.92, 0.78), 13)
+	btn_head_bob.pressed.connect(func() -> void:
+		_head_bob_enabled = not _head_bob_enabled
+		_save_render_settings()
+		_sync_settings_ui()
+	)
+	m_settings_box.add_child(btn_head_bob)
+	_ui["btn_head_bob"] = btn_head_bob
+
+	var btn_settings_back := Button.new()
+	btn_settings_back.text = "← Назад в паузу"
+	btn_settings_back.custom_minimum_size = Vector2(0, 40)
+	RoomsUI.style_button(btn_settings_back, Color(0.35, 0.95, 0.68), 15)
+	btn_settings_back.pressed.connect(func(): _open_settings_panel(false))
+	m_settings_box.add_child(btn_settings_back)
+	_ui["btn_settings_back"] = btn_settings_back
 
 	# Architect Death Void (Curious Light gold star, god-rays, rim-lit silhouette & floating text)
 	var arch_overlay := Control.new()
@@ -2311,12 +2549,14 @@ func _set_state(new_state: State) -> void:
 		var desc: Label = _ui["m_desc"]
 		var btn_res: Button = _ui["btn_resume"]
 		if _state == State.PAUSED:
+			_open_settings_panel(false)
 			title.text = "ПАУЗА  (A-%03d)" % _highest_opened
 			title.add_theme_color_override("font_color", Color(0.55, 0.95, 1.0))
 			desc.text = "Секция A. Переживите A-60, A-90 и A-120 до комнаты A-200!"
 			btn_res.text = "Продолжить"
 			btn_res.visible = true
 		elif _state == State.VICTORY:
+			_open_settings_panel(false)
 			title.text = "ВЫ ПРОШЛИ СЕКЦИЮ A!"
 			title.add_theme_color_override("font_color", Color(0.35, 1.0, 0.65))
 			var mins := int(_run_time) / 60
@@ -2666,7 +2906,7 @@ func _input(event: InputEvent) -> void:
 		if sd.index == _joy_touch_id:
 			_update_joystick_from_pos(sd.position)
 		elif sd.index == _look_touch_id:
-			var sens := 0.0044
+			var sens := 0.0044 * _mouse_sens_mult
 			if _is_hiding:
 				_target_hide_yaw = clampf(_target_hide_yaw - sd.relative.x * sens, -0.58, 0.58)
 				_target_hide_pitch = clampf(_target_hide_pitch - sd.relative.y * sens, -0.38, 0.38)
@@ -2707,7 +2947,10 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 			elif _state == State.PAUSED:
-				_set_state(State.PLAYING)
+				if _ui.has("m_settings_box") and (_ui["m_settings_box"] as Control).visible:
+					_open_settings_panel(false)
+				else:
+					_set_state(State.PLAYING)
 				get_viewport().set_input_as_handled()
 				return
 
@@ -2731,7 +2974,10 @@ func _input(event: InputEvent) -> void:
 			elif ke.keycode == KEY_R:
 				_try_reload_flashlight()
 			elif ke.keycode == KEY_M:
-				audio.muted = not audio.muted
+				_audio_muted = not _audio_muted
+				_apply_audio_settings(true)
+				_sync_settings_ui()
+				_show_toast("Звук выключен" if _audio_muted else "Звук включён", 1.5)
 
 	elif event is InputEventMouseMotion and (_state == State.PLAYING or _state == State.SPECTATING):
 		if (event as InputEventMouseMotion).device == InputEvent.DEVICE_ID_EMULATION:
@@ -2739,18 +2985,18 @@ func _input(event: InputEvent) -> void:
 		if _state == State.SPECTATING:
 			if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
 				var rel_s := (event as InputEventMouseMotion).relative
-				_spectate_yaw -= rel_s.x * 0.004
-				_spectate_pitch = clampf(_spectate_pitch - rel_s.y * 0.004, -1.15, 0.85)
+				_spectate_yaw -= rel_s.x * 0.004 * _mouse_sens_mult
+				_spectate_pitch = clampf(_spectate_pitch - rel_s.y * 0.004 * _mouse_sens_mult, -1.15, 0.85)
 				_spectate_user_orbited = true
 			return
 		if not _mobile_controls_enabled and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			var rel := (event as InputEventMouseMotion).relative
 			if _is_hiding:
-				_target_hide_yaw = clampf(_target_hide_yaw - rel.x * 0.0022, -0.58, 0.58)
-				_target_hide_pitch = clampf(_target_hide_pitch - rel.y * 0.0022, -0.38, 0.38)
+				_target_hide_yaw = clampf(_target_hide_yaw - rel.x * 0.0022 * _mouse_sens_mult, -0.58, 0.58)
+				_target_hide_pitch = clampf(_target_hide_pitch - rel.y * 0.0022 * _mouse_sens_mult, -0.38, 0.38)
 			else:
-				_target_yaw -= rel.x * 0.0024
-				_target_pitch = clampf(_target_pitch - rel.y * 0.0024, -1.42, 1.42)
+				_target_yaw -= rel.x * 0.0024 * _mouse_sens_mult
+				_target_pitch = clampf(_target_pitch - rel.y * 0.0024 * _mouse_sens_mult, -1.42, 1.42)
 
 	elif event is InputEventMouseButton and (_state == State.PLAYING or _state == State.SPECTATING):
 		var mb := event as InputEventMouseButton
@@ -2830,11 +3076,11 @@ func _process(delta: float) -> void:
 	_hide_yaw_offset = lerpf(_hide_yaw_offset, _target_hide_yaw, look_alpha)
 	_hide_pitch_offset = lerpf(_hide_pitch_offset, _target_hide_pitch, look_alpha)
 
-	var target_fov := 66.0 if _is_hiding else 75.0
+	var target_fov := (_base_fov - 9.0) if _is_hiding else _base_fov
 	if not _is_hiding:
 		var hspd := Vector2(player_body.velocity.x, player_body.velocity.z).length()
 		if hspd > 4.6:
-			target_fov = 81.0
+			target_fov = _base_fov + 6.0
 	_fov = lerpf(_fov, target_fov, 1.0 - exp(-10.0 * delta))
 	cam.fov = _fov
 
@@ -2845,6 +3091,7 @@ func _process(delta: float) -> void:
 	if _is_action_locked():
 		_mobile_gummy_held = false
 	var shaking_gummy := (not _is_action_locked()) and (_mobile_gummy_held or (_rmb_held and not _mobile_controls_enabled)) and _active_tool == 1 and _has_gummy
+	_is_shaking_gummy = shaking_gummy
 	if shaking_gummy:
 		_light_on = true
 		_gummy_battery = minf(_gummy_battery + delta * 26.7, 100.0)
@@ -3975,6 +4222,8 @@ func _process_flashlight(delta: float) -> void:
 			flashlight.light_color = Color(0.35, 1.0, 0.52)
 			flashlight.spot_range = 20.0
 			flashlight.spot_angle = 40.0
+			if _gummy_battery < 25.0:
+				power_mult = clampf(0.32 + (_gummy_battery / 25.0) * 0.68, 0.32, 1.0)
 
 		var cur_bat := _std_battery if _active_tool == 0 else _gummy_battery
 		var flicker := 1.0
@@ -4109,6 +4358,8 @@ func _process_player_movement(delta: float) -> void:
 		speed = 6.2
 	elif _exhausted:
 		speed = 2.8
+	if _is_shaking_gummy:
+		speed *= 0.5
 	var dir := (player_body.transform.basis * Vector3(inp.x, 0.0, inp.y)).normalized()
 
 	player_body.velocity.x = lerpf(player_body.velocity.x, dir.x * speed, minf(delta * 11.0, 1.0))
@@ -4123,8 +4374,8 @@ func _process_player_movement(delta: float) -> void:
 	# Footsteps & camera bobbing (surface-aware: metal grate floors play louder iron footsteps!)
 	var horiz_spd := Vector2(player_body.velocity.x, player_body.velocity.z).length()
 	if horiz_spd > 0.7:
-		_bob_phase += delta * (10.5 if wants_sprint else 6.8)
-		_step_timer -= delta * (1.42 if wants_sprint else 0.90)
+		_bob_phase += delta * (10.5 if wants_sprint else 6.8) * (0.65 if _is_shaking_gummy else 1.0)
+		_step_timer -= delta * (1.42 if wants_sprint else 0.90) * (0.55 if _is_shaking_gummy else 1.0)
 		if _step_timer <= 0.0:
 			_step_timer = 0.48
 			audio.play_step(wants_sprint, _detect_floor_surface())
@@ -4137,9 +4388,10 @@ func _process_player_movement(delta: float) -> void:
 		_rng.randf_range(-_shake_amount, _shake_amount),
 		0.0
 	)
+	var bob_y := (sin(_bob_phase) * 0.032) if _head_bob_enabled else 0.0
 	var breath_bob := sin(float(Time.get_ticks_msec()) * 0.0055) * (0.022 if _exhausted else 0.0)
 	if _locker_transition_t >= 1.0:
-		cam.position = Vector3(0.0, 1.48 + sin(_bob_phase) * 0.032 + breath_bob, 0.0) + shake_off
+		cam.position = Vector3(0.0, 1.48 + bob_y + breath_bob, 0.0) + shake_off
 
 	# Track current room closest to player (adapted for 12m room grid)
 	var prev_room := _current_room_idx
