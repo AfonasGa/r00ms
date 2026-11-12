@@ -11,6 +11,7 @@
 [![Godot Engine](https://img.shields.io/badge/Godot-4.7-blue.svg?logo=godotengine&logoColor=white)](https://godotengine.org)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Android%20%7C%20iOS-brightgreen.svg)]()
 [![Release](https://img.shields.io/badge/Release-v1.0.0%20Stable-orange.svg)](https://github.com/AfonasGa/r00ms/releases/tag/stable)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Multiplayer](https://img.shields.io/badge/Multiplayer-Steam%20P2P%20%2F%20LAN-purple.svg)](https://partner.steamgames.com)
 
 </div>
@@ -84,6 +85,6 @@ godot --editor project.godot
 
 ---
 
-<div align="center">
-<sub>r00ms &copy; 2026. Inspired by Rooms & Doors.</sub>
-</div>
+## 📄 Лицензия
+
+Проект распространяется под открытой лицензией [MIT](LICENSE).
