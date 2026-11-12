@@ -206,6 +206,7 @@ var _mobile_btns: Array[Control] = []
 var _net: RoomsNet = null
 var _remote_players: Dictionary = {}
 var _lobby_list_box: VBoxContainer = null
+var _noob_scene: PackedScene = null
 
 
 func _ready() -> void:
@@ -305,46 +306,107 @@ func _on_remote_peer_disconnected(peer_key: String) -> void:
 		_remote_players.erase(peer_key)
 
 
+func _build_remote_avatar_mesh(parent: Node3D) -> Node3D:
+	var model_root := Node3D.new()
+	model_root.name = "NoobAvatar"
+	parent.add_child(model_root)
+
+	if _noob_scene != null:
+		var inst := _noob_scene.instantiate() as Node3D
+		if inst != null:
+			# Exact local AABB of roblox_noob.gltf after node transforms: height=5.101215, bottom-center=(-6.639172, -2.109478, 2.7993965), -PI/2 faces -Z
+			var sc := 1.72 / 5.101215
+			var bottom_center := Vector3(-6.639172, -2.109478, 2.7993965)
+			var rotator := Node3D.new()
+			rotator.rotation.y = -PI * 0.5
+			rotator.scale = Vector3.ONE * sc
+			inst.position = -bottom_center
+			rotator.add_child(inst)
+			model_root.add_child(rotator)
+			_prep_avatar_meshes(inst)
+			return model_root
+
+	# Stylized R6 Roblox Noob fallback if glTF unavailable
+	var skin_mat := StandardMaterial3D.new()
+	skin_mat.albedo_color = Color(0.96, 0.80, 0.22)
+	skin_mat.roughness = 0.55
+	var torso_mat := StandardMaterial3D.new()
+	torso_mat.albedo_color = Color(0.11, 0.44, 0.82)
+	torso_mat.roughness = 0.60
+	var leg_mat := StandardMaterial3D.new()
+	leg_mat.albedo_color = Color(0.45, 0.72, 0.18)
+	leg_mat.roughness = 0.65
+	RoomBuilder._add_box(model_root, "LegL", Vector3(-0.17, 0.34, 0.0), Vector3(0.30, 0.68, 0.34), leg_mat, false)
+	RoomBuilder._add_box(model_root, "LegR", Vector3(0.17, 0.34, 0.0), Vector3(0.30, 0.68, 0.34), leg_mat, false)
+	RoomBuilder._add_box(model_root, "Torso", Vector3(0.0, 1.02, 0.0), Vector3(0.64, 0.68, 0.34), torso_mat, false)
+	RoomBuilder._add_box(model_root, "ArmL", Vector3(-0.48, 1.02, 0.0), Vector3(0.28, 0.68, 0.32), skin_mat, false)
+	RoomBuilder._add_box(model_root, "ArmR", Vector3(0.48, 1.02, 0.0), Vector3(0.28, 0.68, 0.32), skin_mat, false)
+	RoomBuilder._add_box(model_root, "Head", Vector3(0.0, 1.56, 0.0), Vector3(0.42, 0.40, 0.42), skin_mat, false)
+	_prep_avatar_meshes(model_root)
+	return model_root
+
+
+func _prep_avatar_meshes(n: Node) -> void:
+	var stack: Array[Node] = [n]
+	while not stack.is_empty():
+		var cur: Node = stack.pop_back()
+		for ch in cur.get_children():
+			stack.append(ch)
+		if cur is MeshInstance3D:
+			var mi := cur as MeshInstance3D
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			# Large extra_cull_margin prevents false frustum culling on transformed glTF bounds
+			mi.extra_cull_margin = 16384.0
+			mi.visible = true
+
+
 func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 	var rp: Dictionary
+	var newly_created := false
 	if _remote_players.has(peer_key):
 		rp = _remote_players[peer_key]
 	else:
+		newly_created = true
 		var root_node := Node3D.new()
 		root_node.name = "Remote_" + peer_key
+		root_node.visible = true
 		add_child(root_node)
-		var body_mat := StandardMaterial3D.new()
-		body_mat.albedo_color = Color(0.16, 0.45, 0.72)
-		body_mat.roughness = 0.55
-		var torso := RoomBuilder._add_cyl(root_node, "Torso", Vector3(0.0, 0.92, 0.0), 0.24, 1.15, body_mat)
-		torso.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var head_mat := StandardMaterial3D.new()
-		head_mat.albedo_color = Color(0.82, 0.72, 0.62)
-		var head := RoomBuilder._add_box(root_node, "Head", Vector3(0.0, 1.66, 0.0), Vector3(0.32, 0.34, 0.32), head_mat, false)
-		RoomBuilder._add_box(head, "Visor", Vector3(0.0, 0.02, -0.17), Vector3(0.24, 0.08, 0.04), _vm_bulb_on_mat, false)
+
+		var avatar := _build_remote_avatar_mesh(root_node)
+
+		var head := Node3D.new()
+		head.name = "HeadPivot"
+		head.position = Vector3(0.0, 1.48, 0.0)
+		root_node.add_child(head)
+
+		var spot := SpotLight3D.new()
+		spot.position = Vector3(0.32, -0.08, -0.26)
+		spot.light_color = Color(1.0, 0.96, 0.88)
+		spot.light_energy = 1.9
+		spot.spot_range = 17.0
+		spot.spot_angle = 38.0
+		head.add_child(spot)
+
 		var name_lbl := Label3D.new()
-		name_lbl.position = Vector3(0.0, 2.08, 0.0)
+		name_lbl.position = Vector3(0.0, 2.02, 0.0)
 		name_lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		name_lbl.no_depth_test = true
 		name_lbl.font_size = 30
 		name_lbl.pixel_size = 0.004
-		name_lbl.modulate = Color(0.75, 0.94, 1.0)
+		name_lbl.modulate = Color(0.85, 0.96, 1.0)
 		name_lbl.text = String(msg.get("n", "Player"))
 		root_node.add_child(name_lbl)
-		var spot := SpotLight3D.new()
-		spot.position = Vector3(0.22, 1.38, -0.18)
-		spot.light_color = Color(1.0, 0.96, 0.88)
-		spot.light_energy = 1.8
-		spot.spot_range = 16.0
-		spot.spot_angle = 36.0
-		root_node.add_child(spot)
+
 		rp = {
 			"node": root_node,
+			"avatar": avatar,
 			"head": head,
 			"spot": spot,
 			"lbl": name_lbl,
 			"tgt_pos": Vector3.ZERO,
 			"tgt_yaw": 0.0,
 			"tgt_pitch": 0.0,
+			"walk_phase": 0.0,
 		}
 		_remote_players[peer_key] = rp
 
@@ -355,26 +417,42 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 	rp["tgt_yaw"] = float(msg.get("y", 0.0))
 	rp["tgt_pitch"] = float(msg.get("pt", 0.0))
 	var spot_node: SpotLight3D = rp["spot"]
-	spot_node.visible = bool(msg.get("l", false)) and not bool(msg.get("h", false))
+	spot_node.visible = bool(msg.get("l", false))
 	var lbl_node: Label3D = rp["lbl"]
 	lbl_node.text = "%s [A-%03d]" % [String(msg.get("n", "Player")), int(msg.get("r", 0))]
 	var root_n: Node3D = rp["node"]
-	root_n.visible = not bool(msg.get("h", false))
+	# Remote players must stay visible at all times (never hide on locker/pause transitions)
+	root_n.visible = true
+	if newly_created:
+		root_n.position = rp["tgt_pos"]
+		root_n.rotation.y = float(rp["tgt_yaw"])
 
 
 func _process_remote_players(delta: float) -> void:
-	var a := 1.0 - exp(-14.0 * delta)
+	var a := clampf(1.0 - exp(-14.0 * delta), 0.0, 1.0)
 	for pk in _remote_players.keys():
 		var rp: Dictionary = _remote_players[pk]
 		var n: Node3D = rp["node"]
 		if not is_instance_valid(n):
 			continue
+		n.visible = true
+		var prev_pos := n.position
 		n.position = n.position.lerp(rp["tgt_pos"], a)
 		n.rotation.y = lerp_angle(n.rotation.y, float(rp["tgt_yaw"]), a)
 		var hd: Node3D = rp["head"]
 		hd.rotation.x = lerpf(hd.rotation.x, float(rp["tgt_pitch"]), a)
-		var sp: SpotLight3D = rp["spot"]
-		sp.rotation.x = hd.rotation.x
+		var av: Node3D = rp["avatar"]
+		if is_instance_valid(av):
+			av.visible = true
+			var move_spd := Vector2(n.position.x - prev_pos.x, n.position.z - prev_pos.z).length() / maxf(delta, 0.001)
+			if move_spd > 0.25:
+				var wp := float(rp.get("walk_phase", 0.0)) + delta * minf(move_spd * 2.4, 14.0)
+				rp["walk_phase"] = wp
+				av.position.y = absf(sin(wp)) * 0.045
+				av.rotation.z = sin(wp) * 0.045
+			else:
+				av.position.y = lerpf(av.position.y, 0.0, a)
+				av.rotation.z = lerpf(av.rotation.z, 0.0, a)
 
 
 func _load_entity_sprites() -> void:
@@ -416,6 +494,8 @@ func _load_entity_sprites() -> void:
 	if stop_tex != null:
 		_a90_textures["stopsign"] = stop_tex
 	_darkness_tex = _try_load_tex("res://assets/sprites/darkness/darkness_eye.webp")
+	if ResourceLoader.exists("res://assets/models/player/roblox_noob/roblox_noob.gltf"):
+		_noob_scene = load("res://assets/models/player/roblox_noob/roblox_noob.gltf") as PackedScene
 
 
 func _try_load_tex(res_path: String) -> Texture2D:
@@ -491,7 +571,7 @@ func _apply_render_quality(q: int, save_cfg: bool = true) -> void:
 		if flashlight != null:
 			flashlight.shadow_enabled = false
 		if cam != null:
-			cam.far = 42.0
+			cam.far = 78.0
 		if env != null:
 			env.ssao_enabled = false
 			env.glow_enabled = false
@@ -1893,7 +1973,23 @@ func _apply_camera_rotation() -> void:
 	cam.rotation.z = _cam_roll
 
 
+func _sync_net_local_state() -> void:
+	if _net != null and _net.is_online():
+		var gp := player_body.global_position
+		_net.update_local_state({
+			"pos": [gp.x, gp.y, gp.z],
+			"yaw": _yaw,
+			"pitch": _pitch,
+			"light": _light_on and (_active_tool == 0 and _std_battery > 0.05 or _active_tool == 1 and _gummy_battery > 0.05),
+			"hide": _is_hiding,
+			"room": _highest_opened,
+			"hp": _hp,
+		})
+
+
 func _process(delta: float) -> void:
+	_sync_net_local_state()
+	_process_remote_players(delta)
 	if _state == State.DEAD:
 		_process_architect_and_scare(delta)
 		return
@@ -2053,19 +2149,6 @@ func _process(delta: float) -> void:
 		else:
 			lock_mask.color = Color(0.0, 0.0, 0.0, 0.0)
 			lock_mask.visible = false
-
-	if _net != null and _net.is_online():
-		var gp := player_body.global_position
-		_net.update_local_state({
-			"pos": [gp.x, gp.y, gp.z],
-			"yaw": _yaw,
-			"pitch": _pitch,
-			"light": _light_on and (_active_tool == 0 and _std_battery > 0.05 or _active_tool == 1 and _gummy_battery > 0.05),
-			"hide": _is_hiding,
-			"room": _highest_opened,
-			"hp": _hp,
-		})
-	_process_remote_players(delta)
 
 
 func _process_architect_and_scare(delta: float) -> void:

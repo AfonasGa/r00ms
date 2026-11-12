@@ -38,6 +38,7 @@ var _enet: ENetMultiplayerPeer = null
 var _enet_connected_ids: Array[int] = []
 
 var _send_accum := 0.0
+var _send_tick := 0
 var _callback_accum := 0.0
 var _local_state: Dictionary = {}
 var _pending_open_invite := false
@@ -439,6 +440,8 @@ func _process(delta: float) -> void:
 		_send_accum += delta
 		if _send_accum >= 0.05:
 			_send_accum = 0.0
+			_send_tick += 1
+			var reliable_hb := (_send_tick % 10 == 0)
 			if not _local_state.is_empty():
 				var pkt := {
 					"t": "st",
@@ -452,10 +455,10 @@ func _process(delta: float) -> void:
 					"n": persona_name,
 				}
 				if mode == "steam":
-					_steam_send_all(pkt, 0) # P2P_SEND_UNRELIABLE
+					_steam_send_all(pkt, 2 if reliable_hb else 0)
 				elif mode == "enet":
 					var bytes := var_to_bytes(pkt)
-					multiplayer.send_bytes(bytes, 0, MultiplayerPeer.TRANSFER_MODE_UNRELIABLE)
+					multiplayer.send_bytes(bytes, 0, MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable_hb else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE)
 
 
 func _steam_send_all(data: Dictionary, send_type: int) -> void:
@@ -469,7 +472,7 @@ func _steam_send_all(data: Dictionary, send_type: int) -> void:
 
 func _poll_steam_packets() -> void:
 	var guard := 0
-	while guard < 32:
+	while guard < 128:
 		guard += 1
 		var pkt_sz := int(_steam.call("getAvailableP2PPacketSize", 0))
 		if pkt_sz <= 0:
@@ -606,6 +609,7 @@ func _refresh_steam_lobby_members() -> void:
 		var mid := int(_steam.call("getLobbyMemberByIndex", current_lobby_id, i))
 		if mid > 0 and mid != steam_id:
 			_peer_steam_ids.append(mid)
+			_steam.call("acceptP2PSessionWithUser", mid)
 	for old_id in prev:
 		if not _peer_steam_ids.has(old_id):
 			emit_signal("peer_disconnected", "steam_%d" % old_id)
@@ -630,7 +634,12 @@ func _on_steam_p2p_session_request(remote_id: int) -> void:
 
 
 func _on_steam_p2p_connect_fail(remote_id: int, _reason: int) -> void:
-	emit_signal("peer_disconnected", "steam_%d" % remote_id)
+	# Never despawn a peer who is still in the Steam lobby; recover P2P / relay session instead
+	if _steam != null and _peer_steam_ids.has(remote_id):
+		_steam.call("closeP2PSessionWithUser", remote_id)
+		_steam.call("acceptP2PSessionWithUser", remote_id)
+		var bytes := var_to_bytes({"t": "hi", "n": persona_name})
+		_steam.call("sendP2PPacket", remote_id, bytes, 2, 0)
 
 
 func _on_enet_peer_connected(id: int) -> void:
