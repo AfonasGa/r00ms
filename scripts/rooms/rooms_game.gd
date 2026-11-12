@@ -31,6 +31,8 @@ var _death_phase_t := 0.0
 var _spectate_key := ""
 var _spectate_yaw := 0.0
 var _spectate_pitch := 0.28
+var _spectate_last_hiding := false
+var _spectate_user_orbited := false
 
 var _rooms: Array[RoomBuilder.RoomInstance] = []
 var _room_by_idx: Dictionary = {}
@@ -318,14 +320,72 @@ func _on_net_lobbies_updated(lobbies: Array) -> void:
 		_lobby_list_box.add_child(btn)
 
 
+func _is_action_locked() -> bool:
+	return _locker_transition_t < 1.0 or _door_hand_timer > 0.0
+
+
+func _has_alive_remote_players() -> bool:
+	for rp_v in _remote_players.values():
+		if rp_v is Dictionary and not bool((rp_v as Dictionary).get("dead", false)):
+			return true
+	return false
+
+
+func _get_remote_hiding_kind(rp: Dictionary) -> String:
+	if not bool(rp.get("hiding", false)):
+		return ""
+	var hr := int(rp.get("hide_room", -1))
+	var hl := int(rp.get("hide_locker", -1))
+	var r_inst: RoomBuilder.RoomInstance = _room_by_idx.get(hr)
+	if r_inst != null and hl >= 0 and hl < r_inst.lockers.size():
+		return String(r_inst.lockers[hl].get("kind", "locker"))
+	return "locker"
+
+
 func _is_entity_authority() -> bool:
 	return _net == null or not _net.is_online() or _net.is_host
 
 
 func _on_remote_entity_event(msg: Dictionary) -> void:
+	var kind := String(msg.get("k", ""))
+	# If ANY peer gets hit/warped by A-120, despawn it across both host & clients cleanly
+	if kind == "a120_end":
+		_a120_active = false
+		_a120_phase = 0
+		_a120_substage = 0
+		_a120_node.visible = false
+		audio.stop_a120()
+		if _is_entity_authority() and _net != null and _net.is_online() and bool(msg.get("from_client", false)):
+			_net.broadcast_entity_event({"k": "a120_end"}, true)
+		return
 	if _is_entity_authority():
 		return
-	var kind := String(msg.get("k", ""))
+
+	if kind == "a60_end":
+		if _state != State.PLAYING and _state != State.SPECTATING:
+			_a60_active = false
+			_a60_phase = 0
+			_a60_node.visible = false
+			audio.stop_a60()
+		else:
+			_a60_phase = 3
+			_a60_sink_timer = 0.42
+		return
+	elif kind == "a60p_warn":
+		var gap := float(msg.get("gap", 0.0))
+		_a60_prime_flicker_active = true
+		_a60_prime_flicker_gap_t = gap
+		_a60_prime_flicker_snd_cd = 0.0
+		return
+	elif kind == "a60p_end":
+		_a60_prime_flicker_active = false
+		_a60_prime_flicker_gap_t = 0.0
+		return
+
+	# Do not spawn or resurrect visual entities onto a dead player's death/Architect screen
+	if _state == State.DEAD:
+		return
+
 	if kind == "a60_spawn":
 		var door_idx := int(msg.get("door", 0))
 		var is_prime := bool(msg.get("prime", false))
@@ -347,22 +407,14 @@ func _on_remote_entity_event(msg: Dictionary) -> void:
 		var r_brk: RoomBuilder.RoomInstance = _room_by_idx.get(b_idx)
 		if r_brk != null and not r_brk.door_opened and not r_brk.door_broken:
 			_break_door_by_a60(b_idx, b_prime)
-	elif kind == "a60_end":
-		_a60_phase = 3
-		_a60_sink_timer = 0.42
-	elif kind == "a60p_warn":
-		var gap := float(msg.get("gap", 0.0))
-		_a60_prime_flicker_active = true
-		_a60_prime_flicker_gap_t = gap
-		_a60_prime_flicker_snd_cd = 0.0
-	elif kind == "a60p_end":
-		_a60_prime_flicker_active = false
-		_a60_prime_flicker_gap_t = 0.0
 	elif kind == "a120_spawn":
-		var sp_r := int(msg.get("room", 0))
-		var rb := int(msg.get("rb", 0))
-		_start_a120_local(sp_r, rb)
+		if _a120_hit_cd <= 0.0:
+			var sp_r := int(msg.get("room", 0))
+			var rb := int(msg.get("rb", 0))
+			_start_a120_local(sp_r, rb)
 	elif kind == "a120_pos":
+		if _a120_hit_cd > 0.0:
+			return
 		var p120: Variant = msg.get("p")
 		if p120 is Array and (p120 as Array).size() >= 3:
 			var a2: Array = p120
@@ -371,12 +423,6 @@ func _on_remote_entity_event(msg: Dictionary) -> void:
 				_start_a120_local(int(msg.get("room", _highest_opened)), 0)
 			_a120_phase = int(msg.get("ph", 1))
 			_a120_substage = int(msg.get("ss", 0))
-	elif kind == "a120_end":
-		_a120_active = false
-		_a120_phase = 0
-		_a120_substage = 0
-		_a120_node.visible = false
-		audio.stop_a120()
 
 
 func _on_remote_door_opened(room_index: int, slam: bool = false) -> void:
@@ -792,6 +838,7 @@ func _process_remote_players(delta: float) -> void:
 		rp["interact_t"] = inter_t
 
 		var is_hiding := bool(rp.get("hiding", false))
+		var is_under_desk := (_get_remote_hiding_kind(rp) == "under_desk")
 		var light_on := bool(rp.get("light_on", false))
 		var pitch := clampf(float(rp.get("tgt_pitch", 0.0)), -0.95, 0.95)
 		var run_amt := 1.0 if is_sprinting else clampf((move_spd - 3.0) / 3.0, 0.0, 1.0)
@@ -814,10 +861,10 @@ func _process_remote_players(delta: float) -> void:
 		var leg_l: Node3D = rig["leg_l"]
 		var leg_r: Node3D = rig["leg_r"]
 
-		# Torso: breathing in idle, energetic stride bob + forward sprint lean + twist, crouch when hiding
-		var hide_drop := -0.14 if is_hiding else 0.0
+		# Torso: breathing in idle, energetic stride bob + forward sprint lean + twist, crouch lower when hiding / under desk
+		var hide_drop := (-0.34 if is_under_desk else -0.14) if is_hiding else 0.0
 		var torso_y := 0.674 + hide_drop + sin(idle_t * 2.1) * 0.012 * (1.0 - wb * 0.6) + absf(sw) * 0.055 * wb
-		var torso_rx := (-0.20 if is_hiding else (-0.04 - 0.11 * run_amt) * wb + sin(idle_t * 1.4) * 0.015 * (1.0 - wb))
+		var torso_rx := ((-0.36 if is_under_desk else -0.20) if is_hiding else (-0.04 - 0.11 * run_amt) * wb + sin(idle_t * 1.4) * 0.015 * (1.0 - wb))
 		var torso_ry := cw * 0.09 * wb
 		var torso_rz := sw * 0.032 * wb
 		torso.position.y = lerpf(torso.position.y, torso_y, anim_a)
@@ -1931,6 +1978,8 @@ func _build_mobile_ui(hud_group: Control) -> void:
 	# Brutal Large WHITE hollow circle -> Flashlight toggle (std) / Hold to shake (Gummy)
 	var btn_light := _make_ring_btn(mobile_group, Color(1.0, 1.0, 1.0, 0.96), 7.5, -24, -22, 126)
 	btn_light.button_down.connect(func() -> void:
+		if _is_action_locked():
+			return
 		if _active_tool == 1:
 			_mobile_gummy_held = true
 		else:
@@ -1943,7 +1992,10 @@ func _build_mobile_ui(hud_group: Control) -> void:
 
 	# Compact amber ring button to reload flashlight with 2 batteries when needed on mobile
 	var btn_reload := _make_ring_btn(mobile_group, Color(1.0, 0.82, 0.25, 0.95), 4.5, -168, -124, 54, Control.PRESET_BOTTOM_RIGHT, "R")
-	btn_reload.pressed.connect(_try_reload_flashlight)
+	btn_reload.pressed.connect(func() -> void:
+		if not _is_action_locked():
+			_try_reload_flashlight()
+	)
 	btn_reload.visible = false
 	_ui["m_btn_reload"] = btn_reload
 
@@ -1960,6 +2012,8 @@ func _build_mobile_ui(hud_group: Control) -> void:
 	# Optional emerald hollow circle when Gummy [2] is picked up (tap switches, hold shakes!)
 	var btn_gummy := _make_ring_btn(mobile_group, Color(0.24, 0.98, 0.48, 0.95), 5.5, -168, -42, 68)
 	btn_gummy.button_down.connect(func() -> void:
+		if _is_action_locked():
+			return
 		if _has_gummy:
 			if _active_tool != 1:
 				_active_tool = 1
@@ -1974,17 +2028,17 @@ func _build_mobile_ui(hud_group: Control) -> void:
 	btn_gummy.visible = false
 	_ui["m_btn_gummy"] = btn_gummy
 
-	# Clean exit directional rings ONLY when hiding (W outward 0.5s, S facing locker 0.3s)
+	# Clean exit directional rings ONLY when hiding (W outward 1.0s, S facing locker 0.7s)
 	var btn_exit_fwd := _make_ring_btn(mobile_group, Color(0.32, 0.98, 0.58, 0.95), 5.5, -26, -158, 72, Control.PRESET_BOTTOM_RIGHT, "W")
 	btn_exit_fwd.pressed.connect(func() -> void:
-		if _is_hiding:
+		if _is_hiding and not _is_action_locked():
 			_exit_locker(false)
 	)
 	_ui["m_btn_exit_fwd"] = btn_exit_fwd
 
 	var btn_exit_back := _make_ring_btn(mobile_group, Color(1.0, 0.68, 0.24, 0.95), 5.5, -26, -26, 72, Control.PRESET_BOTTOM_RIGHT, "S")
 	btn_exit_back.pressed.connect(func() -> void:
-		if _is_hiding:
+		if _is_hiding and not _is_action_locked():
 			_exit_locker(true)
 	)
 	_ui["m_btn_exit_back"] = btn_exit_back
@@ -2065,6 +2119,9 @@ func _reset_run(forced_seed: int = -1) -> void:
 	_hiding_eye_local_y = 1.48
 	_locker_blend = 0.0
 	_locker_transition_t = 1.0
+	_door_hand_timer = 0.0
+	_spectate_last_hiding = false
+	_spectate_user_orbited = false
 	_target_hide_yaw = 0.0
 	_target_hide_pitch = 0.0
 	_hide_yaw_offset = 0.0
@@ -2311,16 +2368,21 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	_darkness_phase = 0
 	_darkness_whisper_t = 0.0
 	audio.a60_intensity = 0.0
-	_a60_active = false
-	_a60_phase = 0
-	_a60_prime_pending_timer = 0.0
-	_a60_prime_chains_left = 0
+	var keep_auth_ent := _is_entity_authority() and _net != null and _net.is_online() and _has_alive_remote_players()
+	if not keep_auth_ent:
+		_a60_active = false
+		_a60_phase = 0
+		_a60_prime_pending_timer = 0.0
+		_a60_prime_chains_left = 0
+		_a120_active = false
+		_a120_phase = 0
+		_a120_substage = 0
 	_a60_prime_flicker_active = false
 	_a60_node.visible = false
-	_a120_active = false
-	_a120_phase = 0
 	_a120_node.visible = false
 	_a90_phase = 0
+	_door_hand_timer = 0.0
+	_locker_transition_t = 1.0
 	_rmb_held = false
 	_clear_all_vignettes()
 	(_ui["modal"] as Control).visible = false
@@ -2454,7 +2516,10 @@ func _cycle_spectate_target(step: int) -> void:
 		cur_idx = posmod(cur_idx + step, pool.size())
 	_spectate_key = String(pool[cur_idx])
 	var rp_sel: Dictionary = _remote_players.get(_spectate_key, {})
-	_spectate_yaw = float(rp_sel.get("tgt_yaw", 0.0))
+	var rp_sel_yaw := float(rp_sel.get("tgt_yaw", 0.0))
+	_spectate_last_hiding = bool(rp_sel.get("hiding", false))
+	_spectate_user_orbited = false
+	_spectate_yaw = wrapf(rp_sel_yaw + PI * 0.88, -PI, PI) if _spectate_last_hiding else rp_sel_yaw
 
 
 func _process_spectating(delta: float) -> void:
@@ -2481,9 +2546,21 @@ func _process_spectating(delta: float) -> void:
 			s_txt += "   |   ЛКМ / A-D — Сменить   |   [R] — Рестарт"
 		(_ui["spectate_lbl"] as Label).text = s_txt
 
-	var pivot := tgt_node.global_position + Vector3(0.0, 1.48, 0.0)
+	var rp_hiding := bool(rp.get("hiding", false))
+	var rp_under_desk := (_get_remote_hiding_kind(rp) == "under_desk")
+	var rp_yaw := float(rp.get("tgt_yaw", 0.0))
+	if rp_hiding != _spectate_last_hiding:
+		_spectate_last_hiding = rp_hiding
+		_spectate_user_orbited = false
+	if not _spectate_user_orbited:
+		var auto_yaw := wrapf(rp_yaw + PI * 0.88, -PI, PI) if rp_hiding else rp_yaw
+		_spectate_yaw = lerp_angle(_spectate_yaw, auto_yaw, 1.0 - exp(-10.0 * delta))
+
+	var pivot_y := 0.58 if rp_under_desk else (1.36 if rp_hiding else 1.48)
+	var pivot := tgt_node.global_position + Vector3(0.0, pivot_y, 0.0)
 	var back_dir := (Basis(Vector3.UP, _spectate_yaw) * Basis(Vector3.RIGHT, -_spectate_pitch) * Vector3(0.0, 0.0, 1.0)).normalized()
-	var desired := pivot + back_dir * 2.55
+	var cam_dist := 1.95 if rp_hiding else 2.55
+	var desired := pivot + back_dir * cam_dist
 	var space_state := get_world_3d().direct_space_state
 	if space_state != null:
 		var q := PhysicsRayQueryParameters3D.create(pivot, desired, 0xFFFFFFFF, [player_body.get_rid()])
@@ -2635,6 +2712,10 @@ func _input(event: InputEvent) -> void:
 				return
 
 		if _state == State.PLAYING:
+			if _is_action_locked():
+				if ke.keycode in [KEY_W, KEY_S, KEY_1, KEY_2, KEY_R]:
+					get_viewport().set_input_as_handled()
+					return
 			if _is_hiding and ke.keycode == KEY_W:
 				_exit_locker(false)
 			elif _is_hiding and ke.keycode == KEY_S:
@@ -2660,6 +2741,7 @@ func _input(event: InputEvent) -> void:
 				var rel_s := (event as InputEventMouseMotion).relative
 				_spectate_yaw -= rel_s.x * 0.004
 				_spectate_pitch = clampf(_spectate_pitch - rel_s.y * 0.004, -1.15, 0.85)
+				_spectate_user_orbited = true
 			return
 		if not _mobile_controls_enabled and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			var rel := (event as InputEventMouseMotion).relative
@@ -2685,12 +2767,14 @@ func _input(event: InputEvent) -> void:
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-			else:
+			elif not _is_action_locked():
 				_try_interact()
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			if mb.pressed:
 				if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 					Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+				if _is_action_locked():
+					return
 				if _active_tool == 1:
 					_rmb_held = true
 					_reminder_dismissed = true
@@ -2710,10 +2794,12 @@ func _sync_net_local_state() -> void:
 	if _net != null and _net.is_online():
 		var gp := player_body.global_position
 		var hspd := Vector2(player_body.velocity.x, player_body.velocity.z).length()
+		var synced_yaw := player_body.rotation.y if _is_hiding else _yaw
+		var synced_pitch := _hide_pitch_offset if _is_hiding else _pitch
 		_net.update_local_state({
 			"pos": [gp.x, gp.y, gp.z],
-			"yaw": _yaw,
-			"pitch": _pitch,
+			"yaw": synced_yaw,
+			"pitch": synced_pitch,
 			"light": _light_on and (_active_tool == 0 and _std_battery > 0.05 or _active_tool == 1 and _gummy_battery > 0.05),
 			"hide": _is_hiding,
 			"hr": _hiding_room_idx if _is_hiding else -1,
@@ -2756,7 +2842,9 @@ func _process(delta: float) -> void:
 		var dur := maxf(_locker_transition_duration, 0.05)
 		_locker_transition_t = minf(_locker_transition_t + delta / dur, 1.0)
 
-	var shaking_gummy := (_mobile_gummy_held or (_rmb_held and not _mobile_controls_enabled)) and _active_tool == 1 and _has_gummy
+	if _is_action_locked():
+		_mobile_gummy_held = false
+	var shaking_gummy := (not _is_action_locked()) and (_mobile_gummy_held or (_rmb_held and not _mobile_controls_enabled)) and _active_tool == 1 and _has_gummy
 	if shaking_gummy:
 		_light_on = true
 		_gummy_battery = minf(_gummy_battery + delta * 26.7, 100.0)
@@ -2818,6 +2906,8 @@ func _process(delta: float) -> void:
 			player_body.rotation.y = lerp_angle(_locker_enter_from_yaw, base_yaw + _hide_yaw_offset, turn_p)
 		else:
 			player_body.rotation.y = lerp_angle(player_body.rotation.y, base_yaw + _hide_yaw_offset, clampf(1.0 - exp(-14.0 * delta) + t_ease * 0.25, 0.0, 1.0))
+		_yaw = player_body.rotation.y
+		_target_yaw = _yaw
 		cam.rotation.x = lerpf(cam.rotation.x, _hide_pitch_offset, 1.0 - exp(-16.0 * delta))
 		var crawl_roll := sin(_locker_transition_t * PI) * (0.07 if _hiding_kind == "under_desk" else 0.03) if _locker_transition_t < 1.0 else 0.0
 		cam.rotation.z = lerpf(cam.rotation.z, crawl_roll, 1.0 - exp(-12.0 * delta))
@@ -2996,6 +3086,8 @@ func _process_architect_and_scare(delta: float) -> void:
 
 
 func _toggle_flashlight() -> void:
+	if _is_action_locked():
+		return
 	if _active_tool == 1:
 		# Shakerlight cannot be turned off while equipped
 		_light_on = true
@@ -3024,6 +3116,8 @@ func _toggle_flashlight() -> void:
 
 
 func _try_reload_flashlight() -> void:
+	if _is_action_locked():
+		return
 	if _std_battery >= 149.9 and not _std_low_power:
 		_show_toast("Обычный фонарик уже полностью заряжен", 1.8)
 		return
@@ -3040,7 +3134,7 @@ func _try_reload_flashlight() -> void:
 
 
 func _try_shake_gummy(amount: float = 10.0) -> void:
-	if _active_tool != 1 or not _has_gummy:
+	if _is_action_locked() or _active_tool != 1 or not _has_gummy:
 		return
 	_light_on = true
 	_gummy_battery = minf(_gummy_battery + amount, 100.0)
@@ -3050,6 +3144,8 @@ func _try_shake_gummy(amount: float = 10.0) -> void:
 
 
 func _try_interact() -> bool:
+	if _is_action_locked():
+		return false
 	if _is_hiding:
 		_exit_locker(false)
 		return true
@@ -3098,6 +3194,8 @@ func _execute_interact_target(target: Dictionary) -> bool:
 
 
 func _try_tap_world_interact(screen_pos: Vector2) -> void:
+	if _is_action_locked():
+		return
 	var origin := cam.project_ray_origin(screen_pos)
 	var dir := cam.project_ray_normal(screen_pos)
 	var space_state := get_world_3d().direct_space_state
@@ -3413,6 +3511,8 @@ func _break_door_by_a60(r_idx: int, is_prime: bool) -> void:
 
 
 func _enter_locker(r_idx: int, l_idx: int) -> void:
+	if _is_action_locked() or _is_hiding:
+		return
 	var r: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
 	if r == null or l_idx < 0 or l_idx >= r.lockers.size():
 		return
@@ -3436,6 +3536,8 @@ func _enter_locker(r_idx: int, l_idx: int) -> void:
 	_target_hide_pitch = 0.0
 	_hide_yaw_offset = 0.0
 	_hide_pitch_offset = 0.0
+	_target_pitch = 0.0
+	_pitch = 0.0
 	_was_light_before_hide = _light_on
 	if _hiding_kind == "under_desk":
 		_light_on = false
@@ -3474,6 +3576,8 @@ func _enter_locker(r_idx: int, l_idx: int) -> void:
 
 
 func _exit_locker(face_locker: bool = false) -> void:
+	if _is_action_locked() or not _is_hiding:
+		return
 	var prev_kind := _hiding_kind
 	var prev_door_pivot := _hiding_door_pivot
 	var prev_room_idx := _hiding_room_idx
@@ -3710,11 +3814,15 @@ func _get_a120_live_target() -> Vector3:
 
 
 func _handle_a120_hit() -> void:
-	_a120_hit_cd = 1.0
+	_a120_hit_cd = 1.5
 	_a120_active = false
 	_a120_phase = 0
+	_a120_substage = 0
 	_a120_node.visible = false
+	audio.stop_a120()
 	audio.play_a120_scream()
+	if _net != null and _net.is_online():
+		_net.broadcast_entity_event({"k": "a120_end", "from_client": not _is_entity_authority()}, true)
 
 	_hp -= 40
 	audio.low_hp_mode = (_hp <= 25 and _hp > 0)
@@ -3775,6 +3883,13 @@ func _flicker_nearby_lights(duration: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _state == State.SPECTATING:
+		_process_entities(delta)
+		return
+	if _state == State.DEAD:
+		if _is_entity_authority() and _net != null and _net.is_online() and _has_alive_remote_players():
+			_process_entities(delta)
+		return
 	if _state != State.PLAYING:
 		return
 
@@ -4061,6 +4176,7 @@ func _process_entities(delta: float) -> void:
 	var static_mat: ShaderMaterial = _ui["static_mat"]
 	var a60_scare_rect: TextureRect = _ui["a60_scare_rect"]
 	var is_auth := _is_entity_authority()
+	var can_harm_local := (_state == State.PLAYING)
 	if _a60_scare_snd_cd > 0.0:
 		_a60_scare_snd_cd = maxf(_a60_scare_snd_cd - delta, 0.0)
 	if _a60_prime_hit_cd > 0.0:
@@ -4074,6 +4190,7 @@ func _process_entities(delta: float) -> void:
 			send_ent_sync = true
 
 	if _a60_active:
+		_a60_node.visible = (_state != State.DEAD)
 		_a60_anim_timer += delta
 		var flip_interval := 0.035 if _a60_is_prime else 0.045
 		if _a60_anim_timer > flip_interval:
@@ -4085,8 +4202,9 @@ func _process_entities(delta: float) -> void:
 			_a60_sprite.pixel_size = 2.65 / float(maxi(f60.get_width(), 1))
 
 		var d_player := _a60_node.global_position.distance_to(cam.global_position)
-		audio.a60_intensity = 0.0 if _a60_is_prime else clampf(16.0 / maxf(d_player, 2.0), 0.12, 1.0)
-		audio.update_a60_mix(delta, d_player, _a60_phase, _a60_is_prime)
+		if _state != State.DEAD:
+			audio.a60_intensity = 0.0 if _a60_is_prime else clampf(16.0 / maxf(d_player, 2.0), 0.12, 1.0)
+			audio.update_a60_mix(delta, d_player, _a60_phase, _a60_is_prime)
 
 		var prime_col := Vector3(0.25, 0.85, 1.0) if _a60_is_prime else Vector3(1.0, 0.22, 0.18)
 		static_mat.set_shader_parameter("tint_col", prime_col)
@@ -4095,24 +4213,28 @@ func _process_entities(delta: float) -> void:
 			_a60_hint_timer = maxf(_a60_hint_timer - delta, 0.0)
 
 		if _a60_phase == 2:
-			var near_prox := clampf(1.0 - (d_player - 2.0) / 22.0, 0.0, 1.0)
-			if not _a60_is_prime:
-				_shake_amount = maxf(_shake_amount, near_prox * 0.11)
-			else:
-				_shake_amount = maxf(_shake_amount, near_prox * 0.045)
+			if can_harm_local:
+				var near_prox := clampf(1.0 - (d_player - 2.0) / 22.0, 0.0, 1.0)
+				if not _a60_is_prime:
+					_shake_amount = maxf(_shake_amount, near_prox * 0.11)
+				else:
+					_shake_amount = maxf(_shake_amount, near_prox * 0.045)
 
-			var hint_static := 0.0
-			if not _a60_is_prime and _a60_hint_timer > 0.0 and _highest_opened < 100:
-				var fade := clampf(_a60_hint_timer / 0.85, 0.0, 1.0)
-				hint_static = fade * (0.55 + 0.22 * sin(float(Time.get_ticks_msec()) * 0.015))
+				var hint_static := 0.0
+				if not _a60_is_prime and _a60_hint_timer > 0.0 and _highest_opened < 100:
+					var fade := clampf(_a60_hint_timer / 0.85, 0.0, 1.0)
+					hint_static = fade * (0.55 + 0.22 * sin(float(Time.get_ticks_msec()) * 0.015))
 
-			var total_static := maxf(hint_static, near_prox * (0.35 if _a60_is_prime else 0.65))
-			if total_static > 0.03:
-				static_rect.visible = true
-				static_mat.set_shader_parameter("static_amt", total_static)
-				static_mat.set_shader_parameter("vig_amt", 0.0)
+				var total_static := maxf(hint_static, near_prox * (0.35 if _a60_is_prime else 0.65))
+				if total_static > 0.03:
+					static_rect.visible = true
+					static_mat.set_shader_parameter("static_amt", total_static)
+					static_mat.set_shader_parameter("vig_amt", 0.0)
+				else:
+					static_rect.visible = false
 			else:
 				static_rect.visible = false
+				a60_scare_rect.visible = false
 
 			if is_auth:
 				# Keep tracking the FIRST still-closed door in case any player opened target mid-rush
@@ -4161,7 +4283,7 @@ func _process_entities(delta: float) -> void:
 					}, false)
 
 			# Table Burn from A-60' (90% chance to deal 20 damage when hiding under a table!)
-			if _a60_phase == 2 and _a60_is_prime and _is_hiding and _hiding_kind == "under_desk" and d_player <= 11.5 and not _a60_prime_table_burned:
+			if can_harm_local and _a60_phase == 2 and _a60_is_prime and _is_hiding and _hiding_kind == "under_desk" and d_player <= 11.5 and not _a60_prime_table_burned:
 				_a60_prime_table_burned = true
 				if _rng.randf() < 0.90:
 					_hp -= 20
@@ -4174,7 +4296,7 @@ func _process_entities(delta: float) -> void:
 						return
 
 			# Raycast line-of-sight attack if player is exposed and not hiding
-			if _a60_phase == 2 and d_player <= 11.5 and not _is_hiding:
+			if can_harm_local and _a60_phase == 2 and d_player <= 11.5 and not _is_hiding:
 				var space := get_world_3d().direct_space_state
 				var q := PhysicsRayQueryParameters3D.create(_a60_node.global_position, cam.global_position)
 				q.exclude = [player_body.get_rid()]
@@ -4263,8 +4385,9 @@ func _process_entities(delta: float) -> void:
 		_a120_hit_cd = maxf(_a120_hit_cd - delta, 0.0)
 
 	if _a120_active:
+		_a120_node.visible = (_state != State.DEAD)
 		var d120 := _a120_node.global_position.distance_to(cam.global_position)
-		var drum_hit := audio.update_a120_mix(delta, d120, _a120_phase)
+		var drum_hit := audio.update_a120_mix(delta, d120, _a120_phase) if _state != State.DEAD else false
 		_a120_anim_timer += delta
 		if _a120_anim_timer >= 0.50:
 			_a120_anim_timer -= 0.50
@@ -4378,11 +4501,18 @@ func _process_entities(delta: float) -> void:
 				"room": _current_room_idx,
 			}, false)
 
-		if _a120_active and _a120_phase == 2 and _a120_node.global_position.distance_to(cam.global_position) < 2.15 and not _is_hiding and _a120_hit_cd <= 0.0:
+		if can_harm_local and _a120_active and _a120_phase == 2 and _a120_node.global_position.distance_to(cam.global_position) < 2.15 and not _is_hiding and _a120_hit_cd <= 0.0:
 			_handle_a120_hit()
 			return
 
 	# --- A-90 / Paralysis (Freeze check, starts around A-009+) ---
+	if not can_harm_local:
+		_a90_phase = 0
+		(_ui["a90_rect"] as Control).visible = false
+		(_ui["a90_stop_icon"] as Control).visible = false
+		(_ui["a90_stop"] as Control).visible = false
+		(_ui["a90_scare_rect"] as Control).visible = false
+		return
 	if _a90_scare_timer > 0.0:
 		_a90_scare_timer -= delta
 		var scare_rect: TextureRect = _ui["a90_scare_rect"]
@@ -4511,15 +4641,16 @@ func _update_ui(delta: float) -> void:
 		_smart_reticle_target = {}
 		if _reticle_ring != null:
 			_reticle_ring.visible = false
-		if _hiding_kind == "under_desk":
-			prompt.text = "[W / S] Вылезти из-под тумбочки"
-		elif _hiding_kind == "fridge":
-			prompt.text = "[W] Выйти вперёд  |  [S] Выйти лицом к холодильнику"
-		else:
-			prompt.text = "[W] Выйти вперёд  |  [S] Выйти лицом к шкафу"
-		want_prompt = true
+		if not _is_action_locked():
+			if _hiding_kind == "under_desk":
+				prompt.text = "[W / S] Вылезти из-под тумбочки"
+			elif _hiding_kind == "fridge":
+				prompt.text = "[W] Выйти вперёд  |  [S] Выйти лицом к холодильнику"
+			else:
+				prompt.text = "[W] Выйти вперёд  |  [S] Выйти лицом к шкафу"
+			want_prompt = true
 	else:
-		interact_tgt = _find_smart_reticle_target()
+		interact_tgt = {} if _is_action_locked() else _find_smart_reticle_target()
 		_smart_reticle_target = interact_tgt
 		var yaw_lag := wrapf(_target_yaw - _yaw, -PI, PI)
 		var pitch_lag := _target_pitch - _pitch
