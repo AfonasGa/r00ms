@@ -889,12 +889,15 @@ func _sync_net_local_state() -> void:
 			"sprint": hspd > 4.6,
 			"room": _highest_opened,
 			"hp": _hp,
+			"tool": _active_tool,
+			"gum": _has_gummy,
 		})
 
 
 func _process(delta: float) -> void:
 	_sync_net_local_state()
 	_process_remote_players(delta)
+	_update_warp_fx(delta)
 	if _state == State.DEAD:
 		_process_architect_and_scare(delta)
 		return

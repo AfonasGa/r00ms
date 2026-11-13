@@ -166,6 +166,9 @@ var _a120_drum_bounce := 0.0
 var _a120_anim_timer := 0.0
 var _a120_frame_idx := 0
 var _a120_hit_cd := 0.0
+var _a120_warp_fx_t := 0.0
+var _a120_warp_fx_dur := 10.0
+var _a60_entry_hit_cd := 0.0
 var _ent_sync_accum := 0.0
 var _net_a60_tgt := Vector3.ZERO
 var _net_a120_tgt := Vector3.ZERO
@@ -325,6 +328,26 @@ func _on_net_lobbies_updated(lobbies: Array) -> void:
 
 func _is_action_locked() -> bool:
 	return _locker_transition_t < 1.0 or _door_hand_timer > 0.0
+
+
+func _is_locker_entry_anim() -> bool:
+	# True only while the "climb into the locker" animation is still playing.
+	return _is_hiding and _locker_transition_entering and _locker_transition_t < 1.0
+
+
+func _update_warp_fx(delta: float) -> void:
+	if _a120_warp_fx_t <= 0.0:
+		return
+	_a120_warp_fx_t = maxf(_a120_warp_fx_t - delta, 0.0)
+	var rect := _ui.get("warp_rect") as Control
+	if rect == null:
+		return
+	var p := clampf(_a120_warp_fx_t / maxf(_a120_warp_fx_dur, 0.01), 0.0, 1.0)
+	var amt := pow(p, 1.75)
+	var mat := _ui.get("warp_mat") as ShaderMaterial
+	if mat != null:
+		mat.set_shader_parameter("amt", amt)
+	rect.visible = amt > 0.003
 
 
 func _has_alive_remote_players() -> bool:
@@ -742,6 +765,34 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 		spot.spot_angle = 38.0
 		arm_r.add_child(spot)
 
+		# Held tool models so other players can actually see what you are carrying
+		var held := Node3D.new()
+		held.name = "HeldTool"
+		held.position = Vector3(0.0, -0.60, -0.10)
+		arm_r.add_child(held)
+
+		var held_flash := Node3D.new()
+		held_flash.name = "HeldFlashlight"
+		held.add_child(held_flash)
+		var hf_body := RoomBuilder._add_cyl(held_flash, "StdBody", Vector3.ZERO, 0.024, 0.22, _assets.locker_mat)
+		hf_body.rotation.x = PI * 0.5
+		var hf_bezel := RoomBuilder._add_cyl(held_flash, "StdBezel", Vector3(0.0, 0.0, -0.12), 0.034, 0.055, _assets.metal_mat)
+		hf_bezel.rotation.x = PI * 0.5
+		var hf_lens := RoomBuilder._add_cyl(held_flash, "StdLens", Vector3(0.0, 0.0, -0.148), 0.028, 0.008, _vm_bulb_on_mat)
+		hf_lens.rotation.x = PI * 0.5
+
+		var held_gummy := Node3D.new()
+		held_gummy.name = "HeldGummy"
+		held_gummy.visible = false
+		held.add_child(held_gummy)
+		RoomBuilder._add_box(held_gummy, "GumBody", Vector3.ZERO, Vector3(0.068, 0.068, 0.19), _assets.gummy_mat, false)
+		RoomBuilder._add_box(held_gummy, "GumGrip", Vector3(0.0, -0.015, 0.02), Vector3(0.072, 0.045, 0.11), _assets.locker_mat, false)
+		var hg_head := RoomBuilder._add_cyl(held_gummy, "GumHead", Vector3(0.0, 0.0, -0.11), 0.040, 0.05, _assets.fridge_mat)
+		hg_head.rotation.x = PI * 0.5
+		var hg_lens := RoomBuilder._add_cyl(held_gummy, "GumLens", Vector3(0.0, 0.0, -0.136), 0.032, 0.008, _vm_gummy_on_mat)
+		hg_lens.rotation.x = PI * 0.5
+		_prep_avatar_meshes(held)
+
 		var name_lbl := Label3D.new()
 		name_lbl.position = Vector3(0.0, 2.02, 0.0)
 		name_lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -758,11 +809,15 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 			"rig": rig,
 			"head": head,
 			"spot": spot,
+			"held_gummy": held_gummy,
+			"held_flash": held_flash,
 			"lbl": name_lbl,
 			"tgt_pos": Vector3.ZERO,
 			"tgt_yaw": 0.0,
 			"tgt_pitch": 0.0,
 			"light_on": false,
+			"tool": 0,
+			"gummy": false,
 			"hiding": false,
 			"hide_room": -1,
 			"hide_locker": -1,
@@ -810,8 +865,20 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 	rp["room"] = int(msg.get("r", 0))
 	rp["name"] = String(msg.get("n", "Player"))
 	rp["sprint"] = bool(msg.get("sp", false))
+	var tool_i := int(msg.get("tool", 0))
+	var has_gum := bool(msg.get("gum", false))
+	rp["tool"] = tool_i
+	rp["gummy"] = has_gum
+	var show_gummy := has_gum and tool_i == 1
+	var held_g := rp.get("held_gummy") as Node3D
+	var held_f := rp.get("held_flash") as Node3D
+	if held_g != null and is_instance_valid(held_g):
+		held_g.visible = show_gummy
+	if held_f != null and is_instance_valid(held_f):
+		held_f.visible = not show_gummy
 	var spot_node: SpotLight3D = rp["spot"]
 	spot_node.visible = next_light and not bool(rp["dead"])
+	spot_node.light_color = Color(0.44, 1.0, 0.58) if show_gummy else Color(1.0, 0.96, 0.88)
 	var lbl_node: Label3D = rp["lbl"]
 	lbl_node.text = "%s [МЁРТВ]" % String(rp["name"]) if bool(rp["dead"]) else "%s [A-%03d]" % [String(rp["name"]), int(rp["room"])]
 	var root_n: Node3D = rp["node"]

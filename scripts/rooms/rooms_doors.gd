@@ -100,6 +100,46 @@ func _break_door_by_a60(r_idx: int, is_prime: bool) -> void:
 	_advance_door_progress(r_idx, false)
 
 
+func _force_leave_hiding_for_warp() -> void:
+	# Instant, animation-free teardown of the hiding state (used by the A-120 warp).
+	_locker_transition_t = 1.0
+	_locker_transition_entering = false
+	_door_hand_timer = 0.0
+	if _is_hiding and is_instance_valid(_hiding_door_pivot):
+		_hiding_door_pivot.rotation.y = 0.0
+	if _is_hiding and _hiding_room_idx >= 0 and _hiding_locker_idx >= 0 and _net != null and _net.is_online():
+		_net.broadcast_locker_action(_hiding_room_idx, _hiding_locker_idx, false, false)
+	_is_hiding = false
+	_hiding_room_idx = -1
+	_hiding_locker_idx = -1
+	_hiding_kind = "locker"
+	_hiding_door_pivot = null
+	_hiding_eye_local_y = 1.48
+	_hide_time = 0.0
+	_darkness_phase = 0
+	_darkness_whisper_t = 0.0
+	_darkness_dmg_accum = 0.0
+	_darkness_quick_return = false
+	_hide_yaw_offset = 0.0
+	_hide_pitch_offset = 0.0
+	_target_hide_yaw = 0.0
+	_target_hide_pitch = 0.0
+	audio.stop_darkness()
+	var drect := _ui.get("darkness_rect") as Control
+	if drect != null:
+		drect.visible = false
+	var mask := _ui.get("locker_mask") as ColorRect
+	if mask != null:
+		mask.color = Color(0.0, 0.0, 0.0, 0.0)
+		mask.visible = false
+	player_col.disabled = false
+	if _vm_holder != null:
+		_vm_holder.visible = true
+	if _anim_hand != null:
+		_anim_hand.visible = false
+	_light_on = true if _active_tool == 1 else _was_light_before_hide
+
+
 func _enter_locker(r_idx: int, l_idx: int) -> void:
 	if _is_action_locked() or _is_hiding:
 		return

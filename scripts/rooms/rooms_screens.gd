@@ -104,6 +104,45 @@ void fragment() {
 	root.add_child(a60_scare_rect)
 	_ui["a60_scare_rect"] = a60_scare_rect
 
+	# A-120 warp overlay: white noise + white vignette, fades over ~10s
+	var warp_sh := Shader.new()
+	warp_sh.code = """shader_type canvas_item;
+uniform float amt : hint_range(0.0, 1.0) = 0.0;
+
+float hash12(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+
+void fragment() {
+	vec2 uv = UV;
+	float n = hash12(floor(uv * vec2(540.0, 300.0)) + fract(TIME * 61.0) * 97.0);
+	float n2 = hash12(floor(uv * vec2(170.0, 96.0)) + fract(TIME * 23.0) * 41.0);
+	float grain = mix(n, n2, 0.35);
+	float scan = step(0.88, fract(uv.y * 96.0 + TIME * 22.0)) * 0.35;
+
+	float r = length((uv - 0.5) * vec2(1.42, 1.0));
+	float vig = smoothstep(0.26, 0.99, r);
+
+	vec3 col = mix(vec3(grain), vec3(1.0), clamp(vig * 0.96 + scan, 0.0, 1.0));
+	float a = clamp((0.24 + 0.44 * vig + 0.30 * grain + scan), 0.0, 1.0) * amt;
+	COLOR = vec4(col, a);
+}
+"""
+	var warp_mat := ShaderMaterial.new()
+	warp_mat.shader = warp_sh
+	warp_mat.set_shader_parameter("amt", 0.0)
+	var warp_rect := ColorRect.new()
+	warp_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	warp_rect.material = warp_mat
+	warp_rect.color = Color(1.0, 1.0, 1.0, 1.0)
+	warp_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	warp_rect.visible = false
+	root.add_child(warp_rect)
+	_ui["warp_rect"] = warp_rect
+	_ui["warp_mat"] = warp_mat
+
 	# HUD group (hidden during Curious-Light / Architect void on death)
 	var hud_group := Control.new()
 	hud_group.set_anchors_preset(Control.PRESET_FULL_RECT)

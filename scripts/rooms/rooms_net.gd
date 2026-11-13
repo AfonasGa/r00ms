@@ -493,6 +493,8 @@ func _process(delta: float) -> void:
 					"hl": int(_local_state.get("hl", -1)),
 					"d": bool(_local_state.get("dead", false)),
 					"sp": bool(_local_state.get("sprint", false)),
+					"tool": int(_local_state.get("tool", 0)),
+					"gum": bool(_local_state.get("gum", false)),
 					"sd": run_seed if is_host else 0,
 					"r": int(_local_state.get("room", 0)),
 					"hp": int(_local_state.get("hp", 100)),

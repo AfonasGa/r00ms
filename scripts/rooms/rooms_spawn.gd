@@ -187,7 +187,7 @@ func _handle_a120_hit() -> void:
 	if _net != null and _net.is_online():
 		_net.broadcast_entity_event({"k": "a120_end", "from_client": not _is_entity_authority()}, true)
 
-	_hp -= 40
+	_hp -= 90
 	audio.low_hp_mode = (_hp <= 25 and _hp > 0)
 	_shake_amount = 0.12
 
@@ -202,15 +202,22 @@ func _handle_a120_hit() -> void:
 		_warp_player_to_room(target_idx, back_steps)
 	else:
 		(_ui["dmg_flash"] as ColorRect).color = Color(0.85, 0.08, 0.08, 0.65)
-		_show_toast("Happy Scribble (A-120) нанёс 40 урона! (%d HP)" % _hp, 2.6)
+		_show_toast("Happy Scribble (A-120) нанёс 90 урона! (%d HP)" % _hp, 2.6)
 
 
 func _warp_player_to_room(target_idx: int, back_steps: int) -> void:
 	var target_r: RoomBuilder.RoomInstance = _room_by_idx.get(target_idx)
 	if target_r == null:
 		return
+	# A warp must always land. Break out of any locker/hiding state first, otherwise
+	# the hide camera keeps snapping the player straight back into the locker.
+	_force_leave_hiding_for_warp()
+
 	player_body.position = target_r.center_pos + Vector3(0.0, 0.05, 0.0)
 	player_body.velocity = Vector3.ZERO
+	player_body.rotation.y = 0.0
+	cam.global_position = player_body.position + Vector3(0.0, 1.48, 0.0)
+	cam.rotation = Vector3.ZERO
 	_current_room_idx = target_idx
 	_update_room_visibility()
 
@@ -224,8 +231,12 @@ func _warp_player_to_room(target_idx: int, back_steps: int) -> void:
 	_fov = 104.0
 	cam.fov = 104.0
 
+	# White noise + white vignette that fades away over ~10 seconds
+	_a120_warp_fx_t = _a120_warp_fx_dur
+	_update_warp_fx(0.0)
+
 	(_ui["dmg_flash"] as ColorRect).color = Color(0.85, 0.96, 1.0, 0.78)
-	_show_toast("ВАРП! Happy Scribble отбросил вас на %d комн. назад (A-%03d) [-40 HP]" % [back_steps, target_idx], 3.4)
+	_show_toast("ВАРП! Happy Scribble отбросил вас на %d комн. назад (A-%03d) [-90 HP]" % [back_steps, target_idx], 3.4)
 
 
 func _flicker_nearby_lights(duration: float) -> void:
