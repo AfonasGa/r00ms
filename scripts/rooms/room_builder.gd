@@ -454,14 +454,7 @@ static func _populate_room_type(
 		_build_cardboard_box(room_node, assets, Vector3(-3.2, 1.15, -2.4), 0.62)
 		_build_potted_plant(room_node, assets, Vector3(3.3, 0.0, -4.5))
 		_build_locker(room_node, assets, Vector3(HALF_W - 0.48, 0.0, -0.5), -PI * 0.5, r)
-		var sign := Label3D.new()
-		sign.text = "СЕКЦИЯ A — ВХОД A-000\n\n[ЛКМ] — Открывать двери, прятаться (шкаф/холодильник/тумбочка)\n[ПКМ] — Вкл/выкл фонарик или зажать для зарядки Трясосвета [2]\n[R] — Зарядить фонарик (2 батарейки)   |   [Shift] — Бег"
-		sign.font_size = 34
-		sign.pixel_size = 0.0044
-		sign.position = Vector3(-HALF_W + 0.05, 2.05, -1.6)
-		sign.rotation.y = PI * 0.5
-		sign.modulate = Color(0.92, 0.96, 1.0)
-		room_node.add_child(sign)
+		_build_lobby_sign(room_node)
 		return
 
 	if rtype == "l_turn":
@@ -628,6 +621,56 @@ static func _maybe_spawn_loot(room_node: Node3D, assets: SharedAssets, pos: Vect
 		_build_pickup(room_node, assets, pos, "battery", "Батарейка (+1)")
 	elif room_index > 8 and rng.randf() < 0.14:
 		_build_pickup(room_node, assets, pos, "medkit", "Аптечка (+45 HP)")
+
+
+static func _build_lobby_sign(room_node: Node3D) -> void:
+	# Wall-mounted orientation plaque: dark backing plate + two text tiers.
+	# cast_shadow is disabled on the labels: at 3-5 cm off the wall the ceiling
+	# lights used to project a second, offset copy of the text onto the wall.
+	var plate_mat := StandardMaterial3D.new()
+	plate_mat.albedo_color = Color(0.045, 0.060, 0.080)
+	plate_mat.roughness = 0.88
+	plate_mat.emission_enabled = true
+	plate_mat.emission = Color(0.10, 0.16, 0.22)
+	plate_mat.emission_energy_multiplier = 0.22
+	_add_box(room_node, "LobbySignPlate", Vector3(-HALF_W + 0.035, 2.08, -1.6), Vector3(0.05, 1.26, 5.90), plate_mat, false)
+
+	var rule_mat := StandardMaterial3D.new()
+	rule_mat.albedo_color = Color(0.34, 0.72, 0.96)
+	rule_mat.emission_enabled = true
+	rule_mat.emission = Color(0.30, 0.68, 0.95)
+	rule_mat.emission_energy_multiplier = 0.85
+	_add_box(room_node, "LobbySignRule", Vector3(-HALF_W + 0.072, 2.215, -1.6), Vector3(0.02, 0.016, 5.35), rule_mat, false)
+
+	var title := Label3D.new()
+	title.text = "СЕКЦИЯ A — ВХОД A-000"
+	title.font_size = 64
+	title.pixel_size = 0.0042
+	title.position = Vector3(-HALF_W + 0.075, 2.52, -1.6)
+	title.rotation.y = PI * 0.5
+	title.modulate = Color(0.88, 0.96, 1.0)
+	title.outline_size = 6
+	title.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+	title.shaded = false
+	title.double_sided = false
+	title.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	room_node.add_child(title)
+
+	var body := Label3D.new()
+	body.text = "[ЛКМ] — открыть дверь, спрятаться (шкаф / холодильник / тумбочка)\n[ПКМ] — фонарик вкл/выкл, удержание — зарядить Трясосвет [2]\n[R] — зарядить фонарик (2 батарейки)          [Shift] — бег"
+	body.font_size = 36
+	body.pixel_size = 0.0040
+	body.position = Vector3(-HALF_W + 0.075, 1.76, -1.6)
+	body.rotation.y = PI * 0.5
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	body.modulate = Color(0.86, 0.92, 0.98)
+	body.outline_size = 4
+	body.outline_modulate = Color(0.0, 0.0, 0.0, 0.75)
+	body.shaded = false
+	body.double_sided = false
+	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	room_node.add_child(body)
 
 
 static func _build_locker(room_node: Node3D, assets: SharedAssets, local_pos: Vector3, local_yaw: float, r: RoomInstance) -> void:
