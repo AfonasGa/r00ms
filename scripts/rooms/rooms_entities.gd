@@ -463,7 +463,7 @@ func _process_entities(delta: float) -> void:
 							audio.low_hp_mode = (_hp <= 25 and _hp > 0)
 							(_ui["dmg_flash"] as ColorRect).color = Color(0.35, 0.90, 1.0, 0.65)
 							_shake_amount = maxf(_shake_amount, 0.08)
-							_show_toast("A-60' (Prime) нанёс 35 урона! Прячьтесь в шкаф!", 2.4)
+							_show_toast("A-60' (Prime) нанёс 35 урона!", 2.4)
 							if _hp <= 0:
 								_trigger_death("A-60'", "", {"distance": d_player})
 								return
