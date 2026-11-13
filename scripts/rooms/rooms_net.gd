@@ -326,6 +326,24 @@ func join_steam_lobby(lobby_id: int) -> bool:
 	return true
 
 
+## One-click multiplayer: join the first free public r00ms lobby,
+## otherwise host a fresh public one so other players can find it.
+func quick_join_or_host(max_wait: float = 2.5) -> Dictionary:
+	if not steam_ready or _steam == null:
+		return {"ok": false, "msg": steam_status_text}
+	search_steam_lobbies()
+	var waited := 0.0
+	while waited < max_wait:
+		for item in _found_lobbies:
+			var lid := int(item.get("id", 0))
+			if lid > 0 and not bool(item.get("is_self", false)) and join_steam_lobby(lid):
+				return {"ok": true, "msg": "Зашли в лобби: %s" % String(item.get("name", ""))}
+		await get_tree().create_timer(0.25).timeout
+		waited += 0.25
+	host_steam_lobby(randi() & 0x3FFFFFFF, 0)
+	return {"ok": true, "msg": "Свободных лобби нет — создали своё, другие игроки смогут подключиться"}
+
+
 func open_steam_invite_overlay(seed_val: int = 0, room_idx: int = 0) -> void:
 	if not steam_ready or _steam == null:
 		emit_signal("status_changed", "Запустите Steam, чтобы приглашать через Shift+Tab")

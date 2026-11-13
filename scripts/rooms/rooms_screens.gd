@@ -1442,9 +1442,20 @@ func _build_main_menu(root: Control) -> void:
 	make_item.call(v_play, "back", func() -> void: _set_menu_view("main"), 22)
 
 	make_item.call(v_multi, "invite steam friends", func() -> void: _menu_begin_game(true, "steam"), 30)
+	make_item.call(v_multi, "quick game", func() -> void: _menu_quick_multiplayer(), 30)
 	make_item.call(v_multi, "local network", func() -> void: _menu_begin_game(true, "lan"), 30)
 	make_item.call(v_multi, "join 127.0.0.1", func() -> void: _menu_begin_game(true, "join"), 26)
 	make_item.call(v_multi, "back", func() -> void: _set_menu_view("play"), 22)
+
+	var menu_status := Label.new()
+	menu_status.text = ""
+	menu_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	menu_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	menu_status.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
+	menu_status.add_theme_font_size_override("font_size", 13)
+	menu_status.add_theme_color_override("font_color", Color(0.72, 0.76, 0.82, 0.9))
+	v_multi.add_child(menu_status)
+	_ui["menu_status"] = menu_status
 
 	var cred_lbl := Label.new()
 	cred_lbl.text = "r00ms\n\nminimal horror, section A\n\nMonsters: A-60 · A-90 · A-120\nThe Darkness\n\nmade by the r00ms team\n\nsprites, sounds and caffeine"
@@ -1534,12 +1545,31 @@ func _show_main_menu(fresh: bool = false) -> void:
 
 func _open_menu_settings() -> void:
 	_settings_from_menu = true
+	if _ui.has("main_menu"):
+		(_ui["main_menu"] as Control).visible = false
 	if _ui.has("modal"):
 		var modal := _ui["modal"] as Control
 		modal.visible = true
 		modal.modulate.a = 0.0
 		create_tween().tween_property(modal, "modulate:a", 1.0, 0.24)
 	_open_settings_panel(true)
+
+
+func _menu_quick_multiplayer() -> void:
+	if _net == null:
+		return
+	var status := _ui.get("menu_status") as Label
+	if status != null:
+		status.text = "searching rooms..."
+	var res: Dictionary = await _net.quick_join_or_host()
+	if not bool(res.get("ok", false)):
+		if status != null:
+			status.text = String(res.get("msg", ""))
+		return
+	if status != null:
+		status.text = ""
+	_show_toast(String(res.get("msg", "")), 3.5)
+	_menu_begin_game(true, "")
 
 
 func _menu_begin_game(multiplayer: bool = false, mode: String = "") -> void:
