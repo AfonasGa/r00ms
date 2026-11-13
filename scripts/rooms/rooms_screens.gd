@@ -125,8 +125,8 @@ void fragment() {
 	float r = length((uv - 0.5) * vec2(1.42, 1.0));
 	float vig = smoothstep(0.26, 0.99, r);
 
-	vec3 col = mix(vec3(grain), vec3(1.0), clamp(vig * 0.96 + scan, 0.0, 1.0));
-	float a = clamp((0.24 + 0.44 * vig + 0.30 * grain + scan), 0.0, 1.0) * amt;
+	vec3 col = mix(vec3(mix(0.58, 1.0, grain)), vec3(1.0), clamp(vig * 0.95 + scan, 0.0, 1.0));
+	float a = clamp((0.34 + 0.36 * vig + 0.26 * grain + scan), 0.0, 1.0) * amt;
 	COLOR = vec4(col, a);
 }
 """
