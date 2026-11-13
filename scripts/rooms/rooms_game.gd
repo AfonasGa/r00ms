@@ -175,14 +175,17 @@ var _darkness_whisper_t := 0.0
 var _darkness_dmg_accum := 0.0
 var _darkness_quick_return := false
 
-var _a90_phase := 0 # 0=idle, 1=warn, 2=freeze_check, 3=despawn_flash
+var _a90_phase := 0 # 0=idle, 1=appear, 2=freeze, 3=leave
 var _a90_timer := 0.0
-var _a90_cooldown := 14.0
+var _a90_freeze_dur := 2.6
+var _a90_cooldown := 18.0
+var _a90_grace := 0.0
+var _a90_depth := 0.0
 var _a90_start_pos := Vector3.ZERO
 var _a90_start_yaw := 0.0
 var _a90_start_pitch := 0.0
-var _a90_pos_offset := Vector2.ZERO
 var _a90_scare_timer := 0.0
+var _a90_hits := 0
 
 # Architect dialogue playback (inspired by test.py with glitch transitions & memory)
 var _arch_lines: Array[String] = []
@@ -382,6 +385,32 @@ func _on_remote_entity_event(msg: Dictionary) -> void:
 		if _ui.has("a60_scare_rect"):
 			(_ui["a60_scare_rect"] as Control).visible = false
 		audio.stop_a60()
+		return
+	# --- A-90 (Stop Sign): authority spawns, every client freezes independently ---
+	if kind == "a90_spawn":
+		if _is_entity_authority() or _state != State.PLAYING or _is_hiding:
+			return
+		if _a90_phase != 0:
+			return
+		_a90_phase = 1
+		_a90_timer = 0.55
+		_a90_grace = 0.0
+		_a90_depth = clampf(float(_highest_opened - 9) / 91.0, 0.0, 1.0)
+		_a90_freeze_dur = clampf(float(msg.get("dur", 2.6)), 1.2, 6.0)
+		var r90: Control = _ui["a90_root"]
+		r90.visible = true
+		r90.modulate.a = 0.0
+		(_ui["a90_mat"] as ShaderMaterial).set_shader_parameter("red_amt", 0.0)
+		(_ui["a90_mat"] as ShaderMaterial).set_shader_parameter("static_amt", 0.0)
+		(_ui["a90_stop_icon"] as Control).visible = false
+		(_ui["a90_stop"] as Control).visible = false
+		(_ui["a90_hint"] as Control).visible = false
+		(_ui["a90_bar_holder"] as Control).visible = false
+		audio.play_a90_warn()
+		return
+	if kind == "a90_end":
+		if _a90_phase != 0:
+			_end_a90()
 		return
 
 	if _is_entity_authority():
@@ -1607,32 +1636,150 @@ void fragment() {
 
 	_build_mobile_ui(hud_group)
 
-	# A-90 (Paralysis) Screen Overlay + Stop Sign + Jumpscare Flash
+	# --- A-90 "Stop Sign" (screen-space entity) ---
+	var a90_root := Control.new()
+	a90_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	a90_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	a90_root.visible = false
+	root.add_child(a90_root)
+	_ui["a90_root"] = a90_root
+
+	var a90_sh := Shader.new()
+	a90_sh.code = """shader_type canvas_item;
+uniform float red_amt : hint_range(0.0, 1.0) = 0.0;
+uniform float static_amt : hint_range(0.0, 1.0) = 0.0;
+
+float hash12(vec2 p) {
+	p = fract(p * vec2(234.34, 435.345));
+	p += dot(p, p + 34.23);
+	return fract(p.x * p.y);
+}
+
+void fragment() {
+	vec2 uv = UV;
+	float r = length((uv - 0.5) * vec2(1.55, 1.0));
+	float vig = smoothstep(0.20, 0.95, r) * red_amt;
+	float n = hash12(floor(uv * vec2(460.0, 260.0)) + fract(TIME * 41.0) * 23.0);
+	float scan = step(0.88, fract(uv.y * 120.0 + TIME * 20.0));
+	float grain = n * static_amt * 0.30;
+	vec3 col = mix(vec3(0.16, 0.0, 0.0), vec3(1.0, 0.10, 0.06), vig * 0.55);
+	float a = clamp(vig * 0.72 + grain + scan * static_amt * 0.10, 0.0, 0.86);
+	COLOR = vec4(col, a);
+}
+"""
+	var a90_mat := ShaderMaterial.new()
+	a90_mat.shader = a90_sh
+	var a90_bg := ColorRect.new()
+	a90_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	a90_bg.material = a90_mat
+	a90_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	a90_root.add_child(a90_bg)
+	_ui["a90_mat"] = a90_mat
+
+	var a90_sign_box := Control.new()
+	a90_sign_box.set_anchors_preset(Control.PRESET_CENTER)
+	a90_sign_box.offset_left = -175
+	a90_sign_box.offset_top = -258
+	a90_sign_box.offset_right = 175
+	a90_sign_box.offset_bottom = 92
+	a90_sign_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	a90_root.add_child(a90_sign_box)
+	_ui["a90_sign_box"] = a90_sign_box
+
+	var a90_shake := Control.new()
+	a90_shake.set_anchors_preset(Control.PRESET_FULL_RECT)
+	a90_shake.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	a90_sign_box.add_child(a90_shake)
+	_ui["a90_shake"] = a90_shake
+
 	var a90_rect := TextureRect.new()
-	a90_rect.custom_minimum_size = Vector2(310, 310)
-	a90_rect.size = Vector2(310, 310)
+	a90_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	a90_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	a90_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	a90_rect.visible = false
+	a90_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	a90_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(a90_rect)
+	if _a90_textures.has("warn"):
+		a90_rect.texture = _a90_textures["warn"]
+	a90_shake.add_child(a90_rect)
 	_ui["a90_rect"] = a90_rect
 
+	var a90_icon_center := CenterContainer.new()
+	a90_icon_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	a90_icon_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	a90_shake.add_child(a90_icon_center)
+
 	var a90_stop_icon := TextureRect.new()
-	a90_stop_icon.set_anchors_preset(Control.PRESET_CENTER)
-	a90_stop_icon.offset_left = -82
-	a90_stop_icon.offset_top = -82
-	a90_stop_icon.offset_right = 82
-	a90_stop_icon.offset_bottom = 82
+	a90_stop_icon.custom_minimum_size = Vector2(215, 215)
 	a90_stop_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	a90_stop_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	a90_stop_icon.visible = false
 	a90_stop_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if _a90_textures.has("stopsign"):
 		a90_stop_icon.texture = _a90_textures["stopsign"]
-	root.add_child(a90_stop_icon)
+	a90_icon_center.add_child(a90_stop_icon)
 	_ui["a90_stop_icon"] = a90_stop_icon
 
+	var a90_stop := Label.new()
+	a90_stop.set_anchors_preset(Control.PRESET_CENTER)
+	a90_stop.offset_left = -300
+	a90_stop.offset_right = 300
+	a90_stop.offset_top = 100
+	a90_stop.offset_bottom = 158
+	a90_stop.text = "НЕ ДВИГАЙТЕСЬ!"
+	a90_stop.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	a90_stop.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	a90_stop.add_theme_font_size_override("font_size", 42)
+	a90_stop.add_theme_color_override("font_color", Color(1.0, 0.16, 0.14))
+	a90_stop.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+	a90_stop.add_theme_constant_override("outline_size", 10)
+	a90_stop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	a90_stop.visible = false
+	a90_root.add_child(a90_stop)
+	_ui["a90_stop"] = a90_stop
+
+	var a90_bar_holder := Control.new()
+	a90_bar_holder.set_anchors_preset(Control.PRESET_CENTER)
+	a90_bar_holder.offset_left = -180
+	a90_bar_holder.offset_right = 180
+	a90_bar_holder.offset_top = 168
+	a90_bar_holder.offset_bottom = 175
+	a90_bar_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	a90_bar_holder.visible = false
+	a90_root.add_child(a90_bar_holder)
+	_ui["a90_bar_holder"] = a90_bar_holder
+
+	var a90_bar_bg := ColorRect.new()
+	a90_bar_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	a90_bar_bg.color = Color(0.10, 0.02, 0.02, 0.72)
+	a90_bar_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	a90_bar_holder.add_child(a90_bar_bg)
+
+	var a90_bar_fill := ColorRect.new()
+	a90_bar_fill.position = Vector2.ZERO
+	a90_bar_fill.size = Vector2(360, 7)
+	a90_bar_fill.color = Color(1.0, 0.20, 0.16, 0.95)
+	a90_bar_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	a90_bar_holder.add_child(a90_bar_fill)
+	_ui["a90_bar_fill"] = a90_bar_fill
+
+	var a90_hint := Label.new()
+	a90_hint.set_anchors_preset(Control.PRESET_CENTER)
+	a90_hint.offset_left = -330
+	a90_hint.offset_right = 330
+	a90_hint.offset_top = 185
+	a90_hint.offset_bottom = 213
+	a90_hint.text = "ОТПУСТИ КЛАВИШИ  ·  НЕ ДВИГАЙ МЫШЬЮ  ·  ЖДИ"
+	a90_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	a90_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	a90_hint.add_theme_font_size_override("font_size", 15)
+	a90_hint.add_theme_color_override("font_color", Color(0.95, 0.80, 0.72, 0.90))
+	a90_hint.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
+	a90_hint.add_theme_constant_override("outline_size", 4)
+	a90_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	a90_hint.visible = false
+	a90_root.add_child(a90_hint)
+	_ui["a90_hint"] = a90_hint
+
+	# A-90 hit flash (jumpscare face)
 	var a90_scare_rect := TextureRect.new()
 	a90_scare_rect.set_anchors_preset(Control.PRESET_CENTER)
 	a90_scare_rect.offset_left = -290
@@ -1641,26 +1788,13 @@ void fragment() {
 	a90_scare_rect.offset_bottom = 290
 	a90_scare_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	a90_scare_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	a90_scare_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	a90_scare_rect.visible = false
 	a90_scare_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if _a90_textures.has("rage"):
 		a90_scare_rect.texture = _a90_textures["rage"]
 	root.add_child(a90_scare_rect)
 	_ui["a90_scare_rect"] = a90_scare_rect
-
-	var a90_stop := Label.new()
-	a90_stop.set_anchors_preset(Control.PRESET_CENTER)
-	a90_stop.offset_left = -180
-	a90_stop.offset_right = 180
-	a90_stop.offset_top = 158
-	a90_stop.offset_bottom = 208
-	a90_stop.text = "НЕ ДВИГАЙТЕСЬ!"
-	a90_stop.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	a90_stop.add_theme_font_size_override("font_size", 28)
-	a90_stop.add_theme_color_override("font_color", Color(1.0, 0.18, 0.18))
-	a90_stop.visible = false
-	root.add_child(a90_stop)
-	_ui["a90_stop"] = a90_stop
 
 	# Pause / Victory Overlay
 	var modal := CenterContainer.new()
@@ -2425,8 +2559,14 @@ func _reset_run(forced_seed: int = -1) -> void:
 	audio.stop_darkness()
 	(_ui["darkness_rect"] as Control).visible = false
 	_a90_phase = 0
-	_a90_cooldown = 16.0
+	_a90_timer = 0.0
+	_a90_grace = 0.0
+	_a90_cooldown = 18.0
 	_a90_scare_timer = 0.0
+	_a90_hits = 0
+	for vk in ["a90_root", "a90_hint", "a90_bar_holder"]:
+		if _ui.has(vk):
+			(_ui[vk] as Control).visible = false
 	audio.a60_intensity = 0.0
 	audio.low_hp_mode = false
 
@@ -2595,7 +2735,7 @@ func _clear_all_vignettes() -> void:
 		var df := _ui["dmg_flash"] as ColorRect
 		df.color.a = 0.0
 		df.visible = false
-	for vk in ["a90_rect", "a90_stop_icon", "a90_stop", "a90_scare_rect", "a60_scare_rect"]:
+	for vk in ["a90_root", "a90_rect", "a90_stop_icon", "a90_stop", "a90_hint", "a90_bar_holder", "a90_scare_rect", "a60_scare_rect"]:
 		if _ui.has(vk):
 			(_ui[vk] as Control).visible = false
 
@@ -2683,6 +2823,7 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	_refresh_architect_controls()
 
 	if cause == "A-90" and _a90_textures.has("rage"):
+		_a90_phase = 0
 		_a90_scare_timer = 0.45
 		var scare_rect: TextureRect = _ui["a90_scare_rect"]
 		scare_rect.texture = _a90_textures["rage"]
@@ -4299,6 +4440,7 @@ func _physics_process(delta: float) -> void:
 
 	_process_entities(delta)
 	_process_player_movement(delta)
+	_process_a90(delta)
 	_update_ui(delta)
 
 
@@ -4910,95 +5052,178 @@ func _process_entities(delta: float) -> void:
 	else:
 		_a120_node.visible = false
 
-	# --- A-90 / Paralysis (Freeze check, starts around A-009+) ---
-	if not can_harm_local:
-		_a90_phase = 0
-		(_ui["a90_rect"] as Control).visible = false
-		(_ui["a90_stop_icon"] as Control).visible = false
-		(_ui["a90_stop"] as Control).visible = false
-		(_ui["a90_scare_rect"] as Control).visible = false
-		return
+
+func _process_a90(delta: float) -> void:
+	var scare_rect: TextureRect = _ui["a90_scare_rect"]
 	if _a90_scare_timer > 0.0:
-		_a90_scare_timer -= delta
-		var scare_rect: TextureRect = _ui["a90_scare_rect"]
+		_a90_scare_timer = maxf(_a90_scare_timer - delta, 0.0)
 		scare_rect.modulate.a = clampf(_a90_scare_timer / 0.45, 0.0, 1.0)
 		if _a90_scare_timer <= 0.0:
 			scare_rect.visible = false
 
+	var a90_root: Control = _ui["a90_root"]
+	var a90_mat: ShaderMaterial = _ui["a90_mat"]
 	var a90_rect: TextureRect = _ui["a90_rect"]
 	var a90_stop_icon: TextureRect = _ui["a90_stop_icon"]
 	var a90_stop: Label = _ui["a90_stop"]
+	var a90_hint: Label = _ui["a90_hint"]
+	var a90_bar_holder: Control = _ui["a90_bar_holder"]
+	var a90_bar_fill: ColorRect = _ui["a90_bar_fill"]
+	var a90_shake: Control = _ui["a90_shake"]
+
 	if _a90_phase == 0:
-		a90_rect.visible = false
-		a90_stop_icon.visible = false
-		a90_stop.visible = false
-		if _highest_opened >= 9 and not _is_hiding:
-			_a90_cooldown -= delta
-			if _a90_cooldown <= 0.0:
-				_a90_cooldown = _rng.randf_range(20.0, 34.0)
-				if _rng.randf() < 0.72:
-					_a90_phase = 1
-					_a90_timer = 1.05
-					var vp_sz := get_viewport().get_visible_rect().size
-					_a90_pos_offset = vp_sz * 0.5 - Vector2(155, 155) + Vector2(_rng.randf_range(-120, 120), _rng.randf_range(-70, 70))
-					a90_rect.position = _a90_pos_offset
-					a90_rect.texture = _a90_textures["warn"]
-					a90_rect.visible = true
-					audio.play_a90_warn()
-	elif _a90_phase == 1:
+		a90_root.visible = false
+		if not _is_entity_authority():
+			return
+		if _highest_opened < 9 or _is_hiding or _a60_active or _a120_active or _power_out:
+			return
+		_a90_cooldown -= delta
+		if _a90_cooldown > 0.0:
+			return
+		_a90_cooldown = _rng.randf_range(24.0, 40.0)
+		if _rng.randf() > 0.76:
+			return
+		_start_a90_local()
+		return
+
+	# Cancel cleanly if the player is no longer vulnerable
+	if _is_hiding:
+		_end_a90()
+		return
+
+	if _a90_phase == 1:
 		_a90_timer -= delta
-		a90_rect.position = _a90_pos_offset + Vector2(_rng.randf_range(-4, 4), _rng.randf_range(-4, 4))
+		var t := clampf(1.0 - _a90_timer / 0.55, 0.0, 1.0)
+		a90_root.visible = true
+		a90_root.modulate.a = t
+		a90_mat.set_shader_parameter("red_amt", t * 0.62)
+		a90_mat.set_shader_parameter("static_amt", t * 0.55)
+		var wob := lerpf(34.0, 4.0, t)
+		a90_shake.position = Vector2(_rng.randf_range(-wob, wob), _rng.randf_range(-wob, wob))
 		if _a90_timer <= 0.0:
 			_a90_phase = 2
-			_a90_timer = 0.72
-			player_body.velocity.x *= 0.20
-			player_body.velocity.z *= 0.20
+			_a90_timer = _a90_freeze_dur
+			_a90_grace = 0.18
 			_a90_start_pos = player_body.position
 			_a90_start_yaw = _target_yaw
 			_a90_start_pitch = _target_pitch
-			a90_rect.position = get_viewport().get_visible_rect().size * 0.5 - Vector2(155, 155)
-			a90_rect.texture = _a90_textures.get("warn")
+			player_body.velocity.x *= 0.12
+			player_body.velocity.z *= 0.12
+			a90_root.visible = true
+			a90_root.modulate.a = 1.0
+			a90_shake.position = Vector2.ZERO
+			a90_rect.texture = _a90_textures.get("pre", _a90_textures.get("warn"))
 			a90_stop_icon.visible = true
 			a90_stop.visible = true
+			a90_hint.visible = true
+			a90_bar_holder.visible = true
+			a90_mat.set_shader_parameter("red_amt", 0.62)
+			a90_mat.set_shader_parameter("static_amt", 0.38)
+			audio.play_a90_warn()
 	elif _a90_phase == 2:
 		_a90_timer -= delta
-		var center_pos := get_viewport().get_visible_rect().size * 0.5 - Vector2(155, 155)
-		a90_rect.position = center_pos + Vector2(_rng.randf_range(-6, 6), _rng.randf_range(-6, 6))
-		var moved := player_body.position.distance_to(_a90_start_pos) > 0.18
-		var turned := absf(_target_yaw - _a90_start_yaw) > 0.085 or absf(_target_pitch - _a90_start_pitch) > 0.085
-		if moved or turned:
+		if _a90_grace > 0.0:
+			_a90_grace = maxf(_a90_grace - delta, 0.0)
+			_a90_start_pos = player_body.position
+			_a90_start_yaw = _target_yaw
+			_a90_start_pitch = _target_pitch
+		var ratio := clampf(_a90_timer / maxf(_a90_freeze_dur, 0.01), 0.0, 1.0)
+		a90_bar_fill.size = Vector2(360.0 * ratio, 7.0)
+		a90_bar_fill.color = Color(1.0, 0.20, 0.16, 0.95) if ratio > 0.34 else Color(1.0, 0.72, 0.18, 0.98)
+		var jit := lerpf(2.0, 9.0, 1.0 - ratio)
+		a90_shake.position = Vector2(_rng.randf_range(-jit, jit), _rng.randf_range(-jit, jit))
+		a90_mat.set_shader_parameter("red_amt", 0.55 + 0.20 * (1.0 - ratio))
+		a90_mat.set_shader_parameter("static_amt", 0.34 + 0.30 * (1.0 - ratio))
+
+		var moved := player_body.position.distance_to(_a90_start_pos) > 0.09
+		var turned := absf(wrapf(_target_yaw - _a90_start_yaw, -PI, PI)) > 0.045 or absf(_target_pitch - _a90_start_pitch) > 0.045
+		if _a90_grace <= 0.0 and (moved or turned):
 			_a90_phase = 0
-			a90_rect.visible = false
+			_a90_hits += 1
+			a90_root.visible = false
 			a90_stop_icon.visible = false
 			a90_stop.visible = false
+			a90_hint.visible = false
+			a90_bar_holder.visible = false
+			_a90_cooldown = _rng.randf_range(26.0, 44.0)
 			_hp -= 90
 			audio.play_a90_hit()
 			audio.low_hp_mode = (_hp <= 25 and _hp > 0)
 			(_ui["dmg_flash"] as ColorRect).color = Color(0.85, 0.05, 0.05, 0.72)
-			_shake_amount = 0.09
+			_shake_amount = 0.10
 			if _hp <= 0:
 				_trigger_death("A-90", "", {"a90_moved": moved, "a90_turned": turned})
 				return
 			_a90_scare_timer = 0.45
-			var scare_rect: TextureRect = _ui["a90_scare_rect"]
 			scare_rect.texture = _a90_textures["rage"]
-			scare_rect.modulate.a = 0.95
+			scare_rect.modulate = Color(1.0, 1.0, 1.0, 0.95)
 			scare_rect.visible = true
 			_show_toast("A-90 нанёс 90 урона! Замирайте полностью!", 2.5)
 		elif _a90_timer <= 0.0:
 			_a90_phase = 3
-			_a90_timer = 0.14
+			_a90_timer = 0.30
 			a90_stop_icon.visible = false
 			a90_stop.visible = false
-			a90_rect.position = center_pos
-			a90_rect.texture = _a90_textures.get("pre", _a90_textures["warn"])
+			a90_hint.visible = false
+			a90_bar_holder.visible = false
+			a90_rect.texture = _a90_textures.get("pre", _a90_textures.get("warn"))
+			_end_a90_broadcast()
 	elif _a90_phase == 3:
 		_a90_timer -= delta
+		var t2 := clampf(_a90_timer / 0.30, 0.0, 1.0)
+		a90_root.modulate.a = t2
+		a90_mat.set_shader_parameter("red_amt", t2 * 0.50)
+		a90_mat.set_shader_parameter("static_amt", t2 * 0.30)
+		a90_shake.position = Vector2(_rng.randf_range(-3, 3), _rng.randf_range(-3, 3))
 		if _a90_timer <= 0.0:
-			_a90_phase = 0
-			a90_rect.visible = false
-			a90_stop_icon.visible = false
-			a90_stop.visible = false
+			_end_a90()
+
+
+func _start_a90_local() -> void:
+	_a90_depth = clampf(float(_highest_opened - 9) / 91.0, 0.0, 1.0)
+	_a90_freeze_dur = lerpf(2.3, 3.4, _a90_depth) + _rng.randf_range(-0.15, 0.15)
+	_a90_phase = 1
+	_a90_timer = 0.55
+	_a90_grace = 0.0
+	var a90_root: Control = _ui["a90_root"]
+	var a90_rect: TextureRect = _ui["a90_rect"]
+	var a90_stop_icon: TextureRect = _ui["a90_stop_icon"]
+	var a90_stop: Label = _ui["a90_stop"]
+	var a90_hint: Label = _ui["a90_hint"]
+	var a90_bar_holder: Control = _ui["a90_bar_holder"]
+	var a90_mat: ShaderMaterial = _ui["a90_mat"]
+	a90_root.visible = true
+	a90_root.modulate.a = 0.0
+	a90_rect.texture = _a90_textures.get("warn")
+	a90_stop_icon.visible = false
+	a90_stop.visible = false
+	a90_hint.visible = false
+	a90_bar_holder.visible = false
+	a90_mat.set_shader_parameter("red_amt", 0.0)
+	a90_mat.set_shader_parameter("static_amt", 0.0)
+	audio.play_a90_warn()
+	if _is_entity_authority() and _net != null and _net.is_online():
+		_net.broadcast_entity_event({"k": "a90_spawn", "dur": _a90_freeze_dur}, true)
+
+
+func _end_a90_broadcast() -> void:
+	if _is_entity_authority() and _net != null and _net.is_online():
+		_net.broadcast_entity_event({"k": "a90_end"}, true)
+
+
+func _end_a90() -> void:
+	_a90_phase = 0
+	_a90_timer = 0.0
+	_a90_grace = 0.0
+	_a90_cooldown = _rng.randf_range(26.0, 44.0)
+	if not _ui.has("a90_root"):
+		return
+	var a90_root: Control = _ui["a90_root"]
+	a90_root.visible = false
+	a90_root.modulate.a = 1.0
+	for vk in ["a90_stop_icon", "a90_stop", "a90_hint", "a90_bar_holder"]:
+		if _ui.has(vk):
+			(_ui[vk] as Control).visible = false
 
 
 func _update_ui(delta: float) -> void:
