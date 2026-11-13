@@ -2,7 +2,8 @@ name: Build Android & iOS
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, opencode-unstable ]
+    tags: [ "v*" ]
   workflow_dispatch:
     inputs:
       target:
@@ -113,6 +114,14 @@ jobs:
           path: build/android/r00ms.apk
           retention-days: 30
 
+      - name: Attach Android APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/android/r00ms.apk
+          prerelease: true
+          generate_release_notes: true
+
   build-ios:
     name: Build iOS IPA (Unsigned)
     runs-on: macos-latest
@@ -194,3 +203,11 @@ jobs:
           name: r00ms-iOS-IPA
           path: build/ios/out/r00ms-iOS-unsigned.ipa
           retention-days: 30
+
+      - name: Attach iOS IPA to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/ios/out/r00ms-iOS-unsigned.ipa
+          prerelease: true
+          generate_release_notes: true
