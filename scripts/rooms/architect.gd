@@ -39,34 +39,6 @@ const A60_ART: Array[String] = [
 	"    ░▒▓██▓▒░     ░▒▓██▓▒░     ",
 ]
 
-const A150_ART: Array[String] = [
-	"        \\  /                  ",
-	"      ==\\==/===               ",
-	"     ≠==≠\\/≠≠        ==≠===   ",
-	"     ≠≠≠/\\≠         ≠==≠===≠  ",
-	"       /  \\        ==≠==≠==   ",
-	"      / VV \\        ≠=≠≠=     ",
-	"   =≠/ VVVV \\                 ",
-	"   =≠=≠=≠=≠=≠                 ",
-	"     ≠=====          ===≠≠=   ",
-	"      =≠≠≠=≠=≠===≠≠=≠≠≠=≠=≠   ",
-	"         =≠===≠≠=====≠=≠≠     ",
-	"             ≠====≠           ",
-]
-
-const A35_ART: Array[String] = [
-	"      .---.     .---.         ",
-	"     /     \\   /     \\        ",
-	"    | () () | | () () |       ",
-	"     \\  =  /   \\  =  /        ",
-	"   ===`---'=====`---'===      ",
-	"  ░▒▓  >>>>> SHADOW >>>>>     ",
-	"   ░▒▓███████████████▓▒░      ",
-	"    ░▒▓██▓▒░   ░▒▓██▓▒░       ",
-	"        <<< A-35 <<<          ",
-	"     ~~~~~~~~~~~~~~~~~~       ",
-]
-
 const A90_ART: Array[String] = [
 	"         .--------.           ",
 	"        /  STOP!   \\          ",
@@ -138,12 +110,6 @@ static func get_entity_art_bbcode(cause: String) -> String:
 	if cause == "A-120":
 		for line in A120_ART:
 			out.append("[color=#00e5ff]%s[/color]" % line)
-	elif cause == "A-150":
-		for line in A150_ART:
-			out.append("[color=#ff6b22]%s[/color]" % line)
-	elif cause == "A-35":
-		for line in A35_ART:
-			out.append("[color=#b44aff]%s[/color]" % line)
 	elif cause == "A-90" or cause == "A-90'":
 		for line in A90_ART:
 			out.append("[color=#ff2828]%s[/color]" % line)
@@ -246,28 +212,6 @@ func build_death_sequence(cause: String, room_num: int, username: String = "Play
 				"Stay focused.",
 			]
 
-	elif cause == "A-150":
-		summary = "Angry Scribble (A-150) moves much faster than A-120 with rapid double-thuds!"
-		if cause_count == 1:
-			lines = [
-				"Hi",
-				"Who are you?",
-				"Oh, hello %s!" % u_name,
-				"You have been died from Angry Scribble",
-				"You can also call him A-150",
-				"He is an enraged, faster variant of A-120 with an orange glow.",
-				"He rushes with rapid double-thuds and aggressive rebounds.",
-				"His speed gives you much less time to react.",
-				"Find a hiding spot immediately when you hear the frantic drums.",
-			]
-		else:
-			lines = [
-				"Hello again, %s." % u_name,
-				"A-150 got you again (death #%d)." % cause_count,
-				"He moves faster than A-120 — hide as soon as the double-thud starts.",
-				"Try again.",
-			]
-
 	elif cause == "A-60'":
 		summary = "The MultiMonster Prime (A-60') attacks after A-60 post-A49: constant flashlight flicker is your warning!"
 		if cause_count == 1 and deaths_total == 1:
@@ -304,27 +248,6 @@ func build_death_sequence(cause: String, room_num: int, username: String = "Play
 				"That is %d times from A-60' now." % cause_count,
 				"Re-enter lockers on [S] -> [LMB] between attacks to evade Darkness.",
 				"Keep moving.",
-			]
-
-	elif cause == "A-35":
-		summary = "The Phantom Sprinter (A-35) flies through rooms with a high-pitched warble!"
-		if cause_count == 1:
-			lines = [
-				"Hi",
-				"Who are you?",
-				"Oh, hello %s!" % u_name,
-				"You have been died from The Phantom Sprinter",
-				"You can also call him A-35",
-				"He is a swift purple-shadow entity that flies through rooms.",
-				"He strikes with a sharp warbling static sound.",
-				"He moves in bursts — duck behind cover or into a locker fast.",
-			]
-		else:
-			lines = [
-				"Hello again, %s." % u_name,
-				"A-35 caught you again (death #%d)." % cause_count,
-				"Listen for the high warble — you have only a moment to break line of sight.",
-				"Try again.",
 			]
 
 	elif cause == "A-90" or cause == "A-90'":

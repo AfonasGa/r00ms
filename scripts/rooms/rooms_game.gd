@@ -124,12 +124,7 @@ var _std_low_flicker_t := 0.0
 var _a60_frames: Array[Texture2D] = []
 var _a90_textures: Dictionary = {}
 var _a120_frames: Array[Texture2D] = []
-var _a150_frames: Array[Texture2D] = []
-var _a35_frames: Array[Texture2D] = []
 var _darkness_tex: Texture2D = null
-
-var _a60_variant := "normal" # "normal", "prime", "a35"
-var _a120_variant := "normal" # "normal", "a150"
 
 var _a60_active := false
 var _a60_phase := 0 # 0=idle, 2=rush, 3=sink
@@ -409,8 +404,7 @@ func _on_remote_entity_event(msg: Dictionary) -> void:
 	if kind == "a60_spawn":
 		var door_idx := int(msg.get("door", 0))
 		var is_prime := bool(msg.get("prime", false))
-		var variant := String(msg.get("v", "prime" if is_prime else "normal"))
-		_start_a60_local(door_idx, is_prime, variant)
+		_start_a60_local(door_idx, is_prime)
 	elif kind == "a60_pos":
 		var p_arr: Variant = msg.get("p")
 		if p_arr is Array and (p_arr as Array).size() >= 3:
@@ -428,8 +422,7 @@ func _on_remote_entity_event(msg: Dictionary) -> void:
 		if _a120_hit_cd <= 0.0:
 			var sp_r := int(msg.get("room", 0))
 			var rb := int(msg.get("rb", 0))
-			var variant := String(msg.get("v", "normal"))
-			_start_a120_local(sp_r, rb, variant)
+			_start_a120_local(sp_r, rb)
 	elif kind == "a120_pos":
 		if _a120_hit_cd > 0.0:
 			return
@@ -946,16 +939,6 @@ func _load_entity_sprites() -> void:
 		var fallback120 := RoomsTextures.make_a120_frames()
 		for ft in fallback120:
 			_a120_frames.append(ft)
-
-	_a150_frames.clear()
-	var fallback150 := RoomsTextures.make_a150_frames()
-	for ft in fallback150:
-		_a150_frames.append(ft)
-
-	_a35_frames.clear()
-	var fallback35 := RoomsTextures.make_a35_frames()
-	for ft in fallback35:
-		_a35_frames.append(ft)
 
 	_a90_textures = RoomsTextures.make_a90_textures()
 	var spawn_tex := _try_load_tex("res://assets/sprites/paralysis/paralysis_spawn.webp")
@@ -4060,29 +4043,22 @@ func _find_first_closed_door_room() -> RoomBuilder.RoomInstance:
 	return null
 
 
-func _spawn_a60(force_prime: bool = false, variant: String = "") -> void:
+func _spawn_a60(force_prime: bool = false) -> void:
 	if _rooms.is_empty():
 		return
 	var target_r := _find_first_closed_door_room()
 	if target_r == null:
 		return
-	var v := variant
-	if v == "":
-		if not force_prime and _highest_opened >= 30 and _rng.randf() < 0.28:
-			v = "a35"
-		else:
-			v = "prime" if force_prime else "normal"
-	_start_a60_local(target_r.index, force_prime, v)
+	_start_a60_local(target_r.index, force_prime)
 	if _is_entity_authority() and _net != null and _net.is_online():
 		_net.broadcast_entity_event({
 			"k": "a60_spawn",
 			"door": target_r.index,
 			"prime": force_prime,
-			"v": v,
 		}, true)
 
 
-func _start_a60_local(target_door_idx: int, is_prime: bool, variant: String = "normal") -> void:
+func _start_a60_local(target_door_idx: int, is_prime: bool) -> void:
 	_a60_path.clear()
 	if _rooms.is_empty():
 		return
@@ -4103,7 +4079,6 @@ func _start_a60_local(target_door_idx: int, is_prime: bool, variant: String = "n
 	if _a60_path.size() < 2:
 		return
 
-	_a60_variant = "prime" if is_prime else variant
 	_a60_active = true
 	_a60_phase = 2
 	_a60_is_prime = is_prime
@@ -4116,10 +4091,7 @@ func _start_a60_local(target_door_idx: int, is_prime: bool, variant: String = "n
 		_a60_prime_flicker_active = true
 		_a60_prime_flicker_gap_t = 0.0
 
-	if _a60_variant == "a35":
-		_a60_light.light_color = Color(0.75, 0.15, 0.95)
-		_a60_sprite.modulate = Color(0.85, 0.35, 1.0)
-	elif is_prime:
+	if is_prime:
 		_a60_light.light_color = Color(0.22, 0.84, 1.0)
 		_a60_sprite.modulate = Color(0.55, 0.96, 1.0)
 	else:
@@ -4130,10 +4102,10 @@ func _start_a60_local(target_door_idx: int, is_prime: bool, variant: String = "n
 	_a60_node.position = _a60_path[0]
 	_a60_node.visible = true
 	_flicker_nearby_lights(1.4)
-	audio.start_a60_spawn(is_prime, _highest_opened < 100, _a60_variant == "a35")
+	audio.start_a60_spawn(is_prime, _highest_opened < 100)
 
 
-func _spawn_a120(variant: String = "") -> void:
+func _spawn_a120() -> void:
 	if _rooms.is_empty():
 		return
 	var spawn_idx := mini(_highest_opened + 3, _rooms[-1].index)
@@ -4147,34 +4119,26 @@ func _spawn_a120(variant: String = "") -> void:
 		rb = 2
 	else:
 		rb = 3
-	var v := variant
-	if v == "":
-		if _highest_opened >= 40 and _rng.randf() < 0.32:
-			v = "a150"
-		else:
-			v = "normal"
-	_start_a120_local(spawn_idx, rb, v)
+	_start_a120_local(spawn_idx, rb)
 	if _is_entity_authority() and _net != null and _net.is_online():
 		_net.broadcast_entity_event({
 			"k": "a120_spawn",
 			"room": spawn_idx,
 			"rb": rb,
-			"v": v,
 		}, true)
 
 
-func _start_a120_local(spawn_idx: int, rb: int, variant: String = "normal") -> void:
+func _start_a120_local(spawn_idx: int, rb: int) -> void:
 	if _rooms.is_empty():
 		return
 	var spawn_r: RoomBuilder.RoomInstance = _room_by_idx.get(spawn_idx)
 	if spawn_r == null:
 		spawn_r = _rooms[-1]
 
-	_a120_variant = variant
 	_a120_active = true
 	_a120_phase = 1
 	_a120_substage = 0
-	_a120_warn_timer = 2.6 if _a120_variant == "a150" else 3.4
+	_a120_warn_timer = 3.4
 	_a120_pause_timer = 0.0
 	_a120_rebounds = rb
 	_a120_initial_rebounds = rb
@@ -4188,12 +4152,9 @@ func _start_a120_local(spawn_idx: int, rb: int, variant: String = "normal") -> v
 	_a120_node.position = spawn_r.center_pos + Vector3(0.0, 1.55, 0.0)
 	_net_a120_tgt = _a120_node.position
 	_a120_node.visible = true
-	if _a120_variant == "a150":
-		_a120_sprite.modulate = Color(1.0, 0.55, 0.15)
-	else:
-		_a120_sprite.modulate = Color(1.0, 1.0, 1.0)
+	_a120_sprite.modulate = Color(1.0, 1.0, 1.0)
 	_flicker_nearby_lights(1.6)
-	audio.start_a120_spawn(_a120_variant == "a150")
+	audio.start_a120_spawn()
 
 
 func _build_a120_corridor_path(from_room_idx: int, to_room_idx: int) -> Array[Vector3]:
@@ -4254,9 +4215,8 @@ func _handle_a120_hit() -> void:
 	audio.low_hp_mode = (_hp <= 25 and _hp > 0)
 	_shake_amount = 0.12
 
-	var kill_cause := "A-150" if _a120_variant == "a150" else "A-120"
 	if _hp <= 0:
-		_trigger_death(kill_cause, "", {"a120_rebounded": _a120_rebounds < _a120_initial_rebounds})
+		_trigger_death("A-120", "", {"a120_rebounded": _a120_rebounds < _a120_initial_rebounds})
 		return
 
 	var warp_safe_min := _checkpoint_room + 4
@@ -4266,8 +4226,7 @@ func _handle_a120_hit() -> void:
 		_warp_player_to_room(target_idx, back_steps)
 	else:
 		(_ui["dmg_flash"] as ColorRect).color = Color(0.85, 0.08, 0.08, 0.65)
-		var ent_name := "Angry Scribble (A-150)" if _a120_variant == "a150" else "Happy Scribble (A-120)"
-		_show_toast("%s нанёс 40 урона! (%d HP)" % [ent_name, _hp], 2.6)
+		_show_toast("Happy Scribble (A-120) нанёс 40 урона! (%d HP)" % _hp, 2.6)
 
 
 func _warp_player_to_room(target_idx: int, back_steps: int) -> void:
@@ -4634,9 +4593,8 @@ func _process_entities(delta: float) -> void:
 		var flip_interval := 0.035 if _a60_is_prime else 0.045
 		if _a60_anim_timer > flip_interval:
 			_a60_anim_timer = 0.0
-			var f_pool: Array[Texture2D] = _a35_frames if (_a60_variant == "a35" and not _a35_frames.is_empty()) else _a60_frames
-			_a60_frame_idx = (_a60_frame_idx + _rng.randi_range(1, 5)) % f_pool.size()
-			var f60 := f_pool[_a60_frame_idx]
+			_a60_frame_idx = (_a60_frame_idx + _rng.randi_range(1, 5)) % maxi(_a60_frames.size(), 1)
+			var f60 := _a60_frames[_a60_frame_idx]
 			_a60_last_tex = f60
 			_a60_sprite.texture = f60
 			_a60_sprite.pixel_size = 2.65 / float(maxi(f60.get_width(), 1))
@@ -4646,7 +4604,7 @@ func _process_entities(delta: float) -> void:
 			audio.a60_intensity = 0.0 if _a60_is_prime else clampf(16.0 / maxf(d_player, 2.0), 0.12, 1.0)
 			audio.update_a60_mix(delta, d_player, _a60_phase, _a60_is_prime)
 
-		var prime_col := Vector3(0.75, 0.25, 1.0) if _a60_variant == "a35" else (Vector3(0.25, 0.85, 1.0) if _a60_is_prime else Vector3(1.0, 0.22, 0.18))
+		var prime_col := Vector3(0.25, 0.85, 1.0) if _a60_is_prime else Vector3(1.0, 0.22, 0.18)
 		static_mat.set_shader_parameter("tint_col", prime_col)
 
 		if _a60_hint_timer > 0.0:
@@ -4691,7 +4649,7 @@ func _process_entities(delta: float) -> void:
 									_a60_path.append(r.exit_pos + Vector3(0.0, 1.55, 0.0))
 						_a60_path.append(next_closed.exit_pos + Vector3(0.0, 1.55, 0.0))
 
-				var rush_speed := 76.0 if _a60_variant == "a35" else (72.0 if _a60_is_prime else 60.0)
+				var rush_speed := 72.0 if _a60_is_prime else 60.0
 				if _a60_path_idx < _a60_path.size():
 					var tgt := _a60_path[_a60_path_idx]
 					var to_t := tgt - _a60_node.position
@@ -4722,7 +4680,7 @@ func _process_entities(delta: float) -> void:
 						"prime": _a60_is_prime,
 					}, false)
 			else:
-				var rush_speed_c := 76.0 if _a60_variant == "a35" else (72.0 if _a60_is_prime else 60.0)
+				var rush_speed_c := 72.0 if _a60_is_prime else 60.0
 				_a60_node.position = _a60_node.position.move_toward(_net_a60_tgt, rush_speed_c * delta * 1.25)
 
 			# Table Burn from A-60' (90% chance to deal 20 damage when hiding under a table!)
@@ -4757,17 +4715,16 @@ func _process_entities(delta: float) -> void:
 								_trigger_death("A-60'", "", {"distance": d_player})
 								return
 					else:
-						var kill_cause := "A-35" if _a60_variant == "a35" else "A-60"
 						a60_scare_rect.visible = true
 						a60_scare_rect.texture = _a60_sprite.texture
-						a60_scare_rect.modulate = Color(0.85, 0.35, 1.0, 0.96) if kill_cause == "A-35" else Color(1.0, 0.92, 0.92, 0.96)
+						a60_scare_rect.modulate = Color(1.0, 0.92, 0.92, 0.96)
 						var vp := get_viewport().get_visible_rect().size
 						a60_scare_rect.position = vp * 0.5 - Vector2(270, 270)
 						audio.play_a60_jumpscare(false)
 						_hp = 0
 						audio.low_hp_mode = false
-						(_ui["dmg_flash"] as ColorRect).color = Color(0.85, 0.15, 0.95, 0.78) if kill_cause == "A-35" else Color(0.92, 0.08, 0.08, 0.78)
-						_trigger_death(kill_cause, "", {"distance": d_player})
+						(_ui["dmg_flash"] as ColorRect).color = Color(0.92, 0.08, 0.08, 0.78)
+						_trigger_death("A-60", "", {"distance": d_player})
 						return
 				else:
 					a60_scare_rect.visible = false
@@ -4834,12 +4791,10 @@ func _process_entities(delta: float) -> void:
 		var d120 := _a120_node.global_position.distance_to(cam.global_position)
 		var drum_hit := audio.update_a120_mix(delta, d120, _a120_phase) if _state != State.DEAD else false
 		_a120_anim_timer += delta
-		var anim_flip_interval := 0.35 if _a120_variant == "a150" else 0.50
-		if _a120_anim_timer >= anim_flip_interval:
-			_a120_anim_timer -= anim_flip_interval
-			var f120_pool: Array[Texture2D] = _a150_frames if (_a120_variant == "a150" and not _a150_frames.is_empty()) else _a120_frames
-			_a120_frame_idx = (_a120_frame_idx + 1) % maxi(f120_pool.size(), 1)
-			var f120 := f120_pool[_a120_frame_idx] if not f120_pool.is_empty() else null
+		if _a120_anim_timer >= 0.50:
+			_a120_anim_timer -= 0.50
+			_a120_frame_idx = (_a120_frame_idx + 1) % maxi(_a120_frames.size(), 1)
+			var f120 := _a120_frames[_a120_frame_idx] if not _a120_frames.is_empty() else null
 			if f120 != null:
 				_a120_sprite.texture = f120
 				_a120_sprite.pixel_size = 2.55 / float(maxi(f120.get_width(), 1))
@@ -4869,7 +4824,7 @@ func _process_entities(delta: float) -> void:
 			if _a120_pause_timer > 0.0:
 				_a120_pause_timer -= delta
 			else:
-				var spd120 := 21.0 if _a120_variant == "a150" else 15.0
+				var spd120 := 15.0
 				if _a120_substage == 0:
 					var live_tgt := _get_a120_live_target()
 					var tgt_room := _get_room_idx_near(live_tgt)
