@@ -192,7 +192,9 @@ func get_summary_status() -> String:
 			]
 		return "Steam Spacewar (480) | Подключение к лобби..."
 	elif mode == "enet":
-		return "ENet Тест 127.0.0.1:%d | Игроков: %d%s" % [
+		var lan_ip := _get_local_lan_ip()
+		return "Локальная сеть %s:%d | Игроков: %d%s" % [
+			lan_ip,
 			ENET_PORT,
 			_enet_connected_ids.size() + 1,
 			" [ХОСТ]" if is_host else ""
@@ -390,6 +392,9 @@ func open_invite_overlay_now() -> void:
 		return
 	_steam.call("setLobbyJoinable", current_lobby_id, true)
 	_update_rich_presence()
+	# Small delay so Steam has time to inject the overlay into the process.
+	# Without this, activateGameOverlayInviteDialog silently fails on first launch.
+	await get_tree().create_timer(0.35).timeout
 	_steam.call("activateGameOverlayInviteDialog", current_lobby_id)
 	emit_signal("status_changed", "Открыто окно приглашений Steam (Shift+Tab)")
 
@@ -445,7 +450,8 @@ func host_enet(seed_val: int, port: int = ENET_PORT) -> Error:
 	is_host = true
 	run_seed = seed_val
 	mode = "enet"
-	emit_signal("status_changed", "Локальный тест-сервер запущен (порт %d)" % port)
+	var lan_ip := _get_local_lan_ip()
+	emit_signal("status_changed", "Локальная сеть: %s:%d — друг вводит этот адрес" % [lan_ip, port])
 	return OK
 
 
@@ -1005,7 +1011,15 @@ func _on_enet_connected_to_server() -> void:
 
 func _on_enet_connection_failed() -> void:
 	disconnect_session()
-	emit_signal("status_changed", "ENet: не удалось подключиться к 127.0.0.1")
+	emit_signal("status_changed", "ENet: не удалось подключиться")
+
+
+## Returns the LAN IP of this machine (first non-loopback IPv4 address)
+func _get_local_lan_ip() -> String:
+	for addr in IP.get_local_addresses():
+		if addr.begins_with("192.") or addr.begins_with("10.") or addr.begins_with("172."):
+			return addr
+	return "127.0.0.1"
 
 
 func _on_enet_packet_received(id: int, packet: PackedByteArray) -> void:

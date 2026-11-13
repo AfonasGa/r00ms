@@ -1491,10 +1491,44 @@ func _build_main_menu(root: Control) -> void:
 	make_item.call(v_play, "multiplayer", func() -> void: _set_menu_view("multi"), 30)
 	make_item.call(v_play, "back", func() -> void: _set_menu_view("main"), 22)
 
-	make_item.call(v_multi, "invite steam friends", func() -> void: _menu_begin_game(true, "steam"), 30)
+	make_item.call(v_multi, "invite steam friends", func() -> void: _menu_steam_invite(), 30)
 	make_item.call(v_multi, "quick game", func() -> void: _menu_quick_multiplayer(), 30)
-	make_item.call(v_multi, "local network", func() -> void: _menu_begin_game(true, "lan"), 30)
-	make_item.call(v_multi, "join 127.0.0.1", func() -> void: _menu_begin_game(true, "join"), 26)
+	make_item.call(v_multi, "local network (host)", func() -> void: _menu_begin_game(true, "lan"), 30)
+
+	# LAN join row: IP field + button
+	var lan_join_row := HBoxContainer.new()
+	lan_join_row.add_theme_constant_override("separation", 6)
+	v_multi.add_child(lan_join_row)
+	var lan_ip_edit := LineEdit.new()
+	lan_ip_edit.placeholder_text = _get_local_ip() + ":" + str(_net.ENET_PORT if _net != null else 27480)
+	lan_ip_edit.text = ""
+	lan_ip_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lan_ip_edit.custom_minimum_size = Vector2(0, 44)
+	lan_ip_edit.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
+	lan_ip_edit.add_theme_font_size_override("font_size", 16)
+	lan_join_row.add_child(lan_ip_edit)
+	_ui["lan_ip_edit"] = lan_ip_edit
+	var btn_lan_join_go := Button.new()
+	btn_lan_join_go.text = "войти"
+	btn_lan_join_go.custom_minimum_size = Vector2(80, 44)
+	RoomsUI.style_link_button(btn_lan_join_go, 20)
+	btn_lan_join_go.pressed.connect(func() -> void:
+		var raw := lan_ip_edit.text.strip_edges()
+		if raw.is_empty():
+			raw = _get_local_ip()
+		var ip := raw
+		var port := _net.ENET_PORT if _net != null else 27480
+		if ":" in raw:
+			var parts := raw.split(":", false, 1)
+			ip = parts[0]
+			if parts.size() > 1 and parts[1].is_valid_int():
+				port = int(parts[1])
+		if _net != null:
+			_net.join_enet(ip, port)
+		_menu_begin_game(true, "")
+	)
+	lan_join_row.add_child(btn_lan_join_go)
+
 	make_item.call(v_multi, "back", func() -> void: _set_menu_view("play"), 22)
 
 	var menu_status := Label.new()
@@ -1702,27 +1736,37 @@ func _menu_quick_multiplayer() -> void:
 	_menu_begin_game(true, "")
 
 
+## Returns the LAN IP of this machine (first non-loopback IPv4 address)
+func _get_local_ip() -> String:
+	for addr in IP.get_local_addresses():
+		if addr.begins_with("192.") or addr.begins_with("10.") or addr.begins_with("172."):
+			return addr
+	return "127.0.0.1"
+
+
+## Invite Steam friends: creates lobby, opens overlay — does NOT start the game.
+## The host starts the game by pressing Solo/Start separately.
+func _menu_steam_invite() -> void:
+	if _net == null:
+		return
+	var mstatus := _ui.get("menu_status") as Label
+	if mstatus != null:
+		mstatus.text = "создаём лобби..."
+	var res: Dictionary = await _net.ensure_steam_lobby(int(_rng.seed), _highest_opened)
+	if not bool(res.get("ok", false)):
+		if mstatus != null:
+			mstatus.text = String(res.get("msg", "Не удалось создать лобби"))
+		return
+	_net.open_invite_overlay_now()
+	if mstatus != null:
+		mstatus.text = "лобби создано — пригласи друзей (Shift+Tab)"
+	_show_toast("Лобби создано. Нажми «solo» когда все зайдут, чтобы начать.", 4.0)
+
+
 func _menu_begin_game(multiplayer: bool = false, mode: String = "") -> void:
 	if multiplayer and _net != null:
-		if mode == "steam":
-			# Keep the menu on screen until the Steam invite dialog is actually
-			# open — the lobby creation is async, so await it behind a status line.
-			var mstatus := _ui.get("menu_status") as Label
-			if mstatus != null:
-				mstatus.text = "creating lobby..."
-			var res: Dictionary = await _net.ensure_steam_lobby(int(_rng.seed), _highest_opened)
-			if not bool(res.get("ok", false)):
-				if mstatus != null:
-					mstatus.text = String(res.get("msg", "Не удалось создать лобби"))
-				return
-			_net.open_invite_overlay_now()
-			if mstatus != null:
-				mstatus.text = ""
-			_show_toast("Окно приглашений Steam открыто — позовите друзей (Shift+Tab)", 3.5)
-		elif mode == "lan":
+		if mode == "lan":
 			_net.host_enet(int(_rng.seed))
-		elif mode == "join":
-			_net.join_enet("127.0.0.1")
 	var menu := _ui.get("main_menu") as Control
 	if menu == null:
 		call("_set_state", State.PLAYING)

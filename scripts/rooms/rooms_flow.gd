@@ -853,6 +853,16 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 
+		# F11 — toggle fullscreen (works in any state)
+		if ke.keycode == KEY_F11:
+			var win := get_window()
+			if win.mode == Window.MODE_FULLSCREEN or win.mode == Window.MODE_EXCLUSIVE_FULLSCREEN:
+				win.mode = Window.MODE_WINDOWED
+			else:
+				win.mode = Window.MODE_FULLSCREEN
+			get_viewport().set_input_as_handled()
+			return
+
 		if ke.keycode == KEY_TAB or ke.keycode == KEY_ESCAPE:
 			if _state == State.PLAYING:
 				_set_state(State.PAUSED)
