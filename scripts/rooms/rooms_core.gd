@@ -2,7 +2,7 @@ extends Node3D
 
 ## Rooms-inspired 3D procedural horror runner (A-000 -> A-200+ Endless) inside Godot 4.7.
 
-enum State { PLAYING, PAUSED, DEAD, VICTORY, SPECTATING }
+enum State { PLAYING, PAUSED, DEAD, VICTORY, SPECTATING, MENU }
 enum RenderQuality { MOBILE_OPT, MEDIUM, HIGH }
 
 const SETTINGS_PATH := "user://rooms_settings.cfg"
@@ -43,7 +43,7 @@ var _next_room_index := 0
 var _highest_opened := 0
 var _current_room_idx := 0
 
-var _state: State = State.PLAYING
+var _state: State = State.MENU
 var _hp := 100
 var _stamina := 1.0
 var _stamina_regen_delay := 0.0
@@ -249,6 +249,17 @@ var _mobile_gummy_held := false
 var _joy_ring: Panel = null
 var _joy_knob: Panel = null
 var _mobile_btns: Array[Control] = []
+
+# Main menu state
+var _menu_view := "main"
+var _settings_from_menu := false
+var _death_hidden := false
+
+# Door open micro-teleport (fast eased glide to the door)
+var _door_tp_t := 1.0
+var _door_tp_from := Vector3.ZERO
+var _door_tp_to := Vector3.ZERO
+var _door_tp_dur := 0.22
 
 # Online Multiplayer (Steam Spacewar 480 + ENet)
 var _net: RoomsNet = null

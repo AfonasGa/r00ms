@@ -36,6 +36,64 @@ static func style_button(btn: Button, accent: Color, font_size: int = 15) -> voi
 	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
 
+## Flat text-only menu link (minimal aesthetic: no frame, subtle hover).
+static func style_link_button(btn: Button, font_size: int = 30, align: int = HORIZONTAL_ALIGNMENT_LEFT) -> void:
+	var empty := StyleBoxEmpty.new()
+	for sb in ["normal", "hover", "pressed", "focus", "disabled"]:
+		btn.add_theme_stylebox_override(sb, empty)
+	btn.flat = true
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.alignment = align
+	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	btn.add_theme_font_override("font", load("res://assets/fonts/Montserrat-Medium.ttf"))
+	btn.add_theme_font_size_override("font_size", font_size)
+	btn.add_theme_color_override("font_color", Color(0.90, 0.91, 0.94, 0.86))
+	btn.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
+	btn.add_theme_color_override("font_pressed_color", Color(1.0, 1.0, 1.0, 1.0))
+	btn.add_theme_color_override("font_focus_color", Color(1.0, 1.0, 1.0, 1.0))
+
+
+## Fine animated film-grain / white-noise overlay material.
+static func make_noise_material(amount: float = 1.0, coarse: float = 1.0) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = """shader_type canvas_item;
+uniform float amt : hint_range(0.0, 1.0) = 1.0;
+uniform float coarse : hint_range(0.0, 3.0) = 1.0;
+
+float hash12(vec2 p) {
+	p = fract(p * vec2(234.34, 435.345));
+	p += dot(p, p + 34.23);
+	return fract(p.x * p.y);
+}
+
+void fragment() {
+	vec2 uv = UV;
+	vec2 px = vec2(520.0, 300.0) * coarse;
+	float n = hash12(floor(uv * px) + fract(TIME * 61.0) * 97.0);
+	float n2 = hash12(floor(uv * px * 0.34) + fract(TIME * 19.0) * 41.0);
+	float grain = mix(n, n2, 0.40);
+	float scan = step(0.975, fract(uv.y * 210.0 + TIME * 9.0)) * 0.20;
+	float a = (grain * 0.20 + scan) * amt;
+	COLOR = vec4(vec3(grain), a);
+}
+"""
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	mat.set_shader_parameter("amt", amount)
+	mat.set_shader_parameter("coarse", coarse)
+	return mat
+
+
+## Square, flat "cmd.exe" window frame for the death screen.
+static func make_cmd_window_style() -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.055, 0.058, 0.066, 0.97)
+	sb.border_color = Color(0.46, 0.48, 0.53, 0.80)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(0)
+	return sb
+
+
 class RingButton extends Button:
 	var ring_color := Color(1.0, 1.0, 1.0, 0.95)
 	var stroke_width := 5.5

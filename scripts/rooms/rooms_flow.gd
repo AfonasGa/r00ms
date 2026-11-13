@@ -214,7 +214,10 @@ func _spawn_next_room() -> void:
 
 func _set_state(new_state: State) -> void:
 	_state = new_state
-	(_ui["hud_group"] as Control).visible = (_state != State.DEAD and _state != State.SPECTATING)
+	var hud_on := (_state == State.PLAYING or _state == State.PAUSED or _state == State.VICTORY)
+	(_ui["hud_group"] as Control).visible = hud_on
+	if _ui.has("main_menu"):
+		(_ui["main_menu"] as Control).visible = (_state == State.MENU)
 	if _ui.has("spectate_bar"):
 		(_ui["spectate_bar"] as Control).visible = (_state == State.SPECTATING)
 	if _ui.has("mobile_group"):
@@ -243,30 +246,51 @@ func _set_state(new_state: State) -> void:
 		if _anim_hand != null:
 			_anim_hand.visible = false
 		flashlight.visible = false
+	elif _state == State.MENU:
+		_reset_touch_state()
+		_clear_all_vignettes()
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		(_ui["modal"] as Control).visible = false
+		(_ui["architect_overlay"] as Control).visible = false
+		if _ui.has("death_iris"):
+			(_ui["death_iris"] as Control).visible = false
+		if _ui.has("spectate_bar"):
+			(_ui["spectate_bar"] as Control).visible = false
+		player_body.velocity = Vector3.ZERO
+		_show_main_menu(false)
 	else:
 		_reset_touch_state()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		var modal: Control = _ui["modal"]
 		modal.visible = (_state == State.PAUSED or _state == State.VICTORY)
+		if modal.visible:
+			modal.modulate.a = 0.0
+			create_tween().tween_property(modal, "modulate:a", 1.0, 0.18)
 		var title: Label = _ui["m_title"]
 		var desc: Label = _ui["m_desc"]
 		var btn_res: Button = _ui["btn_resume"]
 		if _state == State.PAUSED:
 			_open_settings_panel(false)
-			title.text = "ПАУЗА"
-			title.add_theme_color_override("font_color", Color(0.55, 0.95, 1.0))
-			desc.text = _pause_summary_text()
-			btn_res.text = "Продолжить"
+			title.visible = false
+			desc.visible = false
+			btn_res.text = "continue"
 			btn_res.visible = true
 		elif _state == State.VICTORY:
 			_open_settings_panel(false)
-			title.text = "ВЫ ПРОШЛИ СЕКЦИЮ A!"
-			title.add_theme_color_override("font_color", Color(0.35, 1.0, 0.65))
+			title.visible = true
+			desc.visible = true
+			title.text = "A-200"
+			title.add_theme_color_override("font_color", Color(0.78, 0.82, 0.88))
 			var mins := int(_run_time) / 60
 			var secs := int(_run_time) % 60
-			desc.text = "Архитектор приветствует тебя: ты достиг двери A-200 за %02d:%02d!\nМожно продолжить бесконечный забег дальше или начать заново." % [mins, secs]
-			btn_res.text = "Продолжить дальше (A-201+)"
+			desc.text = "section A cleared in %02d:%02d\ncontinue into the endless run, or exit." % [mins, secs]
+			btn_res.text = "continue"
 			btn_res.visible = true
+
+
+func _exit_to_main_menu() -> void:
+	_reset_run()
+	_set_state(State.MENU)
 
 
 func _clear_all_vignettes() -> void:
@@ -357,12 +381,10 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	var u_name := _get_local_username()
 	var seq := _architect.build_death_sequence(cause, _highest_opened, u_name, ctx)
 	_arch_lines.clear()
-	var seq_lines: Array = seq["lines"]
-	for line_item in seq_lines:
-		_arch_lines.append(String(line_item))
-	if _arch_lines.is_empty():
-		_arch_lines.append("Be careful in Section A.")
+	_arch_lines.append("Died cause of %s" % cause)
+	_arch_lines.append("Did it to A-%03d" % _highest_opened)
 
+	_death_hidden = false
 	_arch_line_idx = 0
 	_arch_char_pos = 0.0
 	_arch_blip_acc = 0
@@ -379,6 +401,9 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	if _ui.has("arch_ascii"):
 		(_ui["arch_ascii"] as RichTextLabel).text = String(seq.get("art_bbcode", ""))
 	(_ui["arch_speech"] as Label).text = ""
+	if _ui.has("arch_player_lbl"):
+		(_ui["arch_player_lbl"] as Label).text = "<< %s >>" % u_name
+	_set_death_windows_visible(true)
 	_refresh_architect_controls()
 
 	if cause == "A-90" and _a90_textures.has("rage"):
@@ -396,6 +421,12 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	var arch_overlay: Control = _ui["architect_overlay"]
 	arch_overlay.visible = false
 	arch_overlay.modulate.a = 0.0
+
+
+func _set_death_windows_visible(vis: bool) -> void:
+	for k in ["arch_window_big", "arch_window_small"]:
+		if _ui.has(k):
+			(_ui[k] as Control).visible = vis
 
 
 func _get_local_username() -> String:
@@ -420,6 +451,8 @@ func _style_arch_terminal_buttons() -> void:
 	var mono_f := RoomsArchitect.get_terminal_font()
 
 	if _mobile_controls_enabled:
+		btn_next.visible = true
+		btn_retry.visible = true
 		btn_next.flat = false
 		btn_retry.flat = false
 		btn_next.alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -437,6 +470,8 @@ func _style_arch_terminal_buttons() -> void:
 		btn_next.add_theme_font_override("font", mono_f)
 		btn_retry.add_theme_font_override("font", mono_f)
 	else:
+		btn_next.visible = false
+		btn_retry.visible = false
 		btn_next.flat = true
 		btn_retry.flat = true
 		btn_next.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -513,8 +548,13 @@ func _advance_architect_dialogue() -> void:
 		# Immediately finish glitch animation
 		_arch_glitch_step = 12
 		var sp_lbl: Label = _ui["arch_speech"]
-		sp_lbl.text = cur_line
-		sp_lbl.add_theme_color_override("font_color", Color(0.28, 1.0, 0.42))
+		var reveal := ""
+		for i in range(_arch_line_idx + 1):
+			if i > 0:
+				reveal += "\n"
+			reveal += "> " + String(_arch_lines[i])
+		sp_lbl.text = reveal
+		sp_lbl.add_theme_color_override("font_color", Color(0.88, 0.89, 0.92))
 		_arch_prev_text = cur_line
 		_arch_char_pos = float(cur_line.length())
 		_arch_auto_advance_timer = 0.0
@@ -531,9 +571,6 @@ func _advance_architect_dialogue() -> void:
 	else:
 		if _net != null and _net.is_online() and not _remote_players.is_empty():
 			_start_spectating()
-		else:
-			_reset_run()
-		(_ui["arch_speech"] as Label).text = ""
 		_refresh_architect_controls()
 
 
@@ -655,9 +692,9 @@ func _reset_touch_state() -> void:
 	_mobile_gummy_held = false
 	if _joy_ring != null and _joy_knob != null:
 		var vp_sz := get_viewport().get_visible_rect().size
-		_joy_ring.position = Vector2(46.0, maxf(vp_sz.y - 202.0, 80.0))
+		_joy_ring.position = Vector2(40.0, maxf(vp_sz.y - 270.0, 60.0))
 		_joy_ring.modulate = Color(1.0, 1.0, 1.0, 0.72)
-		_joy_knob.position = Vector2(46.0, 46.0)
+		_joy_knob.position = Vector2(68.0, 68.0)
 
 
 func _point_hits_mobile_btn(pos: Vector2) -> bool:
@@ -668,16 +705,16 @@ func _point_hits_mobile_btn(pos: Vector2) -> bool:
 
 
 func _update_joystick_from_pos(pos: Vector2) -> void:
-	var max_r := 58.0
+	var max_r := 92.0
 	var delta_v := pos - _joy_origin
 	var dist := delta_v.length()
 	var clamped := delta_v.normalized() * minf(dist, max_r) if dist > 0.001 else Vector2.ZERO
 	_joy_vec = clamped / max_r
 	if _joy_vec.length() < 0.14:
 		_joy_vec = Vector2.ZERO
-	_joy_sprint = (dist > max_r * 0.84)
+	_joy_sprint = false
 	if _joy_ring != null and _joy_knob != null:
-		_joy_knob.position = Vector2(78.0, 78.0) - _joy_knob.size * 0.5 + clamped
+		_joy_knob.position = Vector2(110.0, 110.0) - _joy_knob.size * 0.5 + clamped
 
 
 func _input(event: InputEvent) -> void:
@@ -702,10 +739,10 @@ func _input(event: InputEvent) -> void:
 				_tap_start_time_ms = Time.get_ticks_msec()
 			if te.position.x < vp_sz.x * 0.44 and _joy_touch_id == -1:
 				_joy_touch_id = te.index
-				var half := Vector2(78.0, 78.0)
+				var half := Vector2(110.0, 110.0)
 				_joy_origin = Vector2(
-					clampf(te.position.x, 96.0, vp_sz.x * 0.40),
-					clampf(te.position.y, 120.0, vp_sz.y - 96.0)
+					clampf(te.position.x, 116.0, vp_sz.x * 0.40),
+					clampf(te.position.y, 140.0, vp_sz.y - 116.0)
 				)
 				if _joy_ring != null:
 					_joy_ring.position = _joy_origin - half
@@ -725,9 +762,9 @@ func _input(event: InputEvent) -> void:
 				_joy_vec = Vector2.ZERO
 				_joy_sprint = false
 				if _joy_ring != null and _joy_knob != null:
-					_joy_ring.position = Vector2(46.0, maxf(vp_sz.y - 202.0, 80.0))
+					_joy_ring.position = Vector2(40.0, maxf(vp_sz.y - 270.0, 60.0))
 					_joy_ring.modulate = Color(1.0, 1.0, 1.0, 0.72)
-					_joy_knob.position = Vector2(46.0, 46.0)
+					_joy_knob.position = Vector2(68.0, 68.0)
 			elif te.index == _look_touch_id:
 				_look_touch_id = -1
 		return
@@ -759,6 +796,20 @@ func _input(event: InputEvent) -> void:
 				_reset_run()
 				get_viewport().set_input_as_handled()
 				return
+			elif ke.keycode == KEY_M:
+				_death_hidden = not _death_hidden
+				_set_death_windows_visible(not _death_hidden)
+				get_viewport().set_input_as_handled()
+				return
+
+		if _state == State.MENU:
+			if ke.keycode == KEY_ESCAPE or ke.keycode == KEY_BACKSPACE:
+				if _settings_from_menu:
+					_open_settings_panel(false)
+				elif _menu_view != "main":
+					_set_menu_view("main")
+				get_viewport().set_input_as_handled()
+			return
 
 		if _state == State.SPECTATING:
 			if ke.keycode == KEY_A or ke.keycode == KEY_LEFT:
@@ -780,7 +831,7 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 			elif _state == State.PAUSED:
-				if _ui.has("m_settings_box") and (_ui["m_settings_box"] as Control).visible:
+				if _ui.has("m_settings_scroll") and (_ui["m_settings_scroll"] as Control).visible:
 					_open_settings_panel(false)
 				else:
 					_set_state(State.PLAYING)
@@ -1157,18 +1208,22 @@ func _process_architect_and_scare(delta: float) -> void:
 			if _arch_glitch_step < 12:
 				var frame_txt := RoomsArchitect.generate_glitch_frame(_arch_prev_text, cur_line, _arch_glitch_step, 12)
 				(_ui["arch_speech"] as Label).text = frame_txt
-				var shade := Color(0.28, 1.0, 0.42) if _arch_glitch_step % 2 == 0 else Color(0.12, 0.70, 0.22)
+				var shade := Color(0.88, 0.89, 0.92) if _arch_glitch_step % 2 == 0 else Color(0.52, 0.56, 0.62)
 				(_ui["arch_speech"] as Label).add_theme_color_override("font_color", shade)
 				audio.play_architect_blip(_rng.randf_range(0.92, 1.10))
 			else:
-				(_ui["arch_speech"] as Label).text = cur_line
-				(_ui["arch_speech"] as Label).add_theme_color_override("font_color", Color(0.28, 1.0, 0.42))
+				var reveal := ""
+				for i in range(_arch_line_idx + 1):
+					if i > 0:
+						reveal += "\n"
+					reveal += "> " + String(_arch_lines[i])
+				(_ui["arch_speech"] as Label).text = reveal
+				(_ui["arch_speech"] as Label).add_theme_color_override("font_color", Color(0.88, 0.89, 0.92))
 				_arch_prev_text = cur_line
 				_arch_char_pos = float(cur_line.length())
 				_arch_auto_advance_timer = 0.0
 				_refresh_architect_controls()
 	elif _arch_glitch_step >= 12:
 		_arch_auto_advance_timer += delta
-		if _arch_auto_advance_timer >= 3.0:
-			_arch_auto_advance_timer = 0.0
+		if _arch_line_idx + 1 < _arch_lines.size() and _arch_auto_advance_timer >= 0.45:
 			_advance_architect_dialogue()

@@ -59,6 +59,12 @@ func _exit_tree() -> void:
 	disconnect_session()
 
 
+func shutdown_steam() -> void:
+	if _steam != null and steam_ready:
+		steam_ready = false
+		_steam.call("shutdown")
+
+
 func _init_steam() -> void:
 	if not Engine.has_singleton("Steam"):
 		steam_loaded = false

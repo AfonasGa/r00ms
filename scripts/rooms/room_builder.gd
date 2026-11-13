@@ -657,7 +657,7 @@ static func _build_locker(room_node: Node3D, assets: SharedAssets, local_pos: Ve
 		"door_pivot": door_pivot,
 		"eye_local": Vector3(0.0, 1.48, 0.05),
 		"exit_local": Vector3(0.0, 0.05, 1.05),
-		"label": "[ЛКМ] Спрятаться в шкафу",
+		"label": "",
 	})
 
 
@@ -711,7 +711,7 @@ static func _build_fridge_hider(room_node: Node3D, assets: SharedAssets, local_p
 		"door_pivot": door_pivot,
 		"eye_local": Vector3(0.0, 1.44, 0.08),
 		"exit_local": Vector3(0.0, 0.05, 1.15),
-		"label": "[ЛКМ] Спрятаться в холодильнике",
+		"label": "",
 	})
 
 

@@ -15,3 +15,5 @@ func _ready() -> void:
 	_apply_render_quality(_render_quality, false)
 	_refresh_mobile_mode()
 	_reset_run()
+	_set_state(State.MENU)
+	_show_main_menu(true)

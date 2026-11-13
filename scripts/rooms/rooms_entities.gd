@@ -180,6 +180,16 @@ func _process_darkness_in_hiding(delta: float) -> void:
 
 
 func _process_player_movement(delta: float) -> void:
+	if _door_tp_t < 1.0:
+		_door_tp_t = minf(_door_tp_t + delta / maxf(_door_tp_dur, 0.01), 1.0)
+		var tp_p := ease(_door_tp_t, 0.38)
+		player_body.global_position = _door_tp_from.lerp(_door_tp_to, tp_p)
+		player_body.velocity = Vector3.ZERO
+		_cam_roll = sin(tp_p * PI) * 0.055
+		if _door_tp_t >= 1.0:
+			_cam_roll = 0.0
+		return
+
 	if _is_action_locked():
 		player_body.velocity.x = 0.0
 		player_body.velocity.z = 0.0
@@ -205,7 +215,7 @@ func _process_player_movement(delta: float) -> void:
 		inp = inp.normalized()
 
 	var moving := inp.length_squared() > 0.01
-	var wants_sprint := (Input.is_key_pressed(KEY_SHIFT) or _joy_sprint or _mobile_sprint_held) and moving and (not _exhausted) and _stamina > 0.01
+	var wants_sprint := (Input.is_key_pressed(KEY_SHIFT) or _mobile_sprint_held) and moving and (not _exhausted) and _stamina > 0.01
 	_is_sprinting = wants_sprint
 	if wants_sprint:
 		_stamina = maxf(_stamina - delta * 0.34, 0.0)

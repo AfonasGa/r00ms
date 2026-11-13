@@ -128,20 +128,28 @@ func _reset_audio_defaults() -> void:
 
 
 func _open_settings_panel(open: bool) -> void:
-	if _ui.has("m_main_box") and _ui.has("m_settings_box"):
+	if _ui.has("m_main_box"):
 		(_ui["m_main_box"] as Control).visible = not open
-		(_ui["m_settings_box"] as Control).visible = open
-	if _ui.has("m_title") and _ui.has("m_desc") and _state == State.PAUSED:
+	if _ui.has("m_settings_scroll"):
+		(_ui["m_settings_scroll"] as Control).visible = open
+	if _ui.has("m_brand"):
+		(_ui["m_brand"] as Control).visible = not open
+	if not open and _settings_from_menu:
+		_settings_from_menu = false
+		if _ui.has("modal"):
+			(_ui["modal"] as Control).visible = false
+		if _ui.has("m_title"):
+			(_ui["m_title"] as Control).visible = false
+		if _ui.has("m_desc"):
+			(_ui["m_desc"] as Control).visible = false
+		if _ui.has("main_menu"):
+			(_ui["main_menu"] as Control).visible = true
+		return
+	if _ui.has("m_title") and _ui.has("m_desc") and (_state == State.PAUSED or _state == State.MENU):
 		var title: Label = _ui["m_title"]
 		var desc: Label = _ui["m_desc"]
-		if open:
-			title.text = "НАСТРОЙКИ"
-			title.add_theme_color_override("font_color", Color(0.55, 0.95, 1.0))
-			desc.text = "Звук, чувствительность и камера сохраняются автоматически."
-		else:
-			title.text = "ПАУЗА"
-			title.add_theme_color_override("font_color", Color(0.55, 0.95, 1.0))
-			desc.text = _pause_summary_text()
+		title.visible = false
+		desc.visible = false
 
 
 func _pause_summary_text() -> String:
@@ -288,6 +296,11 @@ func _restart_for_render() -> void:
 	if _is_mobile_platform():
 		_show_toast("Закройте и откройте приложение заново", 3.0)
 	else:
+		# Tear Steam down cleanly first: leaving rich presence / an invite dialog
+		# alive while relaunching makes the overlay pop up on the next boot.
+		if _net != null:
+			_net.disconnect_session()
+			_net.shutdown_steam()
 		OS.set_restart_on_exit(true)
 		get_tree().quit()
 

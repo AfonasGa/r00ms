@@ -115,7 +115,7 @@ func _try_tap_world_interact(screen_pos: Vector2) -> void:
 	var dir := cam.project_ray_normal(screen_pos)
 	var space_state := get_world_3d().direct_space_state
 	if space_state != null:
-		var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * 4.5, 0xFFFFFFFF, [player_body.get_rid()])
+		var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * 5.5, 0xFFFFFFFF, [player_body.get_rid()])
 		var hit := space_state.intersect_ray(q)
 		if not hit.is_empty():
 			var col: Object = hit.get("collider")
@@ -191,8 +191,6 @@ func _target_anchor_world_pos(tgt: Dictionary) -> Vector3:
 
 
 func _find_smart_reticle_target() -> Dictionary:
-	var vp_sz := get_viewport().get_visible_rect().size
-	var vp_center := vp_sz * 0.5
 	var direct := _find_interact_target()
 	if not direct.is_empty():
 		var wp := _target_anchor_world_pos(direct)
@@ -201,11 +199,14 @@ func _find_smart_reticle_target() -> Dictionary:
 			direct["world_pos"] = wp
 			return direct
 
-	# Smart cone scan around center: snaps reticle UI ring onto nearby locker/door/item even when aiming slightly beside it
+	# Smart cone scan around center: snaps the reticle ring onto the locker/door/item
+	# the player is actually AIMING at (smallest angular offset from the view ray),
+	# never the closest-by-pixels one — that used to grab hiding spots on the wrong side.
 	var best_tgt: Dictionary = {}
-	var best_screen_d := minf(vp_sz.x, vp_sz.y) * 0.24
+	var best_angle := 0.24
 	var space_state := get_world_3d().direct_space_state
 	var cam_pos := cam.global_position
+	var cam_fwd := -cam.global_transform.basis.z
 
 	for r in _rooms:
 		if abs(r.index - _current_room_idx) > 1:
@@ -218,33 +219,31 @@ func _find_smart_reticle_target() -> Dictionary:
 			var lk := String(ld.get("kind", "locker"))
 			var loc := Vector3(0.0, 0.56, 0.22) if lk == "under_desk" else Vector3(0.0, 1.16, 0.34)
 			var wp := ln.global_transform * loc
-			if cam_pos.distance_to(wp) > 3.85 or cam.is_position_behind(wp):
+			if cam_pos.distance_to(wp) > 5.2 or cam.is_position_behind(wp):
 				continue
-			var sp := cam.unproject_position(wp)
-			var sd := sp.distance_to(vp_center)
-			if sd < best_screen_d and _has_los_to_interact(space_state, cam_pos, wp, r.index):
-				best_screen_d = sd
+			var ang := cam_fwd.angle_to((wp - cam_pos).normalized())
+			if ang < best_angle and _has_los_to_interact(space_state, cam_pos, wp, r.index):
+				best_angle = ang
 				var occupied := _is_locker_occupied(r.index, li)
 				best_tgt = {
 					"type": "locker",
 					"room_index": r.index,
 					"locker_index": li,
 					"label": "Занято" if occupied else String(ld.get("label", "Спрятаться")),
-					"screen_pos": sp,
+					"screen_pos": cam.unproject_position(wp),
 					"world_pos": wp,
 				}
 		if not r.door_opened and is_instance_valid(r.exit_anchor):
 			var dwp := r.exit_anchor.global_position + Vector3(0.0, 1.15, 0.0)
-			if cam_pos.distance_to(dwp) <= 3.85 and not cam.is_position_behind(dwp):
-				var dsp := cam.unproject_position(dwp)
-				var dsd := dsp.distance_to(vp_center)
-				if dsd < best_screen_d and _has_los_to_interact(space_state, cam_pos, dwp, r.index):
-					best_screen_d = dsd
+			if cam_pos.distance_to(dwp) <= 5.2 and not cam.is_position_behind(dwp):
+				var dang := cam_fwd.angle_to((dwp - cam_pos).normalized())
+				if dang < best_angle and _has_los_to_interact(space_state, cam_pos, dwp, r.index):
+					best_angle = dang
 					best_tgt = {
 						"type": "door",
 						"room_index": r.index,
 						"label": "Открыть дверь A-%03d" % (r.index + 1),
-						"screen_pos": dsp,
+						"screen_pos": cam.unproject_position(dwp),
 						"world_pos": dwp,
 					}
 	return best_tgt
@@ -261,7 +260,7 @@ func _has_los_to_interact(space_state: PhysicsDirectSpaceState3D, from_pos: Vect
 	if col != null and col.has_meta("interact_type"):
 		return true
 	var hp: Vector3 = hit.get("position", from_pos)
-	return hp.distance_to(to_pos) < 0.65
+	return hp.distance_to(to_pos) < 1.0
 
 
 func _is_locker_occupied(r_idx: int, l_idx: int) -> bool:
@@ -292,10 +291,28 @@ func _open_room_door(r_idx: int, slam: bool = false, from_remote: bool = false) 
 		_door_hand_slam = is_slam
 		if is_slam:
 			_shake_amount = maxf(_shake_amount, 0.016)
+		_begin_door_teleport(r)
 	audio.play_door_open()
 	if not from_remote and _net != null and _net.is_online():
 		_net.broadcast_door_opened(r_idx, is_slam)
 	_advance_door_progress(r_idx, not from_remote)
+
+
+func _begin_door_teleport(r: RoomBuilder.RoomInstance) -> void:
+	if r == null or not is_instance_valid(r.exit_anchor):
+		return
+	var door_pos := r.exit_anchor.global_position
+	var flat := door_pos - player_body.global_position
+	flat.y = 0.0
+	if flat.length() < 0.30:
+		return
+	var target := door_pos - flat.normalized() * 0.95
+	target.y = player_body.global_position.y
+	_door_tp_from = player_body.global_position
+	_door_tp_to = target
+	_door_tp_t = 0.0
+	_door_tp_dur = 0.22 if flat.length() > 1.6 else 0.16
+	_shake_amount = maxf(_shake_amount, 0.009)
 
 
 func _advance_door_progress(r_idx: int, allow_spawn: bool) -> void:
@@ -397,7 +414,7 @@ func _update_ui(delta: float) -> void:
 				if not cam.is_position_behind(wp):
 					tgt_pos = cam.unproject_position(wp)
 			prompt.text = String(interact_tgt["label"])
-			want_prompt = not _mobile_controls_enabled
+			want_prompt = (not _mobile_controls_enabled) and not String(interact_tgt["label"]).is_empty()
 
 		if _reticle_ring != null:
 			_reticle_ring.visible = true
