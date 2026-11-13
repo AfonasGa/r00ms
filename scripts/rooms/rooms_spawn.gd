@@ -215,9 +215,6 @@ func _warp_player_to_room(target_idx: int, back_steps: int) -> void:
 
 	player_body.position = target_r.center_pos + Vector3(0.0, 0.05, 0.0)
 	player_body.velocity = Vector3.ZERO
-	player_body.rotation.y = 0.0
-	cam.global_position = player_body.position + Vector3(0.0, 1.48, 0.0)
-	cam.rotation = Vector3.ZERO
 	_current_room_idx = target_idx
 	_update_room_visibility()
 
