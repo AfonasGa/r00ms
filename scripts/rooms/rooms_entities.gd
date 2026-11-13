@@ -196,6 +196,13 @@ func _process_player_movement(delta: float) -> void:
 		player_body.move_and_slide()
 		return
 
+	if _chat_open:
+		# typing in chat: freeze movement (keys belong to the LineEdit)
+		player_body.velocity.x = 0.0
+		player_body.velocity.z = 0.0
+		player_body.move_and_slide()
+		return
+
 	if _is_hiding:
 		_process_darkness_in_hiding(delta)
 		return

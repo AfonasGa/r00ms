@@ -261,6 +261,10 @@ var _door_tp_from := Vector3.ZERO
 var _door_tp_to := Vector3.ZERO
 var _door_tp_dur := 0.22
 
+# Text chat / voice chat UI state
+var _chat_open := false
+var _chat_readonly := false
+
 # Online Multiplayer (Steam Spacewar 480 + ENet)
 var _net: RoomsNet = null
 var _remote_players: Dictionary = {}
@@ -287,6 +291,8 @@ func _build_net() -> void:
 		_show_toast("Steam: приглашение от %s! Примите в Shift+Tab" % inviter_name, 4.0)
 	)
 	_net.session_synced.connect(_on_net_session_synced)
+	_net.chat_received.connect(func(who: String, text: String) -> void: call("_chat_append", who, text))
+	_net.members_changed.connect(func() -> void: call("_update_menu_players_list"))
 
 
 func _on_net_session_synced(seed_val: int, room_idx: int) -> void:

@@ -1105,6 +1105,56 @@ void fragment() {
 	btn_spec_restart.pressed.connect(Callable(self, "_reset_run"))
 	spec_bar.add_child(btn_spec_restart)
 
+	# --- Text chat (bottom-left; visible in all online states, read-only when dead)
+	var chat_box := VBoxContainer.new()
+	chat_box.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	chat_box.offset_left = 18.0
+	chat_box.offset_top = -206.0
+	chat_box.offset_right = 420.0
+	chat_box.offset_bottom = -52.0
+	chat_box.add_theme_constant_override("separation", 4)
+	chat_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(chat_box)
+	_ui["chat_box"] = chat_box
+
+	var chat_log := RichTextLabel.new()
+	chat_log.bbcode_enabled = true
+	chat_log.scroll_active = false
+	chat_log.scroll_following = true
+	chat_log.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chat_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	chat_log.add_theme_font_size_override("normal_font_size", 13)
+	chat_log.add_theme_color_override("default_color", Color(0.86, 0.89, 0.93, 0.94))
+	chat_log.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	chat_log.add_theme_constant_override("outline_size", 3)
+	var chat_log_panel := RoomsUI.make_panel_style(Color(0.0, 0.0, 0.0, 0.45), Color(1, 1, 1, 0.08), 4, 1)
+	chat_log.add_theme_stylebox_override("normal", chat_log_panel)
+	chat_log.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	chat_box.add_child(chat_log)
+	_ui["chat_log"] = chat_log
+
+	var chat_edit := LineEdit.new()
+	chat_edit.visible = false
+	chat_edit.placeholder_text = "сообщение...  (Enter — отправить, Esc — закрыть)"
+	chat_edit.caret_blink = true
+	chat_edit.max_length = 128
+	chat_edit.add_theme_font_size_override("font_size", 13)
+	chat_edit.add_theme_stylebox_override("normal", RoomsUI.make_panel_style(Color(0.03, 0.03, 0.035, 0.85), Color(1, 1, 1, 0.22), 3, 1))
+	chat_edit.add_theme_stylebox_override("focus", RoomsUI.make_panel_style(Color(0.03, 0.03, 0.035, 0.9), Color(1, 1, 1, 0.4), 3, 1))
+	chat_edit.text_submitted.connect(func(_txt: String) -> void: call("_chat_submit"))
+	chat_box.add_child(chat_edit)
+	_ui["chat_edit"] = chat_edit
+
+	var chat_hint := Label.new()
+	chat_hint.text = "T — чат · V — голос"
+	chat_hint.add_theme_font_size_override("font_size", 11)
+	chat_hint.add_theme_color_override("font_color", Color(0.7, 0.74, 0.8, 0.55))
+	chat_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	chat_hint.add_theme_constant_override("outline_size", 3)
+	chat_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chat_box.add_child(chat_hint)
+	_ui["chat_hint"] = chat_hint
+
 
 func _make_ring_btn(parent: Control, accent: Color, stroke_w: float, right_off: float, top_off: float, diameter: float, anchor_preset: Control.LayoutPreset = Control.PRESET_BOTTOM_RIGHT, label_txt: String = "") -> RoomsUI.RingButton:
 	var b := RoomsUI.RingButton.new()
@@ -1457,6 +1507,22 @@ func _build_main_menu(root: Control) -> void:
 	v_multi.add_child(menu_status)
 	_ui["menu_status"] = menu_status
 
+	var menu_players := Label.new()
+	menu_players.text = ""
+	menu_players.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	menu_players.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
+	menu_players.add_theme_font_size_override("font_size", 12)
+	menu_players.add_theme_color_override("font_color", Color(0.55, 0.72, 0.62, 0.9))
+	menu_players.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	menu_players.offset_left = 24
+	menu_players.offset_top = 20
+	menu_players.offset_right = 320
+	menu_players.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu.add_child(menu_players)
+	_ui["menu_players"] = menu_players
+	if _net != null:
+		_net.members_changed.connect(func() -> void: call("_update_menu_players_list"))
+
 	var cred_lbl := Label.new()
 	cred_lbl.text = "r00ms\n\nminimal horror, section A\n\nMonsters: A-60 · A-90 · A-120\nThe Darkness\n\nmade by the r00ms team\n\nsprites, sounds and caffeine"
 	cred_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1500,6 +1566,70 @@ func _set_menu_view(view: String, fade: bool = true) -> void:
 	if cur != null and fade:
 		cur.modulate.a = 0.0
 		create_tween().tween_property(cur, "modulate:a", 1.0, 0.22)
+	if view == "multi":
+		call("_update_menu_players_list")
+
+
+func _update_menu_players_list() -> void:
+	if not _ui.has("menu_players"):
+		return
+	var lbl := _ui["menu_players"] as Label
+	if _net == null:
+		lbl.text = ""
+		return
+	var names: Array[String] = _net.get_member_names()
+	if names.size() <= 1:
+		lbl.text = ""
+	else:
+		lbl.text = "в лобби:\n" + "\n".join(names)
+
+
+# --- Text chat ---------------------------------------------------------------
+func _chat_toggle(open: bool) -> void:
+	_chat_open = open
+	var edit := _ui.get("chat_edit") as LineEdit
+	if edit != null:
+		edit.visible = open
+		edit.editable = not _chat_readonly
+		if open:
+			edit.clear()
+			edit.grab_focus()
+		else:
+			edit.clear()
+			edit.release_focus()
+
+
+func _chat_submit() -> void:
+	if not _chat_open:
+		return
+	var edit := _ui.get("chat_edit") as LineEdit
+	var txt := edit.text.strip_edges() if edit != null else ""
+	call("_chat_toggle", false)
+	if txt.is_empty() or _chat_readonly or _net == null or not _net.is_online():
+		return
+	call("_chat_append", String(call("_get_local_username")), txt)
+	_net.send_chat(txt)
+
+
+func _chat_append(who: String, text: String) -> void:
+	var log := _ui.get("chat_log") as RichTextLabel
+	if log == null:
+		return
+	log.append_text("[color=#7fd4ff]%s[/color]: %s\n" % [who, text])
+	if log.text.length() > 6000:
+		log.text = log.text.substr(log.text.length() - 3000)
+
+
+func _chat_set_readonly(ro: bool) -> void:
+	_chat_readonly = ro
+	var edit := _ui.get("chat_edit") as LineEdit
+	if edit != null:
+		edit.editable = not ro
+	if ro and _chat_open:
+		call("_chat_toggle", false)
+	var hint := _ui.get("chat_hint") as Label
+	if hint != null:
+		hint.text = "режим наблюдателя: чат только для чтения" if ro else "T — чат · V — голос"
 
 
 func _show_main_menu(fresh: bool = false) -> void:
@@ -1575,7 +1705,20 @@ func _menu_quick_multiplayer() -> void:
 func _menu_begin_game(multiplayer: bool = false, mode: String = "") -> void:
 	if multiplayer and _net != null:
 		if mode == "steam":
-			_net.open_steam_invite_overlay(int(_rng.seed), _highest_opened)
+			# Keep the menu on screen until the Steam invite dialog is actually
+			# open — the lobby creation is async, so await it behind a status line.
+			var mstatus := _ui.get("menu_status") as Label
+			if mstatus != null:
+				mstatus.text = "creating lobby..."
+			var res: Dictionary = await _net.ensure_steam_lobby(int(_rng.seed), _highest_opened)
+			if not bool(res.get("ok", false)):
+				if mstatus != null:
+					mstatus.text = String(res.get("msg", "Не удалось создать лобби"))
+				return
+			_net.open_invite_overlay_now()
+			if mstatus != null:
+				mstatus.text = ""
+			_show_toast("Окно приглашений Steam открыто — позовите друзей (Shift+Tab)", 3.5)
 		elif mode == "lan":
 			_net.host_enet(int(_rng.seed))
 		elif mode == "join":

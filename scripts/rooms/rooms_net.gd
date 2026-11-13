@@ -14,6 +14,8 @@ signal peer_disconnected(peer_key: String)
 signal invite_received(inviter_name: String, lobby_id: int)
 signal session_synced(seed_val: int, room_idx: int)
 signal entity_event_received(msg: Dictionary)
+signal chat_received(peer_name: String, text: String)
+signal members_changed
 
 const SPACEWAR_APP_ID := 480
 const ENET_PORT := 27480
@@ -48,9 +50,28 @@ var _pending_startup_lobby := 0
 var _last_synced_lobby := 0
 var _last_synced_seed := 0
 
+# Rich presence (friend list shows "r00ms | A-003 | живых: 2/3")
+var presence_room_idx := 0
+var presence_alive := 1
+var presence_total := 1
+
+# Text chat + voice chat bookkeeping
+var voice_talking := false
+var remote_names: Dictionary = {}   # peer_key -> display name
+var remote_dead: Dictionary = {}    # peer_key -> bool
+var _voice_bus_idx := -1
+var _voice_capture: AudioEffectCapture = null
+var _voice_mic: AudioStreamPlayer = null
+var _voice_pcm: PackedByteArray = PackedByteArray()
+var _voice_flush_accum := 0.0
+var _voice_streams: Dictionary = {}  # peer_key -> {gen, pl}
+const VOICE_FLUSH_SEC := 0.06
+
 
 func _ready() -> void:
 	_init_steam()
+	if OS.get_name() in ["Windows", "macOS", "Linux"]:
+		_setup_voice()
 	if _pending_startup_lobby > 0 and steam_ready:
 		call_deferred("_try_join_startup_lobby")
 
@@ -344,28 +365,71 @@ func quick_join_or_host(max_wait: float = 2.5) -> Dictionary:
 	return {"ok": true, "msg": "Свободных лобби нет — создали своё, другие игроки смогут подключиться"}
 
 
+## One-stop helper for the menu: make sure a joinable lobby exists (awaiting
+## creation if needed) BEFORE the menu fades away, so the invite dialog pops
+## while the player still sees the menu.
+func ensure_steam_lobby(seed_val: int = 0, room_idx: int = 0) -> Dictionary:
+	if not steam_ready or _steam == null:
+		return {"ok": false, "msg": steam_status_text}
+	if current_lobby_id > 0:
+		return {"ok": true, "msg": get_summary_status()}
+	host_steam_lobby(seed_val, room_idx)
+	var waited := 0.0
+	while waited < 6.0:
+		if current_lobby_id > 0:
+			return {"ok": true, "msg": get_summary_status()}
+		await get_tree().create_timer(0.1).timeout
+		waited += 0.1
+	if current_lobby_id <= 0:
+		return {"ok": false, "msg": "Не удалось создать Steam-лобби"}
+	return {"ok": true, "msg": get_summary_status()}
+
+
+func open_invite_overlay_now() -> void:
+	if not steam_ready or _steam == null or current_lobby_id <= 0:
+		return
+	_steam.call("setLobbyJoinable", current_lobby_id, true)
+	_update_rich_presence()
+	_steam.call("activateGameOverlayInviteDialog", current_lobby_id)
+	emit_signal("status_changed", "Открыто окно приглашений Steam (Shift+Tab)")
+
+
 func open_steam_invite_overlay(seed_val: int = 0, room_idx: int = 0) -> void:
 	if not steam_ready or _steam == null:
 		emit_signal("status_changed", "Запустите Steam, чтобы приглашать через Shift+Tab")
 		return
 	if current_lobby_id > 0:
-		_steam.call("setLobbyJoinable", current_lobby_id, true)
-		_update_rich_presence()
-		_steam.call("activateGameOverlayInviteDialog", current_lobby_id)
-		emit_signal("status_changed", "Открыто окно приглашений Steam (Shift+Tab)")
+		open_invite_overlay_now()
+		return
+	var res: Dictionary = await ensure_steam_lobby(seed_val, room_idx)
+	if bool(res.get("ok", false)):
+		open_invite_overlay_now()
 	else:
-		_pending_open_invite = true
-		host_steam_lobby(seed_val, room_idx)
+		emit_signal("status_changed", String(res.get("msg", "Не удалось создать лобби")))
 
 
 func _update_rich_presence() -> void:
 	if not steam_ready or _steam == null:
 		return
 	if mode == "steam" and current_lobby_id > 0:
-		_steam.call("setRichPresence", "status", "r00ms A-%03d" % run_room_idx)
+		_steam.call("setRichPresence", "status", "r00ms | A-%03d | живых: %d/%d" % [
+			presence_room_idx + 1,
+			maxi(presence_alive, 0),
+			maxi(presence_total, 1),
+		])
 		_steam.call("setRichPresence", "connect", "+connect_lobby %d" % current_lobby_id)
 	else:
 		_steam.call("clearRichPresence")
+
+
+## Pushed by game flow each heartbeat: what room the group is in and how many are alive.
+func update_presence(room_idx: int, alive: int, total: int) -> void:
+	if presence_room_idx == room_idx and presence_alive == alive and presence_total == total:
+		return
+	presence_room_idx = room_idx
+	presence_alive = alive
+	presence_total = total
+	_update_rich_presence()
 
 
 func host_enet(seed_val: int, port: int = ENET_PORT) -> Error:
@@ -436,7 +500,12 @@ func disconnect_session() -> void:
 	_last_synced_lobby = 0
 	_last_synced_seed = 0
 	mode = "offline"
+	voice_talking = false
+	remote_names.clear()
+	remote_dead.clear()
+	_stop_voice_streams()
 	emit_signal("status_changed", get_summary_status())
+	emit_signal("members_changed")
 
 
 func update_local_state(state_dict: Dictionary) -> void:
@@ -496,8 +565,11 @@ func _process(delta: float) -> void:
 
 	if mode == "steam" and _steam != null and steam_ready:
 		_poll_steam_packets()
+		_poll_voice_packets()
 	elif mode == "enet" and multiplayer.has_multiplayer_peer():
 		_poll_enet_packets()
+
+	_process_voice(delta)
 
 	if mode != "offline":
 		_send_accum += delta
@@ -531,13 +603,13 @@ func _process(delta: float) -> void:
 					multiplayer.send_bytes(bytes, 0, MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable_hb else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE)
 
 
-func _steam_send_all(data: Dictionary, send_type: int) -> void:
+func _steam_send_all(data: Dictionary, send_type: int, channel: int = 0) -> void:
 	if _steam == null or _peer_steam_ids.is_empty():
 		return
 	var bytes := var_to_bytes(data)
 	for pid in _peer_steam_ids:
 		if pid != steam_id and pid > 0:
-			_steam.call("sendP2PPacket", pid, bytes, send_type, 0)
+			_steam.call("sendP2PPacket", pid, bytes, send_type, channel)
 
 
 func _poll_steam_packets() -> void:
@@ -565,9 +637,133 @@ func _poll_enet_packets() -> void:
 	pass
 
 
+# ------------------------------------------------------------------
+# Voice chat (mic -> AudioEffectCapture -> 16-bit PCM -> peers),
+# playback via per-peer AudioStreamGenerator. Hold V to talk.
+# ------------------------------------------------------------------
+func _setup_voice() -> void:
+	var bus_name := "VoiceRecord"
+	_voice_bus_idx = AudioServer.get_bus_index(bus_name)
+	if _voice_bus_idx < 0:
+		AudioServer.add_bus()
+		_voice_bus_idx = AudioServer.bus_count - 1
+		AudioServer.set_bus_name(_voice_bus_idx, bus_name)
+	if AudioServer.get_bus_effect_count(_voice_bus_idx) == 0:
+		AudioServer.add_bus_effect(_voice_bus_idx, AudioEffectCapture.new())
+	_voice_capture = AudioServer.get_bus_effect(_voice_bus_idx, 0) as AudioEffectCapture
+	if _voice_mic == null:
+		var mp := AudioStreamPlayer.new()
+		mp.stream = AudioStreamMicrophone.new()
+		mp.bus = bus_name
+		mp.volume_db = -80.0 # capture taps the bus pre-fader; keep the mic silent locally
+		mp.autoplay = true
+		add_child(mp)
+		_voice_mic = mp
+
+
+func _vec2_to_pcm16(frames: PackedVector2Array) -> PackedByteArray:
+	var out := PackedByteArray()
+	out.resize(frames.size() * 4)
+	for i in range(frames.size()):
+		var f := frames[i]
+		var l := int(clampf(f.x, -1.0, 1.0) * 32767.0)
+		var r := int(clampf(f.y, -1.0, 1.0) * 32767.0)
+		out.encode_s16(i * 4, l)
+		out.encode_s16(i * 4 + 2, r)
+	return out
+
+
+func _pcm16_to_vec2(pcm: PackedByteArray) -> PackedVector2Array:
+	var cnt := pcm.size() / 4
+	var frames := PackedVector2Array()
+	frames.resize(cnt)
+	for i in range(cnt):
+		var l := float(pcm.decode_s16(i * 4)) / 32767.0
+		var r := float(pcm.decode_s16(i * 4 + 2)) / 32767.0
+		frames[i] = Vector2(l, r)
+	return frames
+
+
+func _voice_playback(peer_key: String, pcm: PackedByteArray) -> void:
+	var frames := _pcm16_to_vec2(pcm)
+	if frames.is_empty():
+		return
+	var entry: Dictionary = _voice_streams.get(peer_key, {})
+	if entry.is_empty():
+		var gen := AudioStreamGenerator.new()
+		gen.mix_rate = int(AudioServer.get_mix_rate())
+		gen.stereo = true
+		gen.buffer_length = 0.5
+		var pl := AudioStreamPlayer.new()
+		pl.stream = gen
+		pl.volume_db = 2.0
+		add_child(pl)
+		pl.play()
+		entry = {"gen": gen, "pl": pl}
+		_voice_streams[peer_key] = entry
+	var gen2: AudioStreamGenerator = entry["gen"]
+	gen2.push_buffer(frames)
+
+
+func _stop_voice_streams() -> void:
+	for key in _voice_streams.keys():
+		var entry: Dictionary = _voice_streams[key]
+		var pl: AudioStreamPlayer = entry.get("pl")
+		if pl != null and is_instance_valid(pl):
+			pl.queue_free()
+	_voice_streams.clear()
+	_voice_pcm = PackedByteArray()
+	_voice_flush_accum = 0.0
+
+
+func _poll_voice_packets() -> void:
+	var guard := 0
+	while guard < 48:
+		guard += 1
+		var pkt_sz := int(_steam.call("getAvailableP2PPacketSize", 1))
+		if pkt_sz <= 0:
+			break
+		var res: Variant = _steam.call("readP2PPacket", pkt_sz, 1)
+		if not (res is Dictionary):
+			break
+		var d: Dictionary = res
+		var sender := int(d.get("remote_steam_id", int(d.get("steam_id_remote", 0))))
+		var raw: Variant = d.get("data", PackedByteArray())
+		if raw is PackedByteArray:
+			var parsed: Variant = bytes_to_var(raw as PackedByteArray)
+			if parsed is Dictionary:
+				_handle_packet("steam_%d" % sender, parsed as Dictionary)
+
+
+func _process_voice(delta: float) -> void:
+	if _voice_capture == null or mode == "offline":
+		return
+	if voice_talking:
+		var avail := _voice_capture.get_frames_available()
+		if avail > 0:
+			_voice_pcm.append_array(_vec2_to_pcm16(_voice_capture.get_buffer(avail)))
+		_voice_flush_accum += delta
+		if _voice_flush_accum >= VOICE_FLUSH_SEC and _voice_pcm.size() > 0:
+			_voice_flush_accum = 0.0
+			var pkt := {"t": "v", "d": _voice_pcm.duplicate()}
+			_voice_pcm = PackedByteArray()
+			if mode == "steam":
+				_steam_send_all(pkt, 0, 1)
+			elif mode == "enet" and multiplayer.has_multiplayer_peer():
+				multiplayer.send_bytes(var_to_bytes(pkt), 0, MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED)
+	else:
+		_voice_pcm = PackedByteArray()
+		_voice_flush_accum = 0.0
+
+
 func _handle_packet(peer_key: String, msg: Dictionary) -> void:
 	var mtype := String(msg.get("t", ""))
 	if mtype == "st":
+		var who := String(msg.get("n", ""))
+		if not who.is_empty() and String(remote_names.get(peer_key, "")) != who:
+			remote_names[peer_key] = who
+			emit_signal("members_changed")
+		remote_dead[peer_key] = bool(msg.get("d", false))
 		if not is_host:
 			var host_seed := int(msg.get("sd", 0))
 			var host_room := int(msg.get("r", 0))
@@ -575,6 +771,13 @@ func _handle_packet(peer_key: String, msg: Dictionary) -> void:
 				_last_synced_seed = host_seed
 				emit_signal("session_synced", host_seed, host_room)
 		emit_signal("state_received", peer_key, msg)
+	elif mtype == "chat":
+		emit_signal("chat_received", String(msg.get("n", "?")), String(msg.get("m", "")))
+	elif mtype == "v":
+		if not bool(remote_dead.get(peer_key, false)):
+			var pcm: Variant = msg.get("d", PackedByteArray())
+			if pcm is PackedByteArray:
+				_voice_playback(peer_key, pcm as PackedByteArray)
 	elif mtype == "door":
 		emit_signal("door_opened_remote", int(msg.get("r", -1)), bool(msg.get("s", false)))
 	elif mtype == "lock":
@@ -587,10 +790,42 @@ func _handle_packet(peer_key: String, msg: Dictionary) -> void:
 				_last_synced_seed = s_val
 				emit_signal("session_synced", s_val, r_val)
 	elif mtype == "hi":
+		var hi_name := String(msg.get("n", ""))
+		if not hi_name.is_empty() and String(remote_names.get(peer_key, "")) != hi_name:
+			remote_names[peer_key] = hi_name
+			emit_signal("members_changed")
 		if is_host and run_seed > 0:
 			broadcast_session_sync(run_seed, run_room_idx)
 	elif mtype == "ent":
 		emit_signal("entity_event_received", msg)
+
+
+func send_chat(text: String) -> void:
+	if mode == "offline" or text.strip_edges().is_empty():
+		return
+	var msg := {"t": "chat", "n": persona_name, "m": text.strip_edges()}
+	if mode == "steam":
+		_steam_send_all(msg, 2)
+	elif mode == "enet" and multiplayer.has_multiplayer_peer():
+		multiplayer.send_bytes(var_to_bytes(msg), 0, MultiplayerPeer.TRANSFER_MODE_RELIABLE)
+
+
+func get_member_names() -> Array[String]:
+	var names: Array[String] = []
+	names.append(persona_name if not persona_name.is_empty() else "Player")
+	if mode == "steam":
+		for pid in _peer_steam_ids:
+			var fn := ""
+			if _steam != null:
+				fn = String(_steam.call("getFriendPersonaName", pid))
+			if fn.is_empty():
+				fn = String(remote_names.get("steam_%d" % pid, "steam_%d" % pid))
+			names.append(fn)
+	elif mode == "enet":
+		for eid in _enet_connected_ids:
+			var key := "enet_%d" % eid
+			names.append(String(remote_names.get(key, key)))
+	return names
 
 
 func _try_emit_lobby_sync(lobby_id: int) -> void:
@@ -705,7 +940,10 @@ func _refresh_steam_lobby_members() -> void:
 			_steam.call("acceptP2PSessionWithUser", mid)
 	for old_id in prev:
 		if not _peer_steam_ids.has(old_id):
+			remote_names.erase("steam_%d" % old_id)
+			remote_dead.erase("steam_%d" % old_id)
 			emit_signal("peer_disconnected", "steam_%d" % old_id)
+	emit_signal("members_changed")
 
 
 func _on_steam_lobby_match_list(lobbies: Array) -> void:
@@ -744,12 +982,16 @@ func _on_enet_peer_connected(id: int) -> void:
 	if is_host and run_seed > 0:
 		broadcast_session_sync(run_seed, run_room_idx)
 	emit_signal("status_changed", get_summary_status())
+	emit_signal("members_changed")
 
 
 func _on_enet_peer_disconnected(id: int) -> void:
 	_enet_connected_ids.erase(id)
+	remote_names.erase("enet_%d" % id)
+	remote_dead.erase("enet_%d" % id)
 	emit_signal("peer_disconnected", "enet_%d" % id)
 	emit_signal("status_changed", get_summary_status())
+	emit_signal("members_changed")
 
 
 func _on_enet_connected_to_server() -> void:

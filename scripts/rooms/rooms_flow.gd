@@ -216,6 +216,14 @@ func _set_state(new_state: State) -> void:
 	_state = new_state
 	var hud_on := (_state == State.PLAYING or _state == State.PAUSED or _state == State.VICTORY)
 	(_ui["hud_group"] as Control).visible = hud_on
+	# Chat log is visible in every online state (menu hides it); dead/spectators are read-only
+	if _ui.has("chat_box"):
+		var chat_online := _net != null and _net.is_online() and _state != State.MENU
+		var chat_box := _ui["chat_box"] as Control
+		chat_box.visible = chat_online
+		if not chat_online and _chat_open:
+			call("_chat_toggle", false)
+		call("_chat_set_readonly", _state == State.DEAD or _state == State.SPECTATING)
 	if _ui.has("main_menu"):
 		(_ui["main_menu"] as Control).visible = (_state == State.MENU)
 	if _ui.has("spectate_bar"):
@@ -359,6 +367,10 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	_death_phase_t = 0.0
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	(_ui["hud_group"] as Control).visible = false
+	if _net != null:
+		_net.voice_talking = false
+	if _chat_open:
+		call("_chat_toggle", false)
 
 	if _ui.has("death_iris"):
 		var iris := _ui["death_iris"] as Control
@@ -718,6 +730,12 @@ func _update_joystick_from_pos(pos: Vector2) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	# Voice: releasing V always stops transmission
+	if event is InputEventKey and not (event as InputEventKey).pressed and not (event as InputEventKey).echo:
+		var kv := event as InputEventKey
+		if kv.keycode == KEY_V and _net != null:
+			_net.voice_talking = false
+
 	if event is InputEventScreenTouch:
 		var te := event as InputEventScreenTouch
 		if not _mobile_controls_enabled and te.pressed and _mobile_override == 0:
@@ -787,6 +805,16 @@ func _input(event: InputEvent) -> void:
 
 	if event is InputEventKey and event.pressed and not event.echo:
 		var ke := event as InputEventKey
+		# While typing in chat: ESC closes, ENTER sends, everything else flows to the LineEdit
+		if _chat_open:
+			if ke.keycode == KEY_ESCAPE:
+				call("_chat_toggle", false)
+				get_viewport().set_input_as_handled()
+			elif ke.keycode == KEY_ENTER or ke.keycode == KEY_KP_ENTER:
+				call("_chat_submit")
+				get_viewport().set_input_as_handled()
+			return
+
 		if _state == State.DEAD:
 			if ke.keycode == KEY_SPACE or ke.keycode == KEY_ENTER:
 				_advance_architect_dialogue()
@@ -839,6 +867,14 @@ func _input(event: InputEvent) -> void:
 				return
 
 		if _state == State.PLAYING:
+			if not _mobile_controls_enabled and ke.keycode == KEY_T and _net != null and _net.is_online():
+				call("_chat_toggle", true)
+				get_viewport().set_input_as_handled()
+				return
+			if ke.keycode == KEY_V and _net != null:
+				_net.voice_talking = _net.is_online() and not _mobile_controls_enabled
+				get_viewport().set_input_as_handled()
+				return
 			if _is_action_locked():
 				if ke.keycode in [KEY_W, KEY_S, KEY_1, KEY_2, KEY_R]:
 					get_viewport().set_input_as_handled()
@@ -865,6 +901,8 @@ func _input(event: InputEvent) -> void:
 
 	elif event is InputEventMouseMotion and (_state == State.PLAYING or _state == State.SPECTATING):
 		if (event as InputEventMouseMotion).device == InputEvent.DEVICE_ID_EMULATION:
+			return
+		if _chat_open:
 			return
 		if _state == State.SPECTATING:
 			if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
@@ -893,6 +931,8 @@ func _input(event: InputEvent) -> void:
 				_cycle_spectate_target(1)
 			elif mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
 				_cycle_spectate_target(-1)
+			return
+		if _chat_open:
 			return
 		if _mobile_controls_enabled:
 			return
@@ -943,6 +983,13 @@ func _sync_net_local_state() -> void:
 			"tool": _active_tool,
 			"gum": _has_gummy,
 		})
+		# Steam rich presence: current room + how many players are still alive
+		var alive_now := 1 if _state == State.PLAYING else 0
+		for rp in _remote_players.values():
+			var rpv: Dictionary = rp
+			if not bool(rpv.get("dead", false)):
+				alive_now += 1
+		_net.update_presence(_highest_opened, alive_now, 1 + _remote_players.size())
 
 
 func _process(delta: float) -> void:
