@@ -182,39 +182,27 @@ void fragment() {
 	hud_group.add_child(_reticle_ring)
 	_ui["reticle_ring"] = _reticle_ring
 
-	# Diegetic HUD: room plaque, vitals, tool card
-	_build_hud(hud_group)
-
+	# Bare interaction prompt (no frame/panel, Montserrat)
 	var prompt_wrap := CenterContainer.new()
 	prompt_wrap.set_anchors_preset(Control.PRESET_CENTER)
-	prompt_wrap.offset_left = -330
-	prompt_wrap.offset_right = 330
+	prompt_wrap.offset_left = -360
+	prompt_wrap.offset_right = 360
 	prompt_wrap.offset_top = 58
 	prompt_wrap.offset_bottom = 104
 	prompt_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud_group.add_child(prompt_wrap)
 
-	var prompt_card := PanelContainer.new()
-	var pc_style := RoomsUI.make_panel_style(Color(0.02, 0.03, 0.05, 0.58), Color(1.0, 1.0, 1.0, 0.12), 9, 1)
-	pc_style.content_margin_left = 16
-	pc_style.content_margin_right = 16
-	pc_style.content_margin_top = 6
-	pc_style.content_margin_bottom = 6
-	prompt_card.add_theme_stylebox_override("panel", pc_style)
-	prompt_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	prompt_card.modulate.a = 0.0
-	prompt_card.visible = false
-	prompt_wrap.add_child(prompt_card)
-	_ui["prompt_card"] = prompt_card
-
 	var prompt_lbl := Label.new()
 	prompt_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	prompt_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	prompt_lbl.add_theme_font_size_override("font_size", 15)
+	prompt_lbl.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Medium.ttf"))
+	prompt_lbl.add_theme_font_size_override("font_size", 18)
 	prompt_lbl.add_theme_color_override("font_color", Color(0.96, 0.97, 0.99, 0.96))
-	prompt_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.80))
-	prompt_lbl.add_theme_constant_override("outline_size", 3)
-	prompt_card.add_child(prompt_lbl)
+	prompt_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.86))
+	prompt_lbl.add_theme_constant_override("outline_size", 5)
+	prompt_lbl.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.70))
+	prompt_lbl.add_theme_constant_override("shadow_offset_y", 2)
+	prompt_wrap.add_child(prompt_lbl)
 	_ui["prompt_lbl"] = prompt_lbl
 
 	# Clean floating hint (same minimalist typography as Reminder — no green box)
@@ -239,8 +227,6 @@ void fragment() {
 	hud_group.add_child(toast_lbl)
 	_ui["toast"] = toast_lbl
 	_ui["toast_lbl"] = toast_lbl
-
-	_build_hud(hud_group)
 
 	_build_mobile_ui(hud_group)
 
@@ -935,268 +921,8 @@ func _make_ring_btn(parent: Control, accent: Color, stroke_w: float, right_off: 
 	return b
 
 
-func _hud_panel_style() -> StyleBoxFlat:
-	var sb := RoomsUI.make_panel_style(Color(0.02, 0.03, 0.05, 0.64), Color(0.58, 0.84, 1.0, 0.20), 10, 1)
-	sb.content_margin_left = 16
-	sb.content_margin_right = 16
-	sb.content_margin_top = 10
-	sb.content_margin_bottom = 10
-	return sb
 
 
-func _add_hud_bar_row(parent: VBoxContainer, title: String, color: Color, mono: Font, dim: Color) -> Dictionary:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 9)
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	parent.add_child(row)
-
-	var name_lbl := Label.new()
-	name_lbl.text = title
-	name_lbl.custom_minimum_size = Vector2(66, 0)
-	name_lbl.add_theme_font_override("font", mono)
-	name_lbl.add_theme_font_size_override("font_size", 10)
-	name_lbl.add_theme_color_override("font_color", dim)
-	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(name_lbl)
-
-	var holder := Control.new()
-	holder.custom_minimum_size = Vector2(0, 5)
-	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(holder)
-
-	var bg := ColorRect.new()
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(1.0, 1.0, 1.0, 0.10)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.add_child(bg)
-
-	var fill := ColorRect.new()
-	fill.position = Vector2.ZERO
-	fill.size = Vector2(0, 5)
-	fill.color = color
-	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.add_child(fill)
-
-	var val_lbl := Label.new()
-	val_lbl.text = "100"
-	val_lbl.custom_minimum_size = Vector2(46, 0)
-	val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	val_lbl.add_theme_font_override("font", mono)
-	val_lbl.add_theme_font_size_override("font_size", 10)
-	val_lbl.add_theme_color_override("font_color", Color(0.90, 0.94, 1.0, 0.88))
-	val_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(val_lbl)
-
-	return {"holder": holder, "fill": fill, "val": val_lbl, "color": color}
-
-
-func _build_hud(hud_group: Control) -> void:
-	var mono := RoomsArchitect.get_terminal_font()
-	var dim := Color(0.70, 0.77, 0.86, 0.72)
-	var accent := Color(0.55, 0.86, 1.0, 0.95)
-
-	# ---------- Diegetic room plaque (top-left) ----------
-	var plaque := PanelContainer.new()
-	plaque.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	plaque.offset_left = 24
-	plaque.offset_right = 286
-	plaque.offset_top = 20
-	plaque.offset_bottom = 108
-	plaque.add_theme_stylebox_override("panel", _hud_panel_style())
-	plaque.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud_group.add_child(plaque)
-
-	var pv := VBoxContainer.new()
-	pv.add_theme_constant_override("separation", 5)
-	pv.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	plaque.add_child(pv)
-
-	var prow := HBoxContainer.new()
-	prow.add_theme_constant_override("separation", 10)
-	prow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pv.add_child(prow)
-
-	var room_lbl := Label.new()
-	room_lbl.text = "A-000"
-	room_lbl.add_theme_font_override("font", mono)
-	room_lbl.add_theme_font_size_override("font_size", 30)
-	room_lbl.add_theme_color_override("font_color", Color(0.97, 0.99, 1.0, 0.98))
-	room_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	prow.add_child(room_lbl)
-	_ui["room_lbl"] = room_lbl
-
-	var room_tag := Label.new()
-	room_tag.text = "ROOM"
-	room_tag.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	room_tag.add_theme_font_override("font", mono)
-	room_tag.add_theme_font_size_override("font_size", 10)
-	room_tag.add_theme_color_override("font_color", dim)
-	room_tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	prow.add_child(room_tag)
-
-	var prog_holder := Control.new()
-	prog_holder.custom_minimum_size = Vector2(0, 3)
-	prog_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pv.add_child(prog_holder)
-
-	var prog_bg := ColorRect.new()
-	prog_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	prog_bg.color = Color(1.0, 1.0, 1.0, 0.12)
-	prog_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	prog_holder.add_child(prog_bg)
-
-	var prog_fill := ColorRect.new()
-	prog_fill.position = Vector2.ZERO
-	prog_fill.size = Vector2(0, 3)
-	prog_fill.color = accent
-	prog_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	prog_holder.add_child(prog_fill)
-	_ui["room_progress"] = prog_fill
-	_ui["room_progress_holder"] = prog_holder
-
-	var depth_lbl := Label.new()
-	depth_lbl.text = "ДО A-200 · 0%"
-	depth_lbl.add_theme_font_override("font", mono)
-	depth_lbl.add_theme_font_size_override("font_size", 10)
-	depth_lbl.add_theme_color_override("font_color", dim)
-	depth_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pv.add_child(depth_lbl)
-	_ui["depth_lbl"] = depth_lbl
-
-	# ---------- Vitals (bottom-left) ----------
-	var vitals := PanelContainer.new()
-	vitals.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	vitals.offset_left = 24
-	vitals.offset_right = 286
-	vitals.offset_top = -124
-	vitals.offset_bottom = -24
-	vitals.add_theme_stylebox_override("panel", _hud_panel_style())
-	vitals.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud_group.add_child(vitals)
-	_ui["vitals_panel"] = vitals
-
-	var vv := VBoxContainer.new()
-	vv.add_theme_constant_override("separation", 7)
-	vv.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vitals.add_child(vv)
-
-	_ui["hp_bar"] = _add_hud_bar_row(vv, "ЗДОРОВЬЕ", Color(0.96, 0.26, 0.22), mono, dim)
-	_ui["stam_bar"] = _add_hud_bar_row(vv, "ВЫНОСЛ.", Color(0.32, 0.66, 1.0), mono, dim)
-	_ui["light_bar"] = _add_hud_bar_row(vv, "СВЕТ", Color(1.0, 0.74, 0.28), mono, dim)
-
-	# ---------- Tool card (bottom-right) ----------
-	var tool_card := PanelContainer.new()
-	tool_card.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	tool_card.offset_left = -286
-	tool_card.offset_right = -24
-	tool_card.offset_top = -104
-	tool_card.offset_bottom = -24
-	tool_card.add_theme_stylebox_override("panel", _hud_panel_style())
-	tool_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud_group.add_child(tool_card)
-	_ui["tool_card"] = tool_card
-
-	var th := HBoxContainer.new()
-	th.add_theme_constant_override("separation", 12)
-	th.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tool_card.add_child(th)
-
-	var swatch := ColorRect.new()
-	swatch.custom_minimum_size = Vector2(5, 40)
-	swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	swatch.color = Color(1.0, 0.72, 0.28, 0.95)
-	swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	th.add_child(swatch)
-	_ui["tool_swatch"] = swatch
-
-	var tv := VBoxContainer.new()
-	tv.add_theme_constant_override("separation", 3)
-	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tv.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	th.add_child(tv)
-
-	var tool_lbl := Label.new()
-	tool_lbl.text = "ФОНАРИК"
-	tool_lbl.add_theme_font_override("font", mono)
-	tool_lbl.add_theme_font_size_override("font_size", 13)
-	tool_lbl.add_theme_color_override("font_color", Color(0.97, 0.99, 1.0, 0.96))
-	tool_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tv.add_child(tool_lbl)
-	_ui["tool_lbl"] = tool_lbl
-
-	var bat_lbl := Label.new()
-	bat_lbl.text = "Батарейки: 0"
-	bat_lbl.add_theme_font_override("font", mono)
-	bat_lbl.add_theme_font_size_override("font_size", 10)
-	bat_lbl.add_theme_color_override("font_color", dim)
-	bat_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tv.add_child(bat_lbl)
-	_ui["bat_lbl"] = bat_lbl
-
-
-func _layout_hud_panels() -> void:
-	if not _ui.has("vitals_panel") or not _ui.has("tool_card"):
-		return
-	var vitals: PanelContainer = _ui["vitals_panel"]
-	var tool_card: PanelContainer = _ui["tool_card"]
-	var toast: Label = _ui.get("toast") as Label
-	if _mobile_controls_enabled:
-		# Keep both panels clear of the thumb joystick and the flashlight ring.
-		vitals.anchor_left = 0.0
-		vitals.anchor_right = 0.0
-		vitals.anchor_top = 0.0
-		vitals.anchor_bottom = 0.0
-		vitals.offset_left = 24
-		vitals.offset_right = 286
-		vitals.offset_top = 122
-		vitals.offset_bottom = 222
-		tool_card.anchor_left = 1.0
-		tool_card.anchor_right = 1.0
-		tool_card.anchor_top = 0.0
-		tool_card.anchor_bottom = 0.0
-		tool_card.offset_left = -286
-		tool_card.offset_right = -24
-		tool_card.offset_top = 132
-		tool_card.offset_bottom = 212
-		if toast != null:
-			toast.anchor_left = 0.5
-			toast.anchor_right = 0.5
-			toast.anchor_top = 0.0
-			toast.anchor_bottom = 0.0
-			toast.offset_left = -330
-			toast.offset_right = 330
-			toast.offset_top = 236
-			toast.offset_bottom = 320
-			toast.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	else:
-		vitals.anchor_left = 0.0
-		vitals.anchor_right = 0.0
-		vitals.anchor_top = 1.0
-		vitals.anchor_bottom = 1.0
-		vitals.offset_left = 24
-		vitals.offset_right = 286
-		vitals.offset_top = -124
-		vitals.offset_bottom = -24
-		tool_card.anchor_left = 1.0
-		tool_card.anchor_right = 1.0
-		tool_card.anchor_top = 1.0
-		tool_card.anchor_bottom = 1.0
-		tool_card.offset_left = -286
-		tool_card.offset_right = -24
-		tool_card.offset_top = -104
-		tool_card.offset_bottom = -24
-		if toast != null:
-			toast.anchor_left = 0.5
-			toast.anchor_right = 0.5
-			toast.anchor_top = 1.0
-			toast.anchor_bottom = 1.0
-			toast.offset_left = -430
-			toast.offset_right = 430
-			toast.offset_top = -196
-			toast.offset_bottom = -136
-			toast.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 
 
 func _build_mobile_ui(hud_group: Control) -> void:
@@ -1306,6 +1032,32 @@ func _build_mobile_ui(hud_group: Control) -> void:
 	_ui["m_btn_exit_back"] = btn_exit_back
 
 
+func _layout_toast() -> void:
+	var toast: Label = _ui.get("toast") as Label
+	if toast == null:
+		return
+	if _mobile_controls_enabled:
+		toast.anchor_left = 0.5
+		toast.anchor_right = 0.5
+		toast.anchor_top = 0.0
+		toast.anchor_bottom = 0.0
+		toast.offset_left = -330
+		toast.offset_right = 330
+		toast.offset_top = 150
+		toast.offset_bottom = 234
+		toast.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	else:
+		toast.anchor_left = 0.5
+		toast.anchor_right = 0.5
+		toast.anchor_top = 1.0
+		toast.anchor_bottom = 1.0
+		toast.offset_left = -430
+		toast.offset_right = 430
+		toast.offset_top = -196
+		toast.offset_bottom = -136
+		toast.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+
+
 func _refresh_mobile_mode() -> void:
 	if _mobile_override == 1:
 		_mobile_controls_enabled = true
@@ -1316,7 +1068,7 @@ func _refresh_mobile_mode() -> void:
 
 	if _ui.has("mobile_group"):
 		(_ui["mobile_group"] as Control).visible = _mobile_controls_enabled and (_state == State.PLAYING)
-	_layout_hud_panels()
+	_layout_toast()
 	if _ui.has("btn_mobile"):
 		var lbl := "Сенсорное управление: АВТО"
 		if _mobile_override == 1:
@@ -1341,64 +1093,7 @@ func _cycle_mobile_mode() -> void:
 		_mobile_override = 0
 	_refresh_mobile_mode()
 
-func _set_hud_bar(bar: Dictionary, ratio: float, text: String) -> void:
-	var holder: Control = bar["holder"]
-	var fill: ColorRect = bar["fill"]
-	var val: Label = bar["val"]
-	fill.size = Vector2(maxf(holder.size.x, 0.0) * clampf(ratio, 0.0, 1.0), 5.0)
-	val.text = text
 
-func _update_hud(_delta: float) -> void:
-	if not _ui.has("room_lbl"):
-		return
-
-	var room_lbl: Label = _ui["room_lbl"]
-	room_lbl.text = "A-%03d" % maxi(_current_room_idx, 0)
-	var holder: Control = _ui["room_progress_holder"]
-	var fill: ColorRect = _ui["room_progress"]
-	var prog := clampf(float(_highest_opened) / 200.0, 0.0, 1.0)
-	fill.size = Vector2(maxf(holder.size.x, 0.0) * prog, 3.0)
-	var depth_lbl: Label = _ui["depth_lbl"]
-	depth_lbl.text = "ДО A-200 · %d%%" % int(round(prog * 100.0))
-
-	var hp_ratio := clampf(float(_hp) / 100.0, 0.0, 1.0)
-	_set_hud_bar(_ui["hp_bar"], hp_ratio, str(maxi(_hp, 0)))
-	var hp_bar: Dictionary = _ui["hp_bar"]
-	(hp_bar["fill"] as ColorRect).color = Color(0.96, 0.26, 0.22) if _hp > 30 else Color(1.0, 0.55, 0.16)
-
-	var stam_ratio := clampf(_stamina, 0.0, 1.0)
-	_set_hud_bar(_ui["stam_bar"], stam_ratio, "%d%%" % int(round(stam_ratio * 100.0)))
-	var stam_bar: Dictionary = _ui["stam_bar"]
-	(stam_bar["fill"] as ColorRect).color = Color(0.32, 0.66, 1.0) if not _exhausted else Color(0.55, 0.42, 0.85)
-
-	var light_bar: Dictionary = _ui["light_bar"]
-	if _active_tool == 1 and _has_gummy:
-		var g := clampf(_gummy_battery / 100.0, 0.0, 1.0)
-		_set_hud_bar(light_bar, g, "%d%%" % int(round(g * 100.0)))
-		(light_bar["fill"] as ColorRect).color = Color(0.32, 0.90, 0.52)
-	else:
-		var s := clampf(_std_battery / 150.0, 0.0, 1.0)
-		_set_hud_bar(light_bar, s, "%dс" % int(ceil(maxf(_std_battery, 0.0))))
-		(light_bar["fill"] as ColorRect).color = Color(1.0, 0.74, 0.28) if _std_battery > 30.0 else Color(1.0, 0.48, 0.20)
-
-	var tool_lbl: Label = _ui["tool_lbl"]
-	var swatch: ColorRect = _ui["tool_swatch"]
-	var bat_lbl: Label = _ui["bat_lbl"]
-	if _active_tool == 1 and _has_gummy:
-		tool_lbl.text = "ТРЯСОСВЕТ"
-		swatch.color = Color(0.32, 0.95, 0.55, 0.95) if _light_on else Color(0.22, 0.70, 0.42, 0.55)
-		bat_lbl.text = "Заряд %d%% · ЛКМ" % int(round(_gummy_battery))
-	else:
-		tool_lbl.text = "ФОНАРИК"
-		swatch.color = Color(1.0, 0.74, 0.28, 0.95) if _light_on else Color(0.70, 0.72, 0.78, 0.42)
-		var bat_txt := "Батарейки: %d" % _batteries
-		if _std_battery <= 0.05:
-			bat_txt += " · разряжен [R]"
-		elif _std_low_power or _std_battery <= 30.0:
-			bat_txt += " · слабый заряд [R]"
-		elif _batteries >= 2 and _std_battery < 149.9:
-			bat_txt += " · [R] зарядить"
-		bat_lbl.text = bat_txt
 
 func _update_mobile_ui(_interact_tgt: Dictionary) -> void:
 	if not _mobile_controls_enabled or not _ui.has("mobile_group"):

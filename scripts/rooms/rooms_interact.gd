@@ -414,10 +414,5 @@ func _update_ui(delta: float) -> void:
 	var pr_rate := 12.0 if want_prompt else 8.5
 	_prompt_alpha = lerpf(_prompt_alpha, 1.0 if want_prompt else 0.0, clampf(1.0 - exp(-pr_rate * delta), 0.0, 1.0))
 	prompt.modulate.a = _prompt_alpha
-	var prompt_card: Control = _ui["prompt_card"]
-	prompt_card.modulate.a = _prompt_alpha
-	prompt_card.visible = (_prompt_alpha > 0.01)
-
-	_update_hud(delta)
 
 	_update_mobile_ui(interact_tgt)
