@@ -416,6 +416,17 @@ func _build_viewmodel() -> void:
 		noob_arm_mat.emission_energy_multiplier = 0.12
 		RoomBuilder._add_box(_anim_hand, "NoobArmR", Vector3(0.0, 0.0, -0.24), Vector3(0.11, 0.11, 0.52), noob_arm_mat, false)
 
+	_held_battery = Node3D.new()
+	_held_battery.name = "HeldBattery"
+	_held_battery.visible = false
+	_held_battery.position = Vector3(0.02, 0.05, -0.28)
+	_held_battery.rotation = Vector3(0.35, 0.15, 0.45)
+	_anim_hand.add_child(_held_battery)
+	RoomBuilder._add_cyl(_held_battery, "Cell", Vector3.ZERO, 0.032, 0.11, _assets.locker_mat)
+	RoomBuilder._add_cyl(_held_battery, "GlowBand", Vector3(0.0, 0.02, 0.0), 0.034, 0.028, _assets.battery_mat)
+	RoomBuilder._add_cyl(_held_battery, "TopCap", Vector3(0.0, 0.052, 0.0), 0.033, 0.016, _assets.plaque_yellow_mat)
+	RoomBuilder._add_cyl(_held_battery, "Nub", Vector3(0.0, 0.065, 0.0), 0.012, 0.012, _assets.fridge_mat)
+
 
 func _build_entity_nodes() -> void:
 	_a60_node = Node3D.new()

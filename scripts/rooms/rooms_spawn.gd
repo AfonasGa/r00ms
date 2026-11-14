@@ -5,9 +5,9 @@ func _maybe_spawn_door_entities(room_num: int) -> void:
 		return
 	if _a60_active or _a120_active:
 		return
-	# A-120 starts appearing after room A-015; A-60 spawns anytime via its independent timer!
-	if room_num >= 15:
-		var chance_120 := clampf(0.06 + float(room_num - 15) * 0.0007, 0.06, 0.13)
+	# In the first 20 rooms NO monsters appear. A-120 starts appearing after room A-020!
+	if room_num > 20:
+		var chance_120 := clampf(0.06 + float(room_num - 20) * 0.0007, 0.06, 0.13)
 		if _rng.randf() < chance_120:
 			_spawn_a120()
 
@@ -177,6 +177,8 @@ func _get_a120_live_target() -> Vector3:
 
 
 func _handle_a120_hit() -> void:
+	if _is_hiding:
+		return
 	_a120_hit_cd = 1.5
 	_a120_active = false
 	_a120_phase = 0
@@ -206,6 +208,8 @@ func _handle_a120_hit() -> void:
 
 
 func _warp_player_to_room(target_idx: int, back_steps: int) -> void:
+	if _is_hiding:
+		return
 	var target_r: RoomBuilder.RoomInstance = _room_by_idx.get(target_idx)
 	if target_r == null:
 		return

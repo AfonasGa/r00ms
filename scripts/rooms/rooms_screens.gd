@@ -990,14 +990,6 @@ void fragment() {
 	big_footer.add_theme_constant_override("separation", 12)
 	big.add_child(big_footer)
 
-	var btn_stat_restart := Button.new()
-	btn_stat_restart.text = "[R] ЗАНОВО"
-	btn_stat_restart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	RoomsUI.style_button(btn_stat_restart, Color(1.0, 0.75, 0.35), 13)
-	btn_stat_restart.pressed.connect(Callable(self, "_reset_run"))
-	big_footer.add_child(btn_stat_restart)
-	_ui["btn_stat_restart"] = btn_stat_restart
-
 	var btn_stat_spectate := Button.new()
 	btn_stat_spectate.text = "[НАБЛЮДЕНИЕ]"
 	btn_stat_spectate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1005,6 +997,30 @@ void fragment() {
 	btn_stat_spectate.pressed.connect(Callable(self, "_start_spectating"))
 	big_footer.add_child(btn_stat_spectate)
 	_ui["btn_stat_spectate"] = btn_stat_spectate
+
+	# Corner terminal restart prompt (replaces bulky button inside report)
+	var arch_restart_hint := Label.new()
+	arch_restart_hint.name = "ArchRestartHint"
+	arch_restart_hint.text = "> [R] НАЧАТЬ ЗАНОВО"
+	arch_restart_hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	arch_restart_hint.offset_left = -340
+	arch_restart_hint.offset_top = -52
+	arch_restart_hint.offset_right = -28
+	arch_restart_hint.offset_bottom = -20
+	arch_restart_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	arch_restart_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	arch_restart_hint.add_theme_font_override("font", arch_mono_f)
+	arch_restart_hint.add_theme_font_size_override("font_size", 16)
+	arch_restart_hint.add_theme_color_override("font_color", Color(0.28, 1.0, 0.42))
+	arch_restart_hint.mouse_filter = Control.MOUSE_FILTER_STOP
+	arch_restart_hint.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	arch_restart_hint.visible = false
+	arch_restart_hint.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			_reset_run()
+	)
+	arch_overlay.add_child(arch_restart_hint)
+	_ui["arch_restart_hint"] = arch_restart_hint
 
 	# --- Small terminal (bottom-center) with player tag ---
 	var small := Panel.new()
@@ -1297,6 +1313,49 @@ func _build_mobile_ui(hud_group: Control) -> void:
 			call("_exit_locker", true)
 	)
 	_ui["m_btn_exit_back"] = btn_exit_back
+
+	call("_build_startup_splash", root)
+
+
+func _build_startup_splash(root: Control) -> void:
+	var splash := ColorRect.new()
+	splash.name = "StartupSplash"
+	splash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	splash.color = Color(0.0, 0.0, 0.0, 1.0)
+	splash.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.add_child(splash)
+	_ui["startup_splash"] = splash
+
+	var lbl := Label.new()
+	lbl.name = "SplashTitle"
+	lbl.text = "r00ms"
+	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
+	lbl.add_theme_font_size_override("font_size", 96)
+	lbl.add_theme_color_override("font_color", Color(0.96, 0.97, 0.99, 1.0))
+	lbl.modulate.a = 0.0
+	splash.add_child(lbl)
+	_ui["splash_title"] = lbl
+
+	var tw := create_tween()
+	tw.tween_interval(0.4)
+	tw.tween_property(lbl, "modulate:a", 1.0, 1.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.9)
+	tw.tween_property(splash, "modulate:a", 0.0, 1.0).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_callback(func() -> void:
+		splash.visible = false
+		splash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	)
+
+	splash.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed:
+			if is_instance_valid(tw) and tw.is_running():
+				tw.kill()
+			splash.visible = false
+			splash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	)
 
 
 func _layout_toast() -> void:

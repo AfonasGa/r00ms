@@ -3,7 +3,8 @@ extends RefCounted
 
 ## Builds procedural 12x12m Rooms & Doors style corridors matching the RoomTypes templates.
 
-const CELL_SIZE := 12.0
+const CELL_SIZE := 18.0
+const HALF_CELL := 9.0
 const HALF_W := 4.2
 const CEIL_H := 3.8
 const DOOR_W := 2.0
@@ -309,43 +310,45 @@ static func build_room(
 		_add_box(room_node, "WallLeft", Vector3(-HALF_W - WALL_THICK * 0.5, CEIL_H * 0.5, 0.0), Vector3(WALL_THICK, CEIL_H, CELL_SIZE), assets.wall_mat)
 		_add_box(room_node, "WallRight", Vector3(HALF_W + WALL_THICK * 0.5, CEIL_H * 0.5, 0.0), Vector3(WALL_THICK, CEIL_H, CELL_SIZE), assets.wall_mat)
 	else:
-		# L-turn: non-overlapping segments covering z = +6 -> -4.2 and exit arm ±4.2 -> ±6
-		var arm_z_len := 6.0 + HALF_W # 10.2m
-		var arm_z_center := 6.0 - arm_z_len * 0.5 # +0.9
+		# L-turn: non-overlapping segments covering z = +HALF_CELL -> -HALF_W and exit arm ±HALF_W -> ±HALF_CELL
+		var arm_z_len := HALF_CELL + HALF_W
+		var arm_z_center := HALF_CELL - arm_z_len * 0.5
 		_add_box(room_node, "FloorA", Vector3(0.0, -0.1, arm_z_center), Vector3(HALF_W * 2.0, 0.2, arm_z_len), assets.floor_mat)
 		_add_box(room_node, "CeilA", Vector3(0.0, CEIL_H + 0.1, arm_z_center), Vector3(HALF_W * 2.0, 0.2, arm_z_len), assets.ceiling_mat)
 
-		var side_len := 6.0 - HALF_W # 1.8m
+		var side_len := HALF_CELL - HALF_W
 		var sx := -HALF_W - side_len * 0.5 if turn_type == -1 else HALF_W + side_len * 0.5
 		_add_box(room_node, "FloorB", Vector3(sx, -0.1, 0.0), Vector3(side_len, 0.2, HALF_W * 2.0), assets.floor_mat)
 		_add_box(room_node, "CeilB", Vector3(sx, CEIL_H + 0.1, 0.0), Vector3(side_len, 0.2, HALF_W * 2.0), assets.ceiling_mat)
 
-		var far_x_min := -6.0 if turn_type == -1 else -HALF_W
-		var far_x_max := HALF_W if turn_type == -1 else 6.0
+		var far_x_min := -HALF_CELL if turn_type == -1 else -HALF_W
+		var far_x_max := HALF_W if turn_type == -1 else HALF_CELL
 		_add_box(room_node, "WallFar", Vector3((far_x_min + far_x_max) * 0.5, CEIL_H * 0.5, -HALF_W - WALL_THICK * 0.5), Vector3(far_x_max - far_x_min, CEIL_H, WALL_THICK), assets.wall_mat)
 
+		var inner_z := HALF_CELL - side_len * 0.5
+		var inner_x := HALF_CELL - side_len * 0.5
 		if turn_type == -1:
 			_add_box(room_node, "WallOuterR", Vector3(HALF_W + WALL_THICK * 0.5, CEIL_H * 0.5, arm_z_center), Vector3(WALL_THICK, CEIL_H, arm_z_len), assets.wall_mat)
-			_add_box(room_node, "WallInnerL", Vector3(-HALF_W - WALL_THICK * 0.5, CEIL_H * 0.5, 5.1), Vector3(WALL_THICK, CEIL_H, 1.8), assets.wall_mat)
-			_add_box(room_node, "WallInnerTurn", Vector3(-5.1, CEIL_H * 0.5, HALF_W + WALL_THICK * 0.5), Vector3(1.8, CEIL_H, WALL_THICK), assets.wall_mat)
+			_add_box(room_node, "WallInnerL", Vector3(-HALF_W - WALL_THICK * 0.5, CEIL_H * 0.5, inner_z), Vector3(WALL_THICK, CEIL_H, side_len), assets.wall_mat)
+			_add_box(room_node, "WallInnerTurn", Vector3(-inner_x, CEIL_H * 0.5, HALF_W + WALL_THICK * 0.5), Vector3(side_len, CEIL_H, WALL_THICK), assets.wall_mat)
 		else:
 			_add_box(room_node, "WallOuterL", Vector3(-HALF_W - WALL_THICK * 0.5, CEIL_H * 0.5, arm_z_center), Vector3(WALL_THICK, CEIL_H, arm_z_len), assets.wall_mat)
-			_add_box(room_node, "WallInnerR", Vector3(HALF_W + WALL_THICK * 0.5, CEIL_H * 0.5, 5.1), Vector3(WALL_THICK, CEIL_H, 1.8), assets.wall_mat)
-			_add_box(room_node, "WallInnerTurn", Vector3(5.1, CEIL_H * 0.5, HALF_W + WALL_THICK * 0.5), Vector3(1.8, CEIL_H, WALL_THICK), assets.wall_mat)
+			_add_box(room_node, "WallInnerR", Vector3(HALF_W + WALL_THICK * 0.5, CEIL_H * 0.5, inner_z), Vector3(WALL_THICK, CEIL_H, side_len), assets.wall_mat)
+			_add_box(room_node, "WallInnerTurn", Vector3(inner_x, CEIL_H * 0.5, HALF_W + WALL_THICK * 0.5), Vector3(side_len, CEIL_H, WALL_THICK), assets.wall_mat)
 
 	if is_lobby:
-		_add_box(room_node, "LobbyBackWall", Vector3(0.0, CEIL_H * 0.5, 6.0 + WALL_THICK * 0.5), Vector3(HALF_W * 2.0, CEIL_H, WALL_THICK), assets.wall_mat)
+		_add_box(room_node, "LobbyBackWall", Vector3(0.0, CEIL_H * 0.5, HALF_CELL + WALL_THICK * 0.5), Vector3(HALF_W * 2.0, CEIL_H, WALL_THICK), assets.wall_mat)
 
 	# 2. Exit Doorway Wall & Door
 	var exit_anchor := Node3D.new()
 	exit_anchor.name = "ExitAnchor"
 	if turn_type == 0:
-		exit_anchor.position = Vector3(0.0, 0.0, -6.0)
+		exit_anchor.position = Vector3(0.0, 0.0, -HALF_CELL)
 	elif turn_type == -1:
-		exit_anchor.position = Vector3(-6.0, 0.0, 0.0)
+		exit_anchor.position = Vector3(-HALF_CELL, 0.0, 0.0)
 		exit_anchor.rotation.y = PI * 0.5
 	else:
-		exit_anchor.position = Vector3(6.0, 0.0, 0.0)
+		exit_anchor.position = Vector3(HALF_CELL, 0.0, 0.0)
 		exit_anchor.rotation.y = -PI * 0.5
 	room_node.add_child(exit_anchor)
 	r.exit_anchor = exit_anchor
@@ -420,18 +423,18 @@ static func _build_exit_door(anchor: Node3D, assets: SharedAssets, next_room_num
 static func _build_ceiling_grid(room_node: Node3D, assets: SharedAssets, light_on: bool, r: RoomInstance) -> void:
 	var mat := assets.lamp_on_mat if light_on else assets.lamp_off_mat
 	for lx in [-1.95, 1.95]:
-		for lz in [-2.65, 2.65]:
+		for lz in [-5.2, 0.0, 5.2]:
 			var m := _add_box(room_node, "Troffer", Vector3(lx, CEIL_H - 0.03, lz), Vector3(1.15, 0.06, 0.65), mat, false) as MeshInstance3D
 			if m != null:
 				r.lamp_meshes.append(m)
 	if light_on:
-		for lz in [-2.2, 2.2]:
+		for lz in [-4.5, 4.5]:
 			var omni := OmniLight3D.new()
 			omni.position = Vector3(0.0, CEIL_H - 0.35, lz)
 			omni.light_color = Color(0.86, 0.92, 1.0)
-			omni.light_energy = 1.05
-			omni.omni_range = 10.0
-			omni.omni_attenuation = 1.35
+			omni.light_energy = 1.15
+			omni.omni_range = 13.5
+			omni.omni_attenuation = 1.25
 			room_node.add_child(omni)
 			r.ceiling_lights.append(omni)
 			r.light_base_energies.append(omni.light_energy)
@@ -616,6 +619,15 @@ static func _populate_room_type(
 
 
 static func _maybe_spawn_loot(room_node: Node3D, assets: SharedAssets, pos: Vector3, room_index: int, rng: RandomNumberGenerator) -> void:
+	if room_index <= 20:
+		# Early calm rooms (1-20): guaranteed batteries in 7 distinct rooms (up to 7 batteries total)
+		var early_battery_rooms := [2, 5, 8, 11, 14, 17, 20]
+		if room_index in early_battery_rooms:
+			_build_pickup(room_node, assets, pos, "battery", "Батарейка (+1)")
+			return
+		elif rng.randf() < 0.35:
+			_build_pickup(room_node, assets, pos, "battery", "Батарейка (+1)")
+			return
 	if rng.randf() < 0.34:
 		_build_pickup(room_node, assets, pos, "battery", "Батарейка (+1)")
 	elif room_index > 8 and rng.randf() < 0.14:

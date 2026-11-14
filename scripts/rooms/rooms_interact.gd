@@ -91,6 +91,7 @@ func _execute_interact_target(target: Dictionary) -> bool:
 		var pkind := String(target["pickup_kind"])
 		if pkind == "battery":
 			_batteries += 1
+			_battery_inspect_timer = 2.0
 			_show_toast("Батарейка (+1) — Всего: %d. [R] для зарядки (нужно 2)" % _batteries, 2.8)
 		elif pkind == "gummy":
 			_has_gummy = true
@@ -152,6 +153,10 @@ func _collider_to_interact_dict(col: Object) -> Dictionary:
 			"label": lbl,
 		}
 	elif itype == "pickup":
+		var node3d := col as Node3D
+		if node3d != null and is_instance_valid(cam):
+			if cam.global_position.distance_to(node3d.global_position) > 1.75:
+				return {}
 		return {
 			"type": "pickup",
 			"node": col,
@@ -219,7 +224,7 @@ func _find_smart_reticle_target() -> Dictionary:
 			var lk := String(ld.get("kind", "locker"))
 			var loc := Vector3(0.0, 0.56, 0.22) if lk == "under_desk" else Vector3(0.0, 1.16, 0.34)
 			var wp := ln.global_transform * loc
-			if cam_pos.distance_to(wp) > 5.2 or cam.is_position_behind(wp):
+			if cam_pos.distance_to(wp) > 2.8 or cam.is_position_behind(wp):
 				continue
 			var ang := cam_fwd.angle_to((wp - cam_pos).normalized())
 			if ang < best_angle and _has_los_to_interact(space_state, cam_pos, wp, r.index):
@@ -235,7 +240,7 @@ func _find_smart_reticle_target() -> Dictionary:
 				}
 		if not r.door_opened and is_instance_valid(r.exit_anchor):
 			var dwp := r.exit_anchor.global_position + Vector3(0.0, 1.15, 0.0)
-			if cam_pos.distance_to(dwp) <= 5.2 and not cam.is_position_behind(dwp):
+			if cam_pos.distance_to(dwp) <= 2.8 and not cam.is_position_behind(dwp):
 				var dang := cam_fwd.angle_to((dwp - cam_pos).normalized())
 				if dang < best_angle and _has_los_to_interact(space_state, cam_pos, dwp, r.index):
 					best_angle = dang

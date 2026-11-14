@@ -468,7 +468,7 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 
 
 func _set_death_windows_visible(vis: bool) -> void:
-	for k in ["arch_window_big", "arch_window_small"]:
+	for k in ["arch_window_big", "arch_window_small", "arch_restart_hint"]:
 		if _ui.has(k):
 			(_ui[k] as Control).visible = vis
 
@@ -1218,7 +1218,32 @@ func _process(delta: float) -> void:
 					var push_arc := sin(sp_d * PI * 0.5)
 					_anim_hand.position = Vector3(-0.04, -0.12, -0.24 * reach_mul).lerp(Vector3(0.34, -0.30, 0.02), sp_d) + Vector3(0.18 * push_arc * reach_mul, 0.03 * push_arc, -0.08 * push_arc)
 					_anim_hand.rotation = Vector3(0.04, lerpf(0.24 * reach_mul, -0.45 * reach_mul, sp_d), -0.12 * (1.0 - sp_d))
+			elif _battery_inspect_timer > 0.0:
+				_battery_inspect_timer = maxf(_battery_inspect_timer - delta, 0.0)
+				_anim_hand.visible = true
+				if _held_battery != null:
+					_held_battery.visible = true
+				var prog := 2.0 - _battery_inspect_timer # 0.0 to 2.0
+				if prog < 0.6:
+					var t1 := ease(prog / 0.6, 0.4)
+					_anim_hand.position = Vector3(0.28, -0.36, -0.05).lerp(Vector3(0.11, -0.03, -0.25), t1)
+					_anim_hand.rotation = Vector3(-0.12, 0.22, 0.28).lerp(Vector3(0.26, -0.14, -0.18), t1)
+				elif prog < 1.4:
+					var t2 := (prog - 0.6) / 0.8
+					var bob := sin(t2 * PI * 2.0) * 0.015
+					_anim_hand.position = Vector3(0.11, -0.03 + bob, -0.25)
+					_anim_hand.rotation = Vector3(0.26 + bob * 0.5, -0.14, -0.18)
+				else:
+					var t3 := ease((prog - 1.4) / 0.6, 1.8)
+					_anim_hand.position = Vector3(0.11, -0.03, -0.25).lerp(Vector3(0.32, -0.44, 0.02), t3)
+					_anim_hand.rotation = Vector3(0.26, -0.14, -0.18).lerp(Vector3(-0.15, 0.32, 0.12), t3)
+				if _battery_inspect_timer <= 0.0:
+					if _held_battery != null:
+						_held_battery.visible = false
+					_anim_hand.visible = false
 			else:
+				if _held_battery != null:
+					_held_battery.visible = false
 				_anim_hand.visible = false
 
 		if _vm_holder != null:
@@ -1230,7 +1255,7 @@ func _process(delta: float) -> void:
 			var bob_amp := clampf(hspd_vm / 5.5, 0.0, 1.0)
 			var bx := cos(t_sec_vm * 7.2) * 0.011 * bob_amp + sin(t_sec_vm * 1.4) * 0.0025
 			var by := absf(sin(t_sec_vm * 7.2)) * -0.014 * bob_amp + cos(t_sec_vm * 1.8) * 0.0025
-			var dip_y := -0.11 if _door_hand_timer > 0.0 else 0.0
+			var dip_y := -0.14 if (_door_hand_timer > 0.0 or _battery_inspect_timer > 0.0) else 0.0
 			_vm_holder.position = _vm_holder.position.lerp(Vector3(0.24 + bx, -0.21 + by + dip_y, -0.34), 1.0 - exp(-14.0 * delta))
 			_vm_holder.rotation.x = lerpf(_vm_holder.rotation.x, fl_lag_x * 0.75, 1.0 - exp(-14.0 * delta))
 			_vm_holder.rotation.y = lerpf(_vm_holder.rotation.y, fl_lag_y * 0.75, 1.0 - exp(-14.0 * delta))

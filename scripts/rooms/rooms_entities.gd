@@ -18,9 +18,9 @@ func _physics_process(delta: float) -> void:
 	if _is_entity_authority():
 		if _a60_prime_pending_timer > 0.0 and not _a60_active and not _a120_active:
 			_a60_prime_pending_timer -= delta
-			if _a60_prime_pending_timer <= 0.0:
+			if _a60_prime_pending_timer <= 0.0 and _highest_opened > 20:
 				_spawn_a60(true)
-		elif _highest_opened >= 5 and not _a60_active and not _a120_active and not _a60_prime_flicker_active:
+		elif _highest_opened > 20 and not _a60_active and not _a120_active and not _a60_prime_flicker_active:
 			_a60_random_timer -= delta
 			if _a60_random_timer <= 0.0:
 				var max_cd := maxf(24.0, 52.0 - float(_highest_opened) * 0.12)
@@ -448,8 +448,7 @@ func _process_entities(delta: float) -> void:
 						return
 
 			# Raycast line-of-sight attack if player is exposed and not hiding
-			var in_entry := _is_locker_entry_anim()
-			if can_harm_local and _a60_phase == 2 and d_player <= 11.5 and (not _is_hiding or in_entry):
+			if can_harm_local and _a60_phase == 2 and d_player <= 11.5 and not _is_hiding:
 				var space := get_world_3d().direct_space_state
 				var q := PhysicsRayQueryParameters3D.create(_a60_node.global_position, cam.global_position)
 				q.exclude = [player_body.get_rid()]
@@ -674,7 +673,7 @@ func _process_entities(delta: float) -> void:
 				"room": _current_room_idx,
 			}, false)
 
-		if can_harm_local and _a120_active and _a120_phase == 2 and _a120_node.global_position.distance_to(cam.global_position) < 2.15 and (not _is_hiding or _is_locker_entry_anim()) and _a120_hit_cd <= 0.0:
+		if can_harm_local and _a120_active and _a120_phase == 2 and _a120_node.global_position.distance_to(cam.global_position) < 2.15 and not _is_hiding and _a120_hit_cd <= 0.0:
 			_handle_a120_hit()
 			return
 	else:
@@ -685,7 +684,7 @@ func _process_a90(delta: float) -> void:
 	var scare_rect: TextureRect = _ui["a90_scare_rect"]
 	if _a90_scare_timer > 0.0:
 		_a90_scare_timer = maxf(_a90_scare_timer - delta, 0.0)
-		scare_rect.modulate.a = clampf(_a90_scare_timer / 0.45, 0.0, 1.0)
+		scare_rect.modulate.a = clampf(_a90_scare_timer / 0.40, 0.0, 1.0)
 		if _a90_scare_timer <= 0.0:
 			scare_rect.visible = false
 
@@ -696,47 +695,47 @@ func _process_a90(delta: float) -> void:
 	var a90_stop: Label = _ui["a90_stop"]
 	var a90_hint: Label = _ui["a90_hint"]
 	var a90_bar_holder: Control = _ui["a90_bar_holder"]
-	var a90_bar_fill: ColorRect = _ui["a90_bar_fill"]
 	var a90_shake: Control = _ui["a90_shake"]
 
 	if _a90_phase == 0:
 		a90_root.visible = false
 		if not _is_entity_authority():
 			return
-		if _highest_opened < 9 or _is_hiding or _a60_active or _a120_active or _power_out:
+		# Authentic Paralysis (A-90): spawns from room A-90+; strictly never in first 20 rooms
+		if _highest_opened < 90 or _is_hiding or _a60_active or _a120_active or _power_out:
 			return
 		_a90_cooldown -= delta
 		if _a90_cooldown > 0.0:
 			return
-		_a90_cooldown = _rng.randf_range(24.0, 40.0)
-		if _rng.randf() > 0.76:
+		_a90_cooldown = _rng.randf_range(35.0, 70.0)
+		if _rng.randf() > 0.65:
 			return
 		_start_a90_local()
 		return
 
-	# Cancel cleanly if the player is no longer vulnerable
+	# Cancel cleanly if player enters a locker
 	if _is_hiding:
 		_end_a90()
 		return
 
 	if _a90_phase == 1:
+		# Phase 1 (0.22s): Peripheral warning flash with quiet knock cue
 		_a90_timer -= delta
-		var t := clampf(1.0 - _a90_timer / 0.55, 0.0, 1.0)
+		var p1 := clampf(1.0 - _a90_timer / 0.22, 0.0, 1.0)
 		a90_root.visible = true
-		a90_root.modulate.a = t
-		a90_mat.set_shader_parameter("red_amt", t * 0.62)
-		a90_mat.set_shader_parameter("static_amt", t * 0.55)
-		var wob := lerpf(34.0, 4.0, t)
-		a90_shake.position = Vector2(_rng.randf_range(-wob, wob), _rng.randf_range(-wob, wob))
+		a90_root.modulate.a = p1
+		a90_mat.set_shader_parameter("red_amt", p1 * 0.40)
+		a90_mat.set_shader_parameter("static_amt", 0.35)
 		if _a90_timer <= 0.0:
+			# Snap to center and trigger the authentic STOP sign reflex test!
 			_a90_phase = 2
 			_a90_timer = _a90_freeze_dur
-			_a90_grace = 0.18
+			_a90_grace = 0.12 # Brief human reaction threshold
 			_a90_start_pos = player_body.position
 			_a90_start_yaw = _target_yaw
 			_a90_start_pitch = _target_pitch
-			player_body.velocity.x *= 0.12
-			player_body.velocity.z *= 0.12
+			player_body.velocity.x = 0.0
+			player_body.velocity.z = 0.0
 			a90_root.visible = true
 			a90_root.modulate.a = 1.0
 			a90_shake.position = Vector2.ZERO
@@ -744,28 +743,25 @@ func _process_a90(delta: float) -> void:
 			a90_stop_icon.visible = true
 			a90_stop.visible = true
 			a90_hint.visible = true
-			a90_bar_holder.visible = true
-			a90_mat.set_shader_parameter("red_amt", 0.62)
-			a90_mat.set_shader_parameter("static_amt", 0.38)
+			a90_bar_holder.visible = false # Canonical Doors has no progress bar
+			a90_mat.set_shader_parameter("red_amt", 0.70)
+			a90_mat.set_shader_parameter("static_amt", 0.45)
 			audio.play_a90_warn()
 	elif _a90_phase == 2:
+		# Phase 2 (0.95 - 1.1s): MUST FREEZE! Any movement fails!
 		_a90_timer -= delta
 		if _a90_grace > 0.0:
 			_a90_grace = maxf(_a90_grace - delta, 0.0)
 			_a90_start_pos = player_body.position
 			_a90_start_yaw = _target_yaw
 			_a90_start_pitch = _target_pitch
-		var ratio := clampf(_a90_timer / maxf(_a90_freeze_dur, 0.01), 0.0, 1.0)
-		a90_bar_fill.size = Vector2(360.0 * ratio, 7.0)
-		a90_bar_fill.color = Color(1.0, 0.20, 0.16, 0.95) if ratio > 0.34 else Color(1.0, 0.72, 0.18, 0.98)
-		var jit := lerpf(2.0, 9.0, 1.0 - ratio)
-		a90_shake.position = Vector2(_rng.randf_range(-jit, jit), _rng.randf_range(-jit, jit))
-		a90_mat.set_shader_parameter("red_amt", 0.55 + 0.20 * (1.0 - ratio))
-		a90_mat.set_shader_parameter("static_amt", 0.34 + 0.30 * (1.0 - ratio))
+		var jit := _rng.randf_range(-4.0, 4.0)
+		a90_shake.position = Vector2(jit, jit * 0.5)
 
-		var moved := player_body.position.distance_to(_a90_start_pos) > 0.09
-		var turned := absf(wrapf(_target_yaw - _a90_start_yaw, -PI, PI)) > 0.045 or absf(_target_pitch - _a90_start_pitch) > 0.045
+		var moved := player_body.position.distance_to(_a90_start_pos) > 0.06 or player_body.velocity.length() > 0.15
+		var turned := absf(wrapf(_target_yaw - _a90_start_yaw, -PI, PI)) > 0.038 or absf(_target_pitch - _a90_start_pitch) > 0.038
 		if _a90_grace <= 0.0 and (moved or turned):
+			# Failed reflex test -> instant jumpscare scream, 90 damage!
 			_a90_phase = 0
 			_a90_hits += 1
 			a90_root.visible = false
@@ -773,23 +769,24 @@ func _process_a90(delta: float) -> void:
 			a90_stop.visible = false
 			a90_hint.visible = false
 			a90_bar_holder.visible = false
-			_a90_cooldown = _rng.randf_range(26.0, 44.0)
+			_a90_cooldown = _rng.randf_range(30.0, 60.0)
 			_hp -= 90
 			audio.play_a90_hit()
 			audio.low_hp_mode = (_hp <= 25 and _hp > 0)
-			(_ui["dmg_flash"] as ColorRect).color = Color(0.85, 0.05, 0.05, 0.72)
-			_shake_amount = 0.10
+			(_ui["dmg_flash"] as ColorRect).color = Color(0.92, 0.04, 0.04, 0.82)
+			_shake_amount = 0.22
 			if _hp <= 0:
 				_trigger_death("A-90", "", {"a90_moved": moved, "a90_turned": turned})
 				return
-			_a90_scare_timer = 0.45
+			_a90_scare_timer = 0.50
 			scare_rect.texture = _a90_textures["rage"]
-			scare_rect.modulate = Color(1.0, 1.0, 1.0, 0.95)
+			scare_rect.modulate = Color(1.0, 1.0, 1.0, 1.0)
 			scare_rect.visible = true
-			_show_toast("A-90 нанёс 90 урона! Замирайте полностью!", 2.5)
+			_show_toast("A-90 (Paralysis) нанёс 90 урона! Не двигайтесь вообще!", 2.6)
 		elif _a90_timer <= 0.0:
+			# Successfully survived -> clean despawn
 			_a90_phase = 3
-			_a90_timer = 0.30
+			_a90_timer = 0.18
 			a90_stop_icon.visible = false
 			a90_stop.visible = false
 			a90_hint.visible = false
@@ -798,20 +795,19 @@ func _process_a90(delta: float) -> void:
 			_end_a90_broadcast()
 	elif _a90_phase == 3:
 		_a90_timer -= delta
-		var t2 := clampf(_a90_timer / 0.30, 0.0, 1.0)
+		var t2 := clampf(_a90_timer / 0.18, 0.0, 1.0)
 		a90_root.modulate.a = t2
-		a90_mat.set_shader_parameter("red_amt", t2 * 0.50)
-		a90_mat.set_shader_parameter("static_amt", t2 * 0.30)
-		a90_shake.position = Vector2(_rng.randf_range(-3, 3), _rng.randf_range(-3, 3))
+		a90_mat.set_shader_parameter("red_amt", t2 * 0.35)
+		a90_mat.set_shader_parameter("static_amt", t2 * 0.25)
 		if _a90_timer <= 0.0:
 			_end_a90()
 
 
 func _start_a90_local() -> void:
-	_a90_depth = clampf(float(_highest_opened - 9) / 91.0, 0.0, 1.0)
-	_a90_freeze_dur = lerpf(2.3, 3.4, _a90_depth) + _rng.randf_range(-0.15, 0.15)
+	# Canonical reflex window: 0.95 - 1.1s
+	_a90_freeze_dur = _rng.randf_range(0.95, 1.15)
 	_a90_phase = 1
-	_a90_timer = 0.55
+	_a90_timer = 0.22
 	_a90_grace = 0.0
 	var a90_root: Control = _ui["a90_root"]
 	var a90_rect: TextureRect = _ui["a90_rect"]
@@ -820,16 +816,22 @@ func _start_a90_local() -> void:
 	var a90_hint: Label = _ui["a90_hint"]
 	var a90_bar_holder: Control = _ui["a90_bar_holder"]
 	var a90_mat: ShaderMaterial = _ui["a90_mat"]
+	var a90_shake: Control = _ui["a90_shake"]
 	a90_root.visible = true
 	a90_root.modulate.a = 0.0
 	a90_rect.texture = _a90_textures.get("warn")
+	# Start in peripheral vision (wiki: "often starting in the peripheral vision/corner")
+	var side_x := 220.0 if _rng.randf() < 0.5 else -220.0
+	a90_shake.position = Vector2(side_x, _rng.randf_range(-90.0, 90.0))
 	a90_stop_icon.visible = false
 	a90_stop.visible = false
 	a90_hint.visible = false
 	a90_bar_holder.visible = false
 	a90_mat.set_shader_parameter("red_amt", 0.0)
-	a90_mat.set_shader_parameter("static_amt", 0.0)
+	a90_mat.set_shader_parameter("static_amt", 0.25)
 	audio.play_a90_warn()
+	if _is_entity_authority() and _net != null and _net.is_online():
+		_net.broadcast_entity_event({"k": "a90_spawn", "dur": _a90_freeze_dur}, true)
 	if _is_entity_authority() and _net != null and _net.is_online():
 		_net.broadcast_entity_event({"k": "a90_spawn", "dur": _a90_freeze_dur}, true)
 
