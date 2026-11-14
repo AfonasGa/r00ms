@@ -260,7 +260,7 @@ func _apply_render_quality(q: int, save_cfg: bool = true) -> void:
 			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 			vp.scaling_3d_scale = 0.88
 		if flashlight != null:
-			flashlight.shadow_enabled = true
+			flashlight.shadow_enabled = false
 		if cam != null:
 			cam.far = 65.0
 		if env != null:
@@ -274,7 +274,7 @@ func _apply_render_quality(q: int, save_cfg: bool = true) -> void:
 			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 			vp.scaling_3d_scale = 1.0
 		if flashlight != null:
-			flashlight.shadow_enabled = true
+			flashlight.shadow_enabled = false
 		if cam != null:
 			cam.far = 85.0
 		if env != null:
@@ -372,9 +372,7 @@ func _setup_environment() -> void:
 	world_env.environment = env
 
 	if flashlight != null:
-		flashlight.shadow_bias = 0.08
-		flashlight.shadow_normal_bias = 2.5
-		flashlight.shadow_blur = 1.5
+		flashlight.shadow_enabled = false
 		flashlight.spot_angle_attenuation = 1.4
 		flashlight.spot_attenuation = 1.2
 

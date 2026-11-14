@@ -40,6 +40,9 @@ var _active_modifiers: Dictionary = {
 var _admin_cheats_used := false
 var _admin_god_mode := false
 var _admin_inf_stamina := false
+var _admin_noclip := false
+var _admin_speed_mult := 1.0
+var _admin_inf_battery := false
 var _admin_granted_to_all := false
 var _admin_granted_by_host := false
 var _haste_timer := 60.0
@@ -439,6 +442,17 @@ func _on_remote_entity_event(msg: Dictionary) -> void:
 		if _ui.has("btn_pause_admin"):
 			(_ui["btn_pause_admin"] as Control).visible = true
 		_show_toast("Хост предоставил вам доступ к панели администратора!", 3.0)
+		return
+	if kind == "admin_revive":
+		_hp = 100
+		_is_hiding = false
+		call("_set_state", State.PLAYING)
+		if _ui.has("arch_root"):
+			(_ui["arch_root"] as Control).visible = false
+		if _ui.has("arch_stats_win"):
+			(_ui["arch_stats_win"] as Control).visible = false
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_show_toast("Вы были возрождены администратором!", 3.0)
 		return
 	# If ANY peer gets hit/warped by A-120, despawn it across both host & clients cleanly
 	if kind == "a120_end":

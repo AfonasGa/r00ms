@@ -82,6 +82,9 @@ func _process_doors(delta: float) -> void:
 
 
 func _process_flashlight(delta: float) -> void:
+	if _admin_inf_battery:
+		_std_battery = 150.0
+		_gummy_battery = 100.0
 	if _std_low_flicker_t > 0.0:
 		_std_low_flicker_t = maxf(_std_low_flicker_t - delta, 0.0)
 	if _a60_prime_flicker_gap_t > 0.0:
@@ -252,6 +255,22 @@ func _process_player_movement(delta: float) -> void:
 	if inp.length_squared() > 1.0:
 		inp = inp.normalized()
 
+	if _admin_noclip:
+		var cam_b: Basis = cam.global_transform.basis
+		var forward: Vector3 = -cam_b.z
+		var right: Vector3 = cam_b.x
+		var fly_dir: Vector3 = forward * -inp.y + right * inp.x
+		if Input.is_key_pressed(KEY_SPACE):
+			fly_dir += Vector3.UP
+		if Input.is_key_pressed(KEY_CTRL):
+			fly_dir += Vector3.DOWN
+		var fly_spd: float = 11.0 * _admin_speed_mult
+		if Input.is_key_pressed(KEY_SHIFT):
+			fly_spd *= 2.2
+		player_body.global_position += fly_dir * fly_spd * delta
+		player_body.velocity = Vector3.ZERO
+		return
+
 	var moving := inp.length_squared() > 0.01
 	var wants_sprint := (Input.is_key_pressed(KEY_SHIFT) or _mobile_sprint_held) and moving and (not _exhausted) and (_stamina > 0.01 or _admin_inf_stamina)
 	_is_sprinting = wants_sprint
@@ -290,6 +309,7 @@ func _process_player_movement(delta: float) -> void:
 		speed = 2.8
 	if _is_shaking_gummy:
 		speed *= 0.5
+	speed *= _admin_speed_mult
 	var dir := (player_body.transform.basis * Vector3(inp.x, 0.0, inp.y)).normalized()
 
 	var accel_factor := 1.65 if bool(_active_modifiers.get("wet_floor", false)) else 11.0
@@ -436,7 +456,7 @@ func _process_entities(delta: float) -> void:
 									_a60_path.append(r.exit_pos + Vector3(0.0, 1.55, 0.0))
 						_a60_path.append(next_closed.exit_pos + Vector3(0.0, 1.55, 0.0))
 
-				var rush_speed := 72.0 if _a60_is_prime else 60.0
+				var rush_speed := 140.0 if _a60_is_prime else 60.0
 				if _a60_path_idx < _a60_path.size():
 					var tgt := _a60_path[_a60_path_idx]
 					var to_t := tgt - _a60_node.position
@@ -467,7 +487,7 @@ func _process_entities(delta: float) -> void:
 						"prime": _a60_is_prime,
 					}, false)
 			else:
-				var rush_speed_c := 72.0 if _a60_is_prime else 60.0
+				var rush_speed_c := 140.0 if _a60_is_prime else 60.0
 				_a60_node.position = _a60_node.position.move_toward(_net_a60_tgt, rush_speed_c * delta * 1.25)
 
 			# Table Burn from A-60' (90% chance to deal 20 damage when hiding under a table!)
@@ -543,7 +563,7 @@ func _process_entities(delta: float) -> void:
 							for _c in range(max_chains - 1):
 								if _rng.randf() < lerpf(0.25, 0.72, p_prog):
 									chains += 1
-							var delay := lerpf(5.0, 3.0, p_prog)
+							var delay := 1.8
 							_a60_prime_pending_timer = delay
 							_a60_prime_chains_left = chains - 1
 							_a60_prime_flicker_active = true
@@ -553,10 +573,9 @@ func _process_entities(delta: float) -> void:
 					elif was_prime:
 						if _a60_prime_chains_left > 0:
 							_a60_prime_chains_left -= 1
-							var p_prog2 := clampf(float(_highest_opened - 50) / 850.0, 0.0, 1.0)
 							_a60_prime_flicker_active = true
-							_a60_prime_flicker_gap_t = 0.5
-							_a60_prime_pending_timer = lerpf(3.6, 2.6, p_prog2)
+							_a60_prime_flicker_gap_t = 0.35
+							_a60_prime_pending_timer = 1.8
 							if _net != null and _net.is_online():
 								_net.broadcast_entity_event({"k": "a60p_warn", "gap": 0.5}, true)
 						else:
@@ -740,13 +759,17 @@ func _process_a90(delta: float) -> void:
 		return
 
 	if _a90_phase == 1:
-		# Phase 1 (0.22s): Peripheral warning flash with quiet knock cue
+		# Phase 1 (0.35s): Peripheral warning face with quiet knock cue
 		_a90_timer -= delta
-		var p1 := clampf(1.0 - _a90_timer / 0.22, 0.0, 1.0)
+		var p1 := clampf(1.0 - _a90_timer / 0.35, 0.0, 1.0)
 		a90_root.visible = true
-		a90_root.modulate.a = p1
-		a90_mat.set_shader_parameter("red_amt", p1 * 0.40)
-		a90_mat.set_shader_parameter("static_amt", 0.35)
+		a90_root.modulate.a = p1 * 0.88
+		a90_stop_icon.visible = false
+		a90_stop.visible = false
+		a90_hint.visible = false
+		a90_bar_holder.visible = false
+		a90_mat.set_shader_parameter("red_amt", 0.0)
+		a90_mat.set_shader_parameter("static_amt", 0.25)
 		if _a90_timer <= 0.0:
 			# Snap to center and trigger the authentic STOP sign reflex test!
 			_a90_phase = 2
@@ -762,26 +785,27 @@ func _process_a90(delta: float) -> void:
 			a90_shake.position = Vector2.ZERO
 			a90_rect.texture = _a90_textures.get("pre", _a90_textures.get("warn"))
 			a90_stop_icon.visible = true
-			a90_stop.visible = true
-			a90_hint.visible = true
-			a90_bar_holder.visible = false # Canonical Doors has no progress bar
-			a90_mat.set_shader_parameter("red_amt", 0.70)
-			a90_mat.set_shader_parameter("static_amt", 0.45)
+			a90_stop.visible = false
+			a90_hint.visible = false
+			a90_bar_holder.visible = false
+			a90_mat.set_shader_parameter("red_amt", 0.75)
+			a90_mat.set_shader_parameter("static_amt", 0.50)
 			audio.play_a90_warn()
 	elif _a90_phase == 2:
-		# Phase 2 (0.95 - 1.1s): MUST FREEZE! Any movement fails!
+		# Phase 2 (1.0 - 1.15s): MUST FREEZE! Any key, movement, or mouse turn fails!
 		_a90_timer -= delta
 		if _a90_grace > 0.0:
 			_a90_grace = maxf(_a90_grace - delta, 0.0)
 			_a90_start_pos = player_body.position
 			_a90_start_yaw = _target_yaw
 			_a90_start_pitch = _target_pitch
-		var jit := _rng.randf_range(-4.0, 4.0)
+		var jit := _rng.randf_range(-3.0, 3.0)
 		a90_shake.position = Vector2(jit, jit * 0.5)
 
-		var moved := player_body.position.distance_to(_a90_start_pos) > 0.06 or player_body.velocity.length() > 0.15
-		var turned := absf(wrapf(_target_yaw - _a90_start_yaw, -PI, PI)) > 0.038 or absf(_target_pitch - _a90_start_pitch) > 0.038
-		if _a90_grace <= 0.0 and (moved or turned):
+		var moved := player_body.position.distance_to(_a90_start_pos) > 0.04 or player_body.velocity.length() > 0.10
+		var turned := absf(wrapf(_target_yaw - _a90_start_yaw, -PI, PI)) > 0.024 or absf(_target_pitch - _a90_start_pitch) > 0.024
+		var key_press := Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_SPACE) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+		if _a90_grace <= 0.0 and (moved or turned or key_press):
 			# Failed reflex test -> instant jumpscare scream, 90 damage!
 			_a90_phase = 0
 			_a90_hits += 1
@@ -794,12 +818,12 @@ func _process_a90(delta: float) -> void:
 			_hp -= 90
 			audio.play_a90_hit()
 			audio.low_hp_mode = (_hp <= 25 and _hp > 0)
-			(_ui["dmg_flash"] as ColorRect).color = Color(0.92, 0.04, 0.04, 0.82)
-			_shake_amount = 0.22
+			(_ui["dmg_flash"] as ColorRect).color = Color(0.95, 0.04, 0.04, 0.85)
+			_shake_amount = 0.25
 			if _hp <= 0:
-				_trigger_death("A-90", "", {"a90_moved": moved, "a90_turned": turned})
+				_trigger_death("A-90", "", {"a90_moved": moved, "a90_turned": turned, "key": key_press})
 				return
-			_a90_scare_timer = 0.50
+			_a90_scare_timer = 0.55
 			scare_rect.texture = _a90_textures["rage"]
 			scare_rect.modulate = Color(1.0, 1.0, 1.0, 1.0)
 			scare_rect.visible = true
@@ -807,7 +831,7 @@ func _process_a90(delta: float) -> void:
 		elif _a90_timer <= 0.0:
 			# Successfully survived -> clean despawn
 			_a90_phase = 3
-			_a90_timer = 0.18
+			_a90_timer = 0.22
 			a90_stop_icon.visible = false
 			a90_stop.visible = false
 			a90_hint.visible = false
@@ -816,7 +840,7 @@ func _process_a90(delta: float) -> void:
 			_end_a90_broadcast()
 	elif _a90_phase == 3:
 		_a90_timer -= delta
-		var t2 := clampf(_a90_timer / 0.18, 0.0, 1.0)
+		var t2 := clampf(_a90_timer / 0.22, 0.0, 1.0)
 		a90_root.modulate.a = t2
 		a90_mat.set_shader_parameter("red_amt", t2 * 0.35)
 		a90_mat.set_shader_parameter("static_amt", t2 * 0.25)
@@ -825,10 +849,10 @@ func _process_a90(delta: float) -> void:
 
 
 func _start_a90_local() -> void:
-	# Canonical reflex window: 0.95 - 1.1s
-	_a90_freeze_dur = _rng.randf_range(0.95, 1.15)
+	# Canonical reflex window: 1.0 - 1.15s
+	_a90_freeze_dur = _rng.randf_range(1.0, 1.15)
 	_a90_phase = 1
-	_a90_timer = 0.22
+	_a90_timer = 0.35
 	_a90_grace = 0.0
 	var a90_root: Control = _ui["a90_root"]
 	var a90_rect: TextureRect = _ui["a90_rect"]
@@ -841,9 +865,9 @@ func _start_a90_local() -> void:
 	a90_root.visible = true
 	a90_root.modulate.a = 0.0
 	a90_rect.texture = _a90_textures.get("warn")
-	# Start in peripheral vision (wiki: "often starting in the peripheral vision/corner")
-	var side_x := 220.0 if _rng.randf() < 0.5 else -220.0
-	a90_shake.position = Vector2(side_x, _rng.randf_range(-90.0, 90.0))
+	# Start in peripheral corner (wiki: often in peripheral vision)
+	var side_x := 240.0 if _rng.randf() < 0.5 else -240.0
+	a90_shake.position = Vector2(side_x, _rng.randf_range(-120.0, 120.0))
 	a90_stop_icon.visible = false
 	a90_stop.visible = false
 	a90_hint.visible = false
@@ -851,8 +875,6 @@ func _start_a90_local() -> void:
 	a90_mat.set_shader_parameter("red_amt", 0.0)
 	a90_mat.set_shader_parameter("static_amt", 0.25)
 	audio.play_a90_warn()
-	if _is_entity_authority() and _net != null and _net.is_online():
-		_net.broadcast_entity_event({"k": "a90_spawn", "dur": _a90_freeze_dur}, true)
 	if _is_entity_authority() and _net != null and _net.is_online():
 		_net.broadcast_entity_event({"k": "a90_spawn", "dur": _a90_freeze_dur}, true)
 

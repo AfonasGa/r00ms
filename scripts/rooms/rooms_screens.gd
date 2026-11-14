@@ -360,7 +360,7 @@ void fragment() {
 	a90_shake.add_child(a90_icon_center)
 
 	var a90_stop_icon := TextureRect.new()
-	a90_stop_icon.custom_minimum_size = Vector2(215, 215)
+	a90_stop_icon.custom_minimum_size = Vector2(260, 260)
 	a90_stop_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	a90_stop_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	a90_stop_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -371,17 +371,7 @@ void fragment() {
 
 	var a90_stop := Label.new()
 	a90_stop.set_anchors_preset(Control.PRESET_CENTER)
-	a90_stop.offset_left = -300
-	a90_stop.offset_right = 300
-	a90_stop.offset_top = 100
-	a90_stop.offset_bottom = 158
-	a90_stop.text = "НЕ ДВИГАЙТЕСЬ!"
-	a90_stop.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	a90_stop.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	a90_stop.add_theme_font_size_override("font_size", 42)
-	a90_stop.add_theme_color_override("font_color", Color(1.0, 0.16, 0.14))
-	a90_stop.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
-	a90_stop.add_theme_constant_override("outline_size", 10)
+	a90_stop.text = ""
 	a90_stop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	a90_stop.visible = false
 	a90_root.add_child(a90_stop)
@@ -389,10 +379,6 @@ void fragment() {
 
 	var a90_bar_holder := Control.new()
 	a90_bar_holder.set_anchors_preset(Control.PRESET_CENTER)
-	a90_bar_holder.offset_left = -180
-	a90_bar_holder.offset_right = 180
-	a90_bar_holder.offset_top = 168
-	a90_bar_holder.offset_bottom = 175
 	a90_bar_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	a90_bar_holder.visible = false
 	a90_root.add_child(a90_bar_holder)
@@ -414,17 +400,7 @@ void fragment() {
 
 	var a90_hint := Label.new()
 	a90_hint.set_anchors_preset(Control.PRESET_CENTER)
-	a90_hint.offset_left = -330
-	a90_hint.offset_right = 330
-	a90_hint.offset_top = 185
-	a90_hint.offset_bottom = 213
-	a90_hint.text = "ОТПУСТИ КЛАВИШИ  ·  НЕ ДВИГАЙ МЫШЬЮ  ·  ЖДИ"
-	a90_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	a90_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	a90_hint.add_theme_font_size_override("font_size", 15)
-	a90_hint.add_theme_color_override("font_color", Color(0.95, 0.80, 0.72, 0.90))
-	a90_hint.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
-	a90_hint.add_theme_constant_override("outline_size", 4)
+	a90_hint.text = ""
 	a90_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	a90_hint.visible = false
 	a90_root.add_child(a90_hint)
@@ -1034,6 +1010,135 @@ void fragment() {
 		b.add_theme_color_override("font_color", Color(0.4, 0.85, 1.0) if _admin_inf_stamina else Color(0.85, 0.88, 0.94))
 		_show_toast("Беск. выносливость: %s" % ("ВКЛ" if _admin_inf_stamina else "ВЫКЛ"), 1.8)
 	)
+
+	add_adm_cmd.call("noclip / fly: off", func(b: Button) -> void:
+		_admin_noclip = not _admin_noclip
+		b.text = "noclip / fly: %s" % ("on" if _admin_noclip else "off")
+		b.add_theme_color_override("font_color", Color(0.3, 1.0, 0.8) if _admin_noclip else Color(0.85, 0.88, 0.94))
+		_show_toast("Noclip (Полёт): %s [WASD + Space/Ctrl]" % ("ВКЛ" if _admin_noclip else "ВЫКЛ"), 2.2)
+	)
+
+	add_adm_cmd.call("speed boost: 1.0x", func(b: Button) -> void:
+		if _admin_speed_mult < 1.5:
+			_admin_speed_mult = 2.0
+		elif _admin_speed_mult < 2.5:
+			_admin_speed_mult = 3.0
+		else:
+			_admin_speed_mult = 1.0
+		b.text = "speed boost: %.1fx" % _admin_speed_mult
+		b.add_theme_color_override("font_color", Color(1.0, 0.6, 0.2) if _admin_speed_mult > 1.0 else Color(0.85, 0.88, 0.94))
+		_show_toast("Множитель скорости: %.1fx" % _admin_speed_mult, 1.8)
+	)
+
+	add_adm_cmd.call("infinite battery: off", func(b: Button) -> void:
+		_admin_inf_battery = not _admin_inf_battery
+		b.text = "infinite battery: %s" % ("on" if _admin_inf_battery else "off")
+		b.add_theme_color_override("font_color", Color(0.2, 1.0, 0.5) if _admin_inf_battery else Color(0.85, 0.88, 0.94))
+		_show_toast("Бесконечный заряд: %s" % ("ВКЛ" if _admin_inf_battery else "ВЫКЛ"), 1.8)
+	)
+
+	add_adm_cmd.call("give gummy flashlight", func() -> void:
+		_has_gummy = true
+		_gummy_battery = 100.0
+		call("_update_inventory_ui")
+		_show_toast("Изумрудный фонарик (Gummy) получен!", 2.0)
+	)
+
+	add_adm_cmd.call("+5 batteries", func() -> void:
+		_batteries = mini(_batteries + 5, 8)
+		call("_update_inventory_ui")
+		_show_toast("Батарейки: %d/8" % _batteries, 1.8)
+	)
+
+	add_adm_cmd.call("skip +5 rooms", func() -> void:
+		for i in range(5):
+			var target_r: RoomBuilder.RoomInstance = call("_find_first_closed_door_room")
+			if target_r != null:
+				call("_open_door", target_r, true)
+		var next_r: RoomBuilder.RoomInstance = call("_find_first_closed_door_room")
+		if next_r != null and is_instance_valid(next_r.root):
+			player_body.global_position = next_r.root.global_position + Vector3(0.0, 0.2, 0.0)
+		_show_toast("Пропущено 5 комнат!", 2.0)
+		_open_admin_panel(false)
+		call("_set_state", State.PLAYING)
+	)
+
+	add_adm_cmd.call("skip +10 rooms", func() -> void:
+		for i in range(10):
+			var target_r: RoomBuilder.RoomInstance = call("_find_first_closed_door_room")
+			if target_r != null:
+				call("_open_door", target_r, true)
+		var next_r: RoomBuilder.RoomInstance = call("_find_first_closed_door_room")
+		if next_r != null and is_instance_valid(next_r.root):
+			player_body.global_position = next_r.root.global_position + Vector3(0.0, 0.2, 0.0)
+		_show_toast("Пропущено 10 комнат!", 2.0)
+		_open_admin_panel(false)
+		call("_set_state", State.PLAYING)
+	)
+
+	add_adm_cmd.call("despawn all monsters", func() -> void:
+		_a60_active = false
+		_a60_phase = 0
+		_a60_prime_flicker_active = false
+		_a60_prime_pending_timer = 0.0
+		_a60_prime_chains_left = 0
+		if is_instance_valid(_a60_node):
+			_a60_node.visible = false
+		audio.stop_a60()
+		_a120_active = false
+		_a120_phase = 0
+		if is_instance_valid(_a120_node):
+			_a120_node.visible = false
+		audio.stop_a120()
+		_a90_phase = 0
+		if _ui.has("a90_root"):
+			(_ui["a90_root"] as Control).visible = false
+		if _net != null and _net.is_online():
+			_net.broadcast_entity_event({"k": "a60_end"}, true)
+			_net.broadcast_entity_event({"k": "a120_end"}, true)
+			_net.broadcast_entity_event({"k": "a90_end"}, true)
+		_show_toast("Все монстры деспавнены!", 2.0)
+	, Color(0.4, 1.0, 0.6))
+
+	add_adm_cmd.call("toggle blackout", func() -> void:
+		if not _power_out:
+			call("_trigger_power_outage")
+			_show_toast("Блэкаут активирован!", 2.0)
+		else:
+			_power_out = false
+			for r in _rooms:
+				if r != null and is_instance_valid(r.light):
+					r.light.visible = true
+					r.light.light_energy = 1.0
+			_show_toast("Освещение включено!", 2.0)
+	)
+
+	add_adm_cmd.call("game speed: 1.0x", func(b: Button) -> void:
+		if Engine.time_scale >= 1.9:
+			Engine.time_scale = 0.5
+			b.text = "game speed: 0.5x"
+		elif Engine.time_scale <= 0.6:
+			Engine.time_scale = 1.0
+			b.text = "game speed: 1.0x"
+		else:
+			Engine.time_scale = 2.0
+			b.text = "game speed: 2.0x"
+		_show_toast("Скорость игры: %.1fx" % Engine.time_scale, 1.8)
+	)
+
+	add_adm_cmd.call("revive all peers", func() -> void:
+		_hp = 100
+		_is_hiding = false
+		call("_set_state", State.PLAYING)
+		if _ui.has("arch_root"):
+			(_ui["arch_root"] as Control).visible = false
+		if _ui.has("arch_stats_win"):
+			(_ui["arch_stats_win"] as Control).visible = false
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		if _net != null and _net.is_online():
+			_net.broadcast_entity_event({"k": "admin_revive"}, true)
+		_show_toast("Все игроки возрождены!", 2.5)
+	, Color(0.35, 1.0, 0.55))
 
 	add_adm_cmd.call("spawn a-60", func() -> void:
 		call("_spawn_a60", false)
@@ -2090,10 +2195,16 @@ func _set_menu_view(view: String, fade: bool = true) -> void:
 		create_tween().tween_property(cur, "modulate:a", 1.0, 0.22)
 
 	var is_multi := (view == "multi")
+	var show_mods := (view == "multi" or view == "play")
+
+	if _ui.has("menu_exit"):
+		var exit_btn := _ui["menu_exit"] as Control
+		exit_btn.visible = (view == "main")
+
 	if _ui.has("menu_multi_modifiers"):
 		var mm := _ui["menu_multi_modifiers"] as Control
-		mm.visible = is_multi
-		if is_multi and fade:
+		mm.visible = show_mods
+		if show_mods and fade:
 			mm.modulate.a = 0.0
 			create_tween().tween_property(mm, "modulate:a", 1.0, 0.22)
 	if _ui.has("menu_multi_players"):

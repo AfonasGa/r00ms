@@ -78,7 +78,7 @@ static func create_shared_assets() -> SharedAssets:
 	a.wall_mat.albedo_color = Color(0.92, 0.94, 0.98)
 	a.wall_mat.normal_enabled = true
 	a.wall_mat.normal_texture = wall_nrm
-	a.wall_mat.normal_scale = 0.55
+	a.wall_mat.normal_scale = 0.15
 	a.wall_mat.roughness = 0.84
 	a.wall_mat.uv1_triplanar = true
 	a.wall_mat.uv1_world_triplanar = true

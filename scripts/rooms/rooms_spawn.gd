@@ -47,10 +47,18 @@ func _start_a60_local(target_door_idx: int, is_prime: bool) -> void:
 	if target_r == null:
 		target_r = _rooms[-1]
 	_a60_target_door_idx = target_r.index
-	var start_entry_dir: Vector3 = _rooms[0].in_dir
-	_a60_path.append(_rooms[0].center_pos - start_entry_dir * 260.0 + Vector3(0.0, 1.55, 0.0))
+	var start_room_idx := 0
+	if is_prime:
+		start_room_idx = maxi(0, _a60_target_door_idx - 3)
+	var start_r: RoomBuilder.RoomInstance = _rooms[0]
 	for r in _rooms:
-		if r.index <= _a60_target_door_idx:
+		if r.index == start_room_idx:
+			start_r = r
+			break
+	var start_entry_dir: Vector3 = start_r.in_dir
+	_a60_path.append(start_r.center_pos - start_entry_dir * (260.0 if not is_prime else 20.0) + Vector3(0.0, 1.55, 0.0))
+	for r in _rooms:
+		if r.index >= start_room_idx and r.index <= _a60_target_door_idx:
 			_a60_path.append(r.center_pos + Vector3(0.0, 1.55, 0.0))
 			if r.index < _a60_target_door_idx:
 				_a60_path.append(r.exit_pos + Vector3(0.0, 1.55, 0.0))

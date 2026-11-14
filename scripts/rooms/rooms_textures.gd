@@ -11,15 +11,10 @@ static func make_wall_texture() -> ImageTexture:
 	rng.seed = 40401
 	for y in range(sz):
 		for x in range(sz):
-			var speckle := rng.randf_range(-0.032, 0.032)
-			var base := 0.48 + speckle
-			# Crisp dark skirting baseboard along bottom
-			if y >= 114:
-				base = 0.22 + speckle * 0.5
-			elif y == 113:
-				base = 0.32
-			var v := clampf(base, 0.08, 0.90)
-			img.set_pixel(x, y, Color(v * 0.94, v * 0.97, v * 1.04, 1.0))
+			var speckle := rng.randf_range(-0.022, 0.022)
+			var base := 0.50 + speckle
+			var v := clampf(base, 0.12, 0.88)
+			img.set_pixel(x, y, Color(v * 0.95, v * 0.97, v * 1.02, 1.0))
 	return ImageTexture.create_from_image(img)
 
 
@@ -64,18 +59,16 @@ static func make_metal_grate_texture() -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
-static func make_surface_normal(seed_val: int, bump_strength: float = 2.4, grid_step: int = 0) -> ImageTexture:
+static func make_surface_normal(seed_val: int, bump_strength: float = 1.0, grid_step: int = 0) -> ImageTexture:
 	var sz := 128
 	var img := Image.create(sz, sz, false, Image.FORMAT_RGBA8)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_val
 	for y in range(sz):
 		for x in range(sz):
-			var h := 0.5 + rng.randf_range(-0.18, 0.18)
+			var h := 0.5 + rng.randf_range(-0.06, 0.06)
 			if grid_step > 0 and (x % grid_step == 0 or y % grid_step == 0):
-				h = 0.12
-			elif grid_step == 0 and ((x + y) % 4 == 0):
-				h += 0.08
+				h = 0.25
 			h = clampf(h, 0.0, 1.0)
 			img.set_pixel(x, y, Color(h, h, h, 1.0))
 	img.bump_map_to_normal_map(bump_strength)
