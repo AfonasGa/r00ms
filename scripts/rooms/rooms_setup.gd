@@ -158,7 +158,7 @@ func _pause_summary_text() -> String:
 	var deaths := 0
 	if _architect != null:
 		deaths = _architect.deaths_total
-	return "A-%03d  ·  %02d:%02d  ·  смертей: %d\nПереживите A-60, A-90 и A-120 до комнаты A-200." % [
+	return "A-%03d  ·  %02d:%02d  ·  смертей: %d\nПереживите A-60, A-90 и A-120 до комнаты A-300." % [
 		_highest_opened, mins, secs, deaths
 	]
 

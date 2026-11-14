@@ -5,9 +5,12 @@ func _maybe_spawn_door_entities(room_num: int) -> void:
 		return
 	if _a60_active or _a120_active:
 		return
-	# In the first 20 rooms NO monsters appear. A-120 starts appearing after room A-020!
-	if room_num > 20:
-		var chance_120 := clampf(0.06 + float(room_num - 20) * 0.0007, 0.06, 0.13)
+	# A-120 starts appearing on room 120! Guaranteed on room 120 without breaking the door.
+	if room_num == 120:
+		_spawn_a120()
+		return
+	elif room_num > 120:
+		var chance_120 := clampf(0.07 + float(room_num - 120) * 0.0006, 0.07, 0.14)
 		if _rng.randf() < chance_120:
 			_spawn_a120()
 

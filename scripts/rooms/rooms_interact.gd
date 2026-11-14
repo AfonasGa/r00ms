@@ -138,6 +138,8 @@ func _collider_to_interact_dict(col: Object) -> Dictionary:
 		var r_idx := int(col.get_meta("room_index"))
 		var room_inst: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
 		if room_inst != null and not room_inst.door_opened:
+			if r_idx == 19 and not room_inst.door_broken:
+				return {"type": "door", "room_index": r_idx, "label": "Дверь A-020 (ЗАБЛОКИРОВАНА)"}
 			return {"type": "door", "room_index": r_idx, "label": "Открыть дверь A-%03d" % (r_idx + 1)}
 	elif itype == "locker":
 		var r_idx := int(col.get_meta("room_index"))
@@ -247,7 +249,7 @@ func _find_smart_reticle_target() -> Dictionary:
 					best_tgt = {
 						"type": "door",
 						"room_index": r.index,
-						"label": "Открыть дверь A-%03d" % (r.index + 1),
+						"label": ("Дверь A-020 (ЗАБЛОКИРОВАНА)" if (r.index == 19 and not r.door_broken) else "Открыть дверь A-%03d" % (r.index + 1)),
 						"screen_pos": cam.unproject_position(dwp),
 						"world_pos": dwp,
 					}
@@ -282,6 +284,17 @@ func _open_room_door(r_idx: int, slam: bool = false, from_remote: bool = false) 
 	var r: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
 	if r == null or r.door_opened:
 		return
+
+	# Door 20 (index 19) is locked until A-60 smashes it open!
+	if r_idx == 19 and not r.door_broken:
+		if not from_remote:
+			audio.play_flashlight_click()
+			_shake_amount = maxf(_shake_amount, 0.04)
+			_show_toast("Дверь A-020 заблокирована! Сзади нарастает свирепый рёв A-60... Прячьтесь в шкаф!", 4.0)
+			if _is_entity_authority() and not _a60_active and not _a120_active:
+				call("_spawn_a60", false)
+		return
+
 	var is_slam := slam
 	if not from_remote and not is_slam:
 		var hspd := Vector2(player_body.velocity.x, player_body.velocity.z).length()
@@ -335,10 +348,16 @@ func _advance_door_progress(r_idx: int, allow_spawn: bool) -> void:
 			_spawn_next_room()
 		_update_room_visibility()
 
-		if opened_num == 100:
+		if opened_num == 19:
+			# Player entered room 19 facing locked door A-020. Auto-trigger A-60 after 5s if player doesn't interact first
+			_a60_door20_trigger_timer = 5.0
+		elif opened_num == 100:
 			_checkpoint_room = 100
-			_show_toast("Контрольная точка A-100 достигнута! Половина пути к выходу...", 3.5)
-		elif opened_num >= 200 and not _victory_reached:
+			_show_toast("Контрольная точка A-100 достигнута! Пройдена треть пути к выходу...", 3.5)
+		elif opened_num == 200:
+			_checkpoint_room = 200
+			_show_toast("Контрольная точка A-200 достигнута! Две трети пути к выходу...", 3.5)
+		elif opened_num >= 300 and not _victory_reached:
 			_victory_reached = true
 			_set_state(State.VICTORY)
 			return

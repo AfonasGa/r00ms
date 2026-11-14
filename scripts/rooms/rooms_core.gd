@@ -26,6 +26,7 @@ var _door_hand_timer := 0.0
 var _door_hand_slam := false
 var _battery_inspect_timer := 0.0
 var _held_battery: Node3D = null
+var _a60_door20_trigger_timer := 0.0
 
 # Death transition phases (0=red flash, 1=shrink to center, 2=architect fade & talk) + spectator
 var _death_phase := 0

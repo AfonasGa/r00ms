@@ -1017,7 +1017,7 @@ void fragment() {
 	arch_restart_hint.visible = false
 	arch_restart_hint.gui_input.connect(func(ev: InputEvent) -> void:
 		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
-			_reset_run()
+			call("_reset_run")
 	)
 	arch_overlay.add_child(arch_restart_hint)
 	_ui["arch_restart_hint"] = arch_restart_hint
@@ -1185,6 +1185,8 @@ void fragment() {
 	chat_box.add_child(chat_hint)
 	_ui["chat_hint"] = chat_hint
 
+	call("_build_startup_splash", root)
+
 
 func _make_ring_btn(parent: Control, accent: Color, stroke_w: float, right_off: float, top_off: float, diameter: float, anchor_preset: Control.LayoutPreset = Control.PRESET_BOTTOM_RIGHT, label_txt: String = "") -> RoomsUI.RingButton:
 	var b := RoomsUI.RingButton.new()
@@ -1313,8 +1315,6 @@ func _build_mobile_ui(hud_group: Control) -> void:
 			call("_exit_locker", true)
 	)
 	_ui["m_btn_exit_back"] = btn_exit_back
-
-	call("_build_startup_splash", root)
 
 
 func _build_startup_splash(root: Control) -> void:

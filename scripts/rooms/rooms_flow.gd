@@ -35,6 +35,7 @@ func _reset_run(forced_seed: int = -1) -> void:
 	_run_time = 0.0
 	_victory_reached = false
 	_checkpoint_room = 0
+	_a60_door20_trigger_timer = 0.0
 
 	_is_hiding = false
 	_hiding_room_idx = -1
@@ -287,11 +288,11 @@ func _set_state(new_state: State) -> void:
 			_open_settings_panel(false)
 			title.visible = true
 			desc.visible = true
-			title.text = "A-200"
+			title.text = "A-300"
 			title.add_theme_color_override("font_color", Color(0.78, 0.82, 0.88))
 			var mins := int(_run_time) / 60
 			var secs := int(_run_time) % 60
-			desc.text = "section A cleared in %02d:%02d\ncontinue into the endless run, or exit." % [mins, secs]
+			desc.text = "section A cleared (300 rooms) in %02d:%02d\ncontinue into the endless run, or exit." % [mins, secs]
 			btn_res.text = "continue"
 			btn_res.visible = true
 

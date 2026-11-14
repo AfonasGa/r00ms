@@ -16,11 +16,17 @@ func _physics_process(delta: float) -> void:
 	_process_flashlight(delta)
 
 	if _is_entity_authority():
-		if _a60_prime_pending_timer > 0.0 and not _a60_active and not _a120_active:
+		if _highest_opened == 19 and not _a60_active and not _a120_active:
+			if _a60_door20_trigger_timer > 0.0:
+				_a60_door20_trigger_timer -= delta
+				if _a60_door20_trigger_timer <= 0.0:
+					_show_toast("Дверь A-020 заблокирована! Сзади нарастает свирепый рёв A-60... Прячьтесь в шкаф!", 4.0)
+					_spawn_a60(false)
+		elif _a60_prime_pending_timer > 0.0 and not _a60_active and not _a120_active:
 			_a60_prime_pending_timer -= delta
-			if _a60_prime_pending_timer <= 0.0 and _highest_opened > 20:
+			if _a60_prime_pending_timer <= 0.0 and _highest_opened >= 20:
 				_spawn_a60(true)
-		elif _highest_opened > 20 and not _a60_active and not _a120_active and not _a60_prime_flicker_active:
+		elif _highest_opened >= 20 and not _a60_active and not _a120_active and not _a60_prime_flicker_active:
 			_a60_random_timer -= delta
 			if _a60_random_timer <= 0.0:
 				var max_cd := maxf(24.0, 52.0 - float(_highest_opened) * 0.12)
@@ -454,25 +460,7 @@ func _process_entities(delta: float) -> void:
 				q.exclude = [player_body.get_rid()]
 				var hit := space.intersect_ray(q)
 				if hit.is_empty():
-					if in_entry:
-						# Caught mid-climb: scares you and rips 50 HP, but you still get inside.
-						if _a60_entry_hit_cd <= 0.0:
-							_a60_entry_hit_cd = 1.0
-							a60_scare_rect.visible = true
-							a60_scare_rect.texture = _a60_sprite.texture
-							a60_scare_rect.modulate = Color(0.72, 0.96, 1.0, 0.96) if _a60_is_prime else Color(1.0, 0.92, 0.92, 0.96)
-							var vp_e := get_viewport().get_visible_rect().size
-							a60_scare_rect.position = vp_e * 0.5 - Vector2(270, 270)
-							audio.play_a60_jumpscare(_a60_is_prime)
-							_hp -= 50
-							audio.low_hp_mode = (_hp <= 25 and _hp > 0)
-							(_ui["dmg_flash"] as ColorRect).color = Color(0.35, 0.90, 1.0, 0.70) if _a60_is_prime else Color(0.92, 0.08, 0.08, 0.72)
-							_shake_amount = maxf(_shake_amount, 0.14)
-							_show_toast("%s зацепил вас на входе в укрытие (-50 HP!)" % ("A-60'" if _a60_is_prime else "A-60"), 2.6)
-							if _hp <= 0:
-								_trigger_death("A-60'" if _a60_is_prime else "A-60", "", {"distance": d_player, "locker_entry": true})
-								return
-					elif _a60_is_prime:
+					if _a60_is_prime:
 						if _a60_prime_hit_cd <= 0.0:
 							_a60_prime_hit_cd = 1.2
 							_hp -= 35
