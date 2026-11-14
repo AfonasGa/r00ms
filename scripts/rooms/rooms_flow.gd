@@ -244,7 +244,7 @@ func _set_state(new_state: State) -> void:
 	elif _state == State.SPECTATING:
 		_reset_touch_state()
 		_clear_all_vignettes()
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if _mobile_controls_enabled else Input.MOUSE_MODE_CAPTURED
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		(_ui["modal"] as Control).visible = false
 		(_ui["architect_overlay"] as Control).visible = false
 		if _ui.has("death_iris"):
@@ -393,8 +393,13 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	var u_name := _get_local_username()
 	var seq := _architect.build_death_sequence(cause, _highest_opened, u_name, ctx)
 	_arch_lines.clear()
-	_arch_lines.append("Died cause of %s" % cause)
-	_arch_lines.append("Did it to A-%03d" % _highest_opened)
+	var raw_lines: Array = seq.get("lines", [])
+	if not raw_lines.is_empty():
+		for l in raw_lines:
+			_arch_lines.append(String(l))
+	else:
+		_arch_lines.append("Died cause of %s" % cause)
+		_arch_lines.append("Did it to A-%03d" % _highest_opened)
 
 	_death_hidden = false
 	_arch_line_idx = 0
@@ -405,17 +410,44 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	_arch_prev_text = "hello"
 	_arch_auto_advance_timer = 0.0
 
-	(_ui["arch_title"] as Label).text = String(seq["title"])
-	(_ui["arch_meta"] as Label).text = "ENTITY: %s  |  DEATHS: #%d  |  BEST ROOM: A-%03d" % [
-		cause, int(seq["deaths_total"]), _architect.best_room
-	]
-	(_ui["arch_tip"] as Label).text = "TIP: %s" % String(seq["summary"])
+	# Prepare formatted death report in the cmd.exe statistics window
+	if _ui.has("arch_stats_lbl"):
+		var stats_lbl := _ui["arch_stats_lbl"] as Label
+		stats_lbl.text = "[r00ms death report]\n" \
+			+ "---------------------------------------------------------\n" \
+			+ "Сущность:              %s\n" % cause \
+			+ "Пройдено комнат:       A-%03d\n" % _highest_opened \
+			+ "Всего смертей:         #%d\n" % int(seq["deaths_total"]) \
+			+ "Лучший рекорд:         A-%03d\n\n" % _architect.best_room \
+			+ "Совет по выживанию:\n" \
+			+ "%s\n" % String(seq["summary"]) \
+			+ "---------------------------------------------------------"
+
 	if _ui.has("arch_ascii"):
-		(_ui["arch_ascii"] as RichTextLabel).text = String(seq.get("art_bbcode", ""))
-	(_ui["arch_speech"] as Label).text = ""
+		var ascii_lbl := _ui["arch_ascii"] as RichTextLabel
+		ascii_lbl.text = String(seq.get("art_bbcode", ""))
+		ascii_lbl.visible = true
+
+	if _ui.has("arch_speech"):
+		var sp := _ui["arch_speech"] as Label
+		sp.text = ""
+		sp.visible = true
+
+	if _ui.has("arch_page"):
+		(_ui["arch_page"] as Control).visible = true
+
+	if _ui.has("arch_meta"):
+		var am := _ui["arch_meta"] as Label
+		am.text = "ENTITY: %s  |  DEATHS: #%d  |  BEST ROOM: A-%03d" % [
+			cause, int(seq["deaths_total"]), _architect.best_room
+		]
+		am.visible = true
+
 	if _ui.has("arch_player_lbl"):
 		(_ui["arch_player_lbl"] as Label).text = "<< %s >>" % u_name
-	_set_death_windows_visible(true)
+
+	# Cmd.exe statistics windows start HIDDEN — will open after Architect dialogue completes!
+	_set_death_windows_visible(false)
 	_refresh_architect_controls()
 
 	if cause == "A-90" and _a90_textures.has("rage"):
@@ -526,47 +558,45 @@ func _refresh_architect_controls() -> void:
 	var btn_retry: Button = _ui.get("btn_arch_retry")
 	if btn_next == null:
 		return
-	var can_spectate := (_net != null and _net.is_online() and not _remote_players.is_empty())
+	var is_last_line := (_arch_line_idx + 1 >= total)
 	if _mobile_controls_enabled:
 		if _arch_glitch_step >= 0 and _arch_glitch_step < 12:
 			btn_next.text = "Пропустить >"
-		elif _arch_line_idx + 1 < total:
+		elif not is_last_line:
 			btn_next.text = "Далее >"
-		elif can_spectate:
-			btn_next.text = "Наблюдать >"
 		else:
-			btn_next.text = "Завершить >"
+			btn_next.text = "Статистика >"
 		if btn_retry != null:
 			btn_retry.text = "Заново"
 	else:
 		if _arch_glitch_step >= 0 and _arch_glitch_step < 12:
 			btn_next.text = "> [ПРОБЕЛ / ЛКМ] ПРОПУСТИТЬ"
-		elif _arch_line_idx + 1 < total:
+		elif not is_last_line:
 			btn_next.text = "> [ПРОБЕЛ / ЛКМ] ДАЛЕЕ"
-		elif can_spectate:
-			btn_next.text = "> [ПРОБЕЛ / ЛКМ] НАБЛЮДЕНИЕ"
 		else:
-			btn_next.text = "> [ПРОБЕЛ / ЛКМ] ЗАВЕРШИТЬ"
+			btn_next.text = "> [ПРОБЕЛ / ЛКМ] СТАТИСТИКА"
 		if btn_retry != null:
 			btn_retry.text = "> [R] ЗАНОВО"
 	btn_next.disabled = false
 
 
 func _advance_architect_dialogue() -> void:
-	if _state != State.DEAD or _death_phase < 2 or _arch_lines.is_empty():
+	if _state != State.DEAD:
+		return
+	if _death_phase == 3:
+		# Already in statistics mode; Space/Click can spectate if available
+		if _net != null and _net.is_online() and not _remote_players.is_empty():
+			_start_spectating()
+		return
+	if _death_phase < 2 or _arch_lines.is_empty():
 		return
 	var cur_line := _arch_lines[_arch_line_idx]
 	if _arch_glitch_step < 12:
 		# Immediately finish glitch animation
 		_arch_glitch_step = 12
 		var sp_lbl: Label = _ui["arch_speech"]
-		var reveal := ""
-		for i in range(_arch_line_idx + 1):
-			if i > 0:
-				reveal += "\n"
-			reveal += "> " + String(_arch_lines[i])
-		sp_lbl.text = reveal
-		sp_lbl.add_theme_color_override("font_color", Color(0.88, 0.89, 0.92))
+		sp_lbl.text = cur_line
+		sp_lbl.add_theme_color_override("font_color", Color(0.28, 1.0, 0.42))
 		_arch_prev_text = cur_line
 		_arch_char_pos = float(cur_line.length())
 		_arch_auto_advance_timer = 0.0
@@ -581,9 +611,21 @@ func _advance_architect_dialogue() -> void:
 		_arch_auto_advance_timer = 0.0
 		_refresh_architect_controls()
 	else:
-		if _net != null and _net.is_online() and not _remote_players.is_empty():
-			_start_spectating()
-		_refresh_architect_controls()
+		# Architect dialogue completed -> NOW open the cmd.exe statistics window!
+		_show_death_statistics()
+
+
+func _show_death_statistics() -> void:
+	_death_phase = 3
+	# Hide the fullscreen Architect terminal dialogue & art
+	for k in ["arch_speech", "arch_ascii", "arch_page", "arch_meta", "btn_arch_next", "btn_arch_retry"]:
+		if _ui.has(k):
+			(_ui[k] as Control).visible = false
+	# Show the cmd.exe statistics windows!
+	_set_death_windows_visible(true)
+	var can_spectate := (_net != null and _net.is_online() and not _remote_players.is_empty())
+	if _ui.has("btn_stat_spectate"):
+		(_ui["btn_stat_spectate"] as Control).visible = can_spectate
 
 
 func _start_spectating() -> void:
@@ -915,7 +957,7 @@ func _input(event: InputEvent) -> void:
 		if _chat_open:
 			return
 		if _state == State.SPECTATING:
-			if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+			if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
 				var rel_s := (event as InputEventMouseMotion).relative
 				_spectate_yaw -= rel_s.x * 0.004 * _mouse_sens_mult
 				_spectate_pitch = clampf(_spectate_pitch - rel_s.y * 0.004 * _mouse_sens_mult, -1.15, 0.85)
@@ -937,10 +979,11 @@ func _input(event: InputEvent) -> void:
 		if mb.device == InputEvent.DEVICE_ID_EMULATION:
 			return
 		if _state == State.SPECTATING:
-			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
-				_cycle_spectate_target(1)
-			elif mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
-				_cycle_spectate_target(-1)
+			if mb.pressed:
+				if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+					_cycle_spectate_target(-1)
+				elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+					_cycle_spectate_target(1)
 			return
 		if _chat_open:
 			return
@@ -1254,7 +1297,7 @@ func _process_architect_and_scare(delta: float) -> void:
 	if iris != null and _ui.has("architect_overlay"):
 		iris.visible = (_ui["architect_overlay"] as Control).modulate.a < 0.99
 
-	if _arch_lines.is_empty():
+	if _arch_lines.is_empty() or _death_phase != 2:
 		return
 	var cur_line := _arch_lines[_arch_line_idx]
 	if _arch_glitch_step >= 0 and _arch_glitch_step < 12:
@@ -1265,22 +1308,17 @@ func _process_architect_and_scare(delta: float) -> void:
 			if _arch_glitch_step < 12:
 				var frame_txt := RoomsArchitect.generate_glitch_frame(_arch_prev_text, cur_line, _arch_glitch_step, 12)
 				(_ui["arch_speech"] as Label).text = frame_txt
-				var shade := Color(0.88, 0.89, 0.92) if _arch_glitch_step % 2 == 0 else Color(0.52, 0.56, 0.62)
+				var shade := Color(0.28, 1.0, 0.42) if _arch_glitch_step % 2 == 0 else Color(0.18, 0.72, 0.30)
 				(_ui["arch_speech"] as Label).add_theme_color_override("font_color", shade)
 				audio.play_architect_blip(_rng.randf_range(0.92, 1.10))
 			else:
-				var reveal := ""
-				for i in range(_arch_line_idx + 1):
-					if i > 0:
-						reveal += "\n"
-					reveal += "> " + String(_arch_lines[i])
-				(_ui["arch_speech"] as Label).text = reveal
-				(_ui["arch_speech"] as Label).add_theme_color_override("font_color", Color(0.88, 0.89, 0.92))
+				(_ui["arch_speech"] as Label).text = cur_line
+				(_ui["arch_speech"] as Label).add_theme_color_override("font_color", Color(0.28, 1.0, 0.42))
 				_arch_prev_text = cur_line
 				_arch_char_pos = float(cur_line.length())
 				_arch_auto_advance_timer = 0.0
 				_refresh_architect_controls()
 	elif _arch_glitch_step >= 12:
 		_arch_auto_advance_timer += delta
-		if _arch_line_idx + 1 < _arch_lines.size() and _arch_auto_advance_timer >= 0.45:
+		if _arch_auto_advance_timer >= 6.0:
 			_advance_architect_dialogue()

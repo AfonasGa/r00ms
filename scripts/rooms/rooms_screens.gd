@@ -817,6 +817,7 @@ void fragment() {
 	_ui["btn_settings_back"] = btn_settings_back
 
 	# Death screen: two cmd.exe terminal windows (minimal, mouse unlocked)
+	# Architect Death Void (Full-screen CRT Matrix green terminal + ASCII Art)
 	var arch_overlay := Control.new()
 	arch_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	arch_overlay.visible = false
@@ -825,7 +826,8 @@ void fragment() {
 
 	var arch_bg := ColorRect.new()
 	arch_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	arch_bg.color = Color(0.006, 0.007, 0.010, 0.94)
+	arch_bg.color = Color.WHITE
+	arch_bg.material = RoomsArchitect.make_void_shader_material()
 	arch_bg.mouse_filter = Control.MOUSE_FILTER_STOP
 	arch_bg.gui_input.connect(func(ev: InputEvent):
 		if (ev is InputEventMouseButton and (ev as InputEventMouseButton).pressed and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT) or (ev is InputEventScreenTouch and (ev as InputEventScreenTouch).pressed):
@@ -834,183 +836,43 @@ void fragment() {
 	arch_overlay.add_child(arch_bg)
 	_ui["arch_bg"] = arch_bg
 
-	var arch_noise := ColorRect.new()
-	arch_noise.set_anchors_preset(Control.PRESET_FULL_RECT)
-	arch_noise.material = RoomsUI.make_noise_material(0.42, 1.0)
-	arch_noise.color = Color(1.0, 1.0, 1.0, 1.0)
-	arch_noise.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	arch_overlay.add_child(arch_noise)
-
 	var arch_mono_f := RoomsArchitect.get_terminal_font()
 
-	# --- Big terminal (top-right) ---
-	var big := Panel.new()
-	big.anchor_left = 1.0
-	big.anchor_right = 1.0
-	big.anchor_top = 0.0
-	big.anchor_bottom = 0.0
-	big.offset_left = -716
-	big.offset_right = -48
-	big.offset_top = 68
-	big.offset_bottom = 512
-	big.add_theme_stylebox_override("panel", RoomsUI.make_cmd_window_style())
-	arch_overlay.add_child(big)
-	_ui["arch_window_big"] = big
+	# Top-left Matrix CRT terminal speech text (the old full-screen Architect speech)
+	var arch_speech := Label.new()
+	arch_speech.set_anchors_preset(Control.PRESET_FULL_RECT)
+	arch_speech.anchor_left = 0.05
+	arch_speech.anchor_right = 0.62
+	arch_speech.anchor_top = 0.08
+	arch_speech.anchor_bottom = 0.60
+	arch_speech.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	arch_speech.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	arch_speech.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	arch_speech.add_theme_font_override("font", arch_mono_f)
+	arch_speech.add_theme_font_size_override("font_size", 22)
+	arch_speech.add_theme_color_override("font_color", Color(0.28, 1.0, 0.42))
+	arch_speech.add_theme_color_override("font_outline_color", Color(0.01, 0.16, 0.04, 0.95))
+	arch_speech.add_theme_constant_override("outline_size", 4)
+	arch_speech.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.85))
+	arch_speech.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	arch_overlay.add_child(arch_speech)
+	_ui["arch_speech"] = arch_speech
 
-	var big_bar := ColorRect.new()
-	big_bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	big_bar.offset_left = 1
-	big_bar.offset_right = -1
-	big_bar.offset_top = 1
-	big_bar.offset_bottom = 31
-	big_bar.color = Color(0.13, 0.14, 0.17, 1.0)
-	big_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	big.add_child(big_bar)
-
-	var big_bar_lbl := Label.new()
-	big_bar_lbl.text = "C:\\Windows\\System32\\cmd.exe"
-	big_bar_lbl.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	big_bar_lbl.offset_left = 12
-	big_bar_lbl.offset_top = 1
-	big_bar_lbl.offset_right = -34
-	big_bar_lbl.offset_bottom = 31
-	big_bar_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	big_bar_lbl.add_theme_font_override("font", arch_mono_f)
-	big_bar_lbl.add_theme_font_size_override("font_size", 12)
-	big_bar_lbl.add_theme_color_override("font_color", Color(0.74, 0.77, 0.82, 0.92))
-	big_bar_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	big.add_child(big_bar_lbl)
-
-	var big_close := Label.new()
-	big_close.text = "x"
-	big_close.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	big_close.offset_left = -30
-	big_close.offset_right = -8
-	big_close.offset_top = 1
-	big_close.offset_bottom = 31
-	big_close.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	big_close.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	big_close.add_theme_font_override("font", arch_mono_f)
-	big_close.add_theme_font_size_override("font_size", 13)
-	big_close.add_theme_color_override("font_color", Color(0.66, 0.69, 0.74, 0.9))
-	big_close.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	big.add_child(big_close)
-
-	var big_speech := Label.new()
-	big_speech.set_anchors_preset(Control.PRESET_FULL_RECT)
-	big_speech.offset_left = 24
-	big_speech.offset_right = -30
-	big_speech.offset_top = 54
-	big_speech.offset_bottom = -62
-	big_speech.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	big_speech.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	big_speech.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	big_speech.add_theme_font_override("font", arch_mono_f)
-	big_speech.add_theme_font_size_override("font_size", 19)
-	big_speech.add_theme_color_override("font_color", Color(0.88, 0.89, 0.92))
-	big_speech.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	big.add_child(big_speech)
-	_ui["arch_speech"] = big_speech
-
-	var s_track := ColorRect.new()
-	s_track.anchor_left = 1.0
-	s_track.anchor_right = 1.0
-	s_track.anchor_top = 0.0
-	s_track.anchor_bottom = 1.0
-	s_track.offset_left = -15
-	s_track.offset_right = -7
-	s_track.offset_top = 40
-	s_track.offset_bottom = -52
-	s_track.color = Color(0.10, 0.11, 0.13, 0.95)
-	s_track.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	big.add_child(s_track)
-
-	var s_grab := ColorRect.new()
-	s_grab.anchor_left = 1.0
-	s_grab.anchor_right = 1.0
-	s_grab.offset_left = -15
-	s_grab.offset_right = -7
-	s_grab.offset_top = 46
-	s_grab.offset_bottom = 168
-	s_grab.color = Color(0.56, 0.58, 0.63, 0.92)
-	s_grab.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	big.add_child(s_grab)
-
-	var big_footer := Label.new()
-	big_footer.text = "R to restart  |  M to hide"
-	big_footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	big_footer.offset_left = 24
-	big_footer.offset_right = -30
-	big_footer.offset_top = -52
-	big_footer.offset_bottom = -22
-	big_footer.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	big_footer.add_theme_font_override("font", arch_mono_f)
-	big_footer.add_theme_font_size_override("font_size", 13)
-	big_footer.add_theme_color_override("font_color", Color(0.56, 0.59, 0.64, 0.95))
-	big_footer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	big.add_child(big_footer)
-
-	# --- Small terminal (bottom-center) with player tag ---
-	var small := Panel.new()
-	small.anchor_left = 0.5
-	small.anchor_right = 0.5
-	small.anchor_top = 1.0
-	small.anchor_bottom = 1.0
-	small.offset_left = -222
-	small.offset_right = 222
-	small.offset_top = -200
-	small.offset_bottom = -88
-	small.add_theme_stylebox_override("panel", RoomsUI.make_cmd_window_style())
-	arch_overlay.add_child(small)
-	_ui["arch_window_small"] = small
-
-	var small_bar := ColorRect.new()
-	small_bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	small_bar.offset_left = 1
-	small_bar.offset_right = -1
-	small_bar.offset_top = 1
-	small_bar.offset_bottom = 27
-	small_bar.color = Color(0.13, 0.14, 0.17, 1.0)
-	small_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	small.add_child(small_bar)
-
-	var small_bar_lbl := Label.new()
-	small_bar_lbl.text = "C:\\Windows\\System32\\cmd.exe"
-	small_bar_lbl.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	small_bar_lbl.offset_left = 10
-	small_bar_lbl.offset_top = 1
-	small_bar_lbl.offset_right = -10
-	small_bar_lbl.offset_bottom = 27
-	small_bar_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	small_bar_lbl.add_theme_font_override("font", arch_mono_f)
-	small_bar_lbl.add_theme_font_size_override("font_size", 11)
-	small_bar_lbl.add_theme_color_override("font_color", Color(0.70, 0.73, 0.78, 0.9))
-	small_bar_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	small.add_child(small_bar_lbl)
-
-	var arch_player_lbl := Label.new()
-	arch_player_lbl.text = "<< player >>"
-	arch_player_lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
-	arch_player_lbl.offset_top = 27
-	arch_player_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	arch_player_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	arch_player_lbl.add_theme_font_override("font", arch_mono_f)
-	arch_player_lbl.add_theme_font_size_override("font_size", 17)
-	arch_player_lbl.add_theme_color_override("font_color", Color(0.86, 0.87, 0.90))
-	arch_player_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	small.add_child(arch_player_lbl)
-	_ui["arch_player_lbl"] = arch_player_lbl
-
-	# Legacy architect nodes kept inert so the death flow never breaks
-	var arch_silhouette := TextureRect.new()
-	arch_silhouette.visible = false
-	arch_overlay.add_child(arch_silhouette)
-	_ui["arch_silhouette"] = arch_silhouette
-
+	# Bottom-right ASCII Art Monster Portrait
 	var arch_ascii := RichTextLabel.new()
 	arch_ascii.bbcode_enabled = true
-	arch_ascii.visible = false
+	arch_ascii.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	arch_ascii.offset_left = -460
+	arch_ascii.offset_top = -290
+	arch_ascii.offset_right = -24
+	arch_ascii.offset_bottom = -24
+	arch_ascii.fit_content = false
+	arch_ascii.scroll_active = false
 	arch_ascii.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	arch_ascii.add_theme_font_override("normal_font", arch_mono_f)
+	arch_ascii.add_theme_font_override("mono_font", arch_mono_f)
+	arch_ascii.add_theme_font_size_override("normal_font_size", 13)
+	arch_ascii.add_theme_font_size_override("mono_font_size", 13)
 	arch_overlay.add_child(arch_ascii)
 	_ui["arch_ascii"] = arch_ascii
 
@@ -1020,7 +882,15 @@ void fragment() {
 	_ui["arch_title"] = arch_title
 
 	var arch_meta := Label.new()
-	arch_meta.visible = false
+	arch_meta.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	arch_meta.offset_left = 24
+	arch_meta.offset_top = -78
+	arch_meta.offset_right = 520
+	arch_meta.offset_bottom = -52
+	arch_meta.add_theme_font_override("font", arch_mono_f)
+	arch_meta.add_theme_font_size_override("font_size", 12)
+	arch_meta.add_theme_color_override("font_color", Color(0.35, 0.85, 0.45, 0.75))
+	arch_meta.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	arch_overlay.add_child(arch_meta)
 	_ui["arch_meta"] = arch_meta
 
@@ -1030,7 +900,15 @@ void fragment() {
 	_ui["arch_tip"] = arch_tip
 
 	var arch_page := Label.new()
-	arch_page.visible = false
+	arch_page.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	arch_page.offset_left = -260
+	arch_page.offset_top = 16
+	arch_page.offset_right = -20
+	arch_page.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	arch_page.add_theme_font_override("font", arch_mono_f)
+	arch_page.add_theme_font_size_override("font_size", 12)
+	arch_page.add_theme_color_override("font_color", Color(0.35, 0.85, 0.45, 0.75))
+	arch_page.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	arch_overlay.add_child(arch_page)
 	_ui["arch_page"] = arch_page
 
@@ -1048,6 +926,142 @@ void fragment() {
 
 	call("_style_arch_terminal_buttons")
 
+	# --- Statistics cmd.exe Window (Opens ONLY AFTER the Architect dialogue completes!) ---
+	var big := Panel.new()
+	big.anchor_left = 0.5
+	big.anchor_right = 0.5
+	big.anchor_top = 0.5
+	big.anchor_bottom = 0.5
+	big.offset_left = -340
+	big.offset_right = 340
+	big.offset_top = -220
+	big.offset_bottom = 180
+	big.add_theme_stylebox_override("panel", RoomsUI.make_cmd_window_style())
+	big.visible = false
+	arch_overlay.add_child(big)
+	_ui["arch_window_big"] = big
+
+	var big_bar := ColorRect.new()
+	big_bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	big_bar.offset_left = 1
+	big_bar.offset_right = -1
+	big_bar.offset_top = 1
+	big_bar.offset_bottom = 31
+	big_bar.color = Color(0.13, 0.14, 0.17, 1.0)
+	big_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	big.add_child(big_bar)
+
+	var big_bar_lbl := Label.new()
+	big_bar_lbl.text = "C:\\Windows\\System32\\cmd.exe - [r00ms death report]"
+	big_bar_lbl.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	big_bar_lbl.offset_left = 12
+	big_bar_lbl.offset_top = 1
+	big_bar_lbl.offset_right = -34
+	big_bar_lbl.offset_bottom = 31
+	big_bar_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	big_bar_lbl.add_theme_font_override("font", arch_mono_f)
+	big_bar_lbl.add_theme_font_size_override("font_size", 12)
+	big_bar_lbl.add_theme_color_override("font_color", Color(0.74, 0.77, 0.82, 0.92))
+	big_bar_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	big.add_child(big_bar_lbl)
+
+	var big_stats := Label.new()
+	big_stats.set_anchors_preset(Control.PRESET_FULL_RECT)
+	big_stats.offset_left = 24
+	big_stats.offset_right = -24
+	big_stats.offset_top = 44
+	big_stats.offset_bottom = -58
+	big_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	big_stats.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	big_stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	big_stats.add_theme_font_override("font", arch_mono_f)
+	big_stats.add_theme_font_size_override("font_size", 15)
+	big_stats.add_theme_color_override("font_color", Color(0.88, 0.90, 0.94))
+	big_stats.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	big.add_child(big_stats)
+	_ui["arch_stats_lbl"] = big_stats
+
+	var big_footer := HBoxContainer.new()
+	big_footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	big_footer.offset_left = 24
+	big_footer.offset_right = -24
+	big_footer.offset_top = -48
+	big_footer.offset_bottom = -14
+	big_footer.add_theme_constant_override("separation", 12)
+	big.add_child(big_footer)
+
+	var btn_stat_restart := Button.new()
+	btn_stat_restart.text = "[R] ЗАНОВО"
+	btn_stat_restart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	RoomsUI.style_button(btn_stat_restart, Color(1.0, 0.75, 0.35), 13)
+	btn_stat_restart.pressed.connect(Callable(self, "_reset_run"))
+	big_footer.add_child(btn_stat_restart)
+	_ui["btn_stat_restart"] = btn_stat_restart
+
+	var btn_stat_spectate := Button.new()
+	btn_stat_spectate.text = "[НАБЛЮДЕНИЕ]"
+	btn_stat_spectate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	RoomsUI.style_button(btn_stat_spectate, Color(0.45, 0.85, 1.0), 13)
+	btn_stat_spectate.pressed.connect(Callable(self, "_start_spectating"))
+	big_footer.add_child(btn_stat_spectate)
+	_ui["btn_stat_spectate"] = btn_stat_spectate
+
+	# --- Small terminal (bottom-center) with player tag ---
+	var small := Panel.new()
+	small.anchor_left = 0.5
+	small.anchor_right = 0.5
+	small.anchor_top = 1.0
+	small.anchor_bottom = 1.0
+	small.offset_left = -222
+	small.offset_right = 222
+	small.offset_top = -140
+	small.offset_bottom = -50
+	small.add_theme_stylebox_override("panel", RoomsUI.make_cmd_window_style())
+	small.visible = false
+	arch_overlay.add_child(small)
+	_ui["arch_window_small"] = small
+
+	var small_bar := ColorRect.new()
+	small_bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	small_bar.offset_left = 1
+	small_bar.offset_right = -1
+	small_bar.offset_top = 1
+	small_bar.offset_bottom = 25
+	small_bar.color = Color(0.13, 0.14, 0.17, 1.0)
+	small_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	small.add_child(small_bar)
+
+	var small_bar_lbl := Label.new()
+	small_bar_lbl.text = "C:\\Windows\\System32\\cmd.exe"
+	small_bar_lbl.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	small_bar_lbl.offset_left = 10
+	small_bar_lbl.offset_top = 1
+	small_bar_lbl.offset_right = -10
+	small_bar_lbl.offset_bottom = 25
+	small_bar_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	small_bar_lbl.add_theme_font_override("font", arch_mono_f)
+	small_bar_lbl.add_theme_font_size_override("font_size", 11)
+	small_bar_lbl.add_theme_color_override("font_color", Color(0.70, 0.73, 0.78, 0.9))
+	small_bar_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	small.add_child(small_bar_lbl)
+
+	var arch_player_lbl := Label.new()
+	arch_player_lbl.text = "<< player >>"
+	arch_player_lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	arch_player_lbl.offset_top = 25
+	arch_player_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	arch_player_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	arch_player_lbl.add_theme_font_override("font", arch_mono_f)
+	arch_player_lbl.add_theme_font_size_override("font_size", 15)
+	arch_player_lbl.add_theme_color_override("font_color", Color(0.86, 0.87, 0.90))
+	arch_player_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	small.add_child(arch_player_lbl)
+	_ui["arch_player_lbl"] = arch_player_lbl
+
+	var arch_silhouette := TextureRect.new()
+	arch_silhouette.visible = false
+	arch_overlay.add_child(arch_silhouette)
+	_ui["arch_silhouette"] = arch_silhouette
 
 	# Online Spectator Bar (shown after Architect when observing teammates)
 	var spec_bar := Control.new()
@@ -1078,8 +1092,8 @@ void fragment() {
 	btn_spec_prev.offset_right = -70
 	btn_spec_prev.offset_top = -36
 	btn_spec_prev.offset_bottom = 0
-	btn_spec_prev.text = "< Игрок"
-	RoomsUI.style_button(btn_spec_prev, Color(0.45, 0.85, 1.0), 13)
+	btn_spec_prev.text = "<< Назад"
+	RoomsUI.style_button(btn_spec_prev, Color(0.45, 0.85, 1.0), 14)
 	btn_spec_prev.pressed.connect(func() -> void: call("_cycle_spectate_target", -1))
 	spec_bar.add_child(btn_spec_prev)
 
@@ -1089,8 +1103,8 @@ void fragment() {
 	btn_spec_next.offset_right = 80
 	btn_spec_next.offset_top = -36
 	btn_spec_next.offset_bottom = 0
-	btn_spec_next.text = "Игрок >"
-	RoomsUI.style_button(btn_spec_next, Color(0.45, 0.85, 1.0), 13)
+	btn_spec_next.text = "Вперёд >>"
+	RoomsUI.style_button(btn_spec_next, Color(0.45, 0.85, 1.0), 14)
 	btn_spec_next.pressed.connect(func() -> void: call("_cycle_spectate_target", 1))
 	spec_bar.add_child(btn_spec_next)
 
@@ -1493,14 +1507,40 @@ func _build_main_menu(root: Control) -> void:
 
 	make_item.call(v_multi, "invite steam friends", func() -> void: _menu_steam_invite(), 30)
 	make_item.call(v_multi, "quick game", func() -> void: _menu_quick_multiplayer(), 30)
-	make_item.call(v_multi, "local network (host)", func() -> void: _menu_begin_game(true, "lan"), 30)
+	make_item.call(v_multi, "local network (host)", func() -> void:
+		_menu_begin_game(true, "lan")
+		var host_ip := _get_local_ip()
+		var host_port := _net.ENET_PORT if _net != null else 27480
+		_show_toast("Сервер запущен! Друг вводит адрес: %s:%d" % [host_ip, host_port], 5.0)
+	, 30)
+
+	# LAN IP display & Copy button
+	var my_ip := _get_local_ip()
+	var my_port := _net.ENET_PORT if _net != null else 27480
+	var lan_info_lbl := Label.new()
+	lan_info_lbl.text = "Ваш IP: %s:%d" % [my_ip, my_port]
+	lan_info_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lan_info_lbl.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
+	lan_info_lbl.add_theme_font_size_override("font_size", 14)
+	lan_info_lbl.add_theme_color_override("font_color", Color(0.45, 0.85, 1.0, 0.95))
+	v_multi.add_child(lan_info_lbl)
+
+	var btn_copy_ip := Button.new()
+	btn_copy_ip.text = "скопировать свой IP"
+	btn_copy_ip.custom_minimum_size = Vector2(0, 32)
+	RoomsUI.style_link_button(btn_copy_ip, 14, HORIZONTAL_ALIGNMENT_CENTER)
+	btn_copy_ip.pressed.connect(func() -> void:
+		DisplayServer.clipboard_set("%s:%d" % [_get_local_ip(), _net.ENET_PORT if _net != null else 27480])
+		_show_toast("IP скопирован в буфер обмена!", 2.5)
+	)
+	v_multi.add_child(btn_copy_ip)
 
 	# LAN join row: IP field + button
 	var lan_join_row := HBoxContainer.new()
 	lan_join_row.add_theme_constant_override("separation", 6)
 	v_multi.add_child(lan_join_row)
 	var lan_ip_edit := LineEdit.new()
-	lan_ip_edit.placeholder_text = _get_local_ip() + ":" + str(_net.ENET_PORT if _net != null else 27480)
+	lan_ip_edit.placeholder_text = "%s:%d" % [my_ip, my_port]
 	lan_ip_edit.text = ""
 	lan_ip_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lan_ip_edit.custom_minimum_size = Vector2(0, 44)
@@ -1736,10 +1776,28 @@ func _menu_quick_multiplayer() -> void:
 	_menu_begin_game(true, "")
 
 
-## Returns the LAN IP of this machine (first non-loopback IPv4 address)
+## Returns the LAN IP of this machine, prioritizing real adapters (Wi-Fi/Ethernet) and filtering out virtual ones.
 func _get_local_ip() -> String:
+	var fallback := "127.0.0.1"
+	for iface in IP.get_local_interfaces():
+		var friendly: String = String(iface.get("friendly", "")).to_lower()
+		if "vmware" in friendly or "virtual" in friendly or "vbox" in friendly or "bluetooth" in friendly or "loopback" in friendly:
+			continue
+		var addrs: Array = iface.get("addresses", [])
+		for a in addrs:
+			var addr := String(a)
+			if addr.contains(".") and not addr.begins_with("127.") and not addr.begins_with("169.254."):
+				if "wi-fi" in friendly or "беспроводная" in friendly or "ethernet" in friendly or "сеть" in friendly:
+					return addr
+				if fallback == "127.0.0.1":
+					fallback = addr
+	if fallback != "127.0.0.1":
+		return fallback
 	for addr in IP.get_local_addresses():
-		if addr.begins_with("192.") or addr.begins_with("10.") or addr.begins_with("172."):
+		if addr.begins_with("192.168."):
+			return addr
+	for addr in IP.get_local_addresses():
+		if addr.begins_with("10.") or addr.begins_with("172.") or addr.begins_with("26.") or addr.begins_with("25."):
 			return addr
 	return "127.0.0.1"
 

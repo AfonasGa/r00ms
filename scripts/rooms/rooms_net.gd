@@ -1014,10 +1014,28 @@ func _on_enet_connection_failed() -> void:
 	emit_signal("status_changed", "ENet: не удалось подключиться")
 
 
-## Returns the LAN IP of this machine (first non-loopback IPv4 address)
+## Returns the LAN IP of this machine, prioritizing real adapters (Wi-Fi/Ethernet) and filtering out virtual ones.
 func _get_local_lan_ip() -> String:
+	var fallback := "127.0.0.1"
+	for iface in IP.get_local_interfaces():
+		var friendly: String = String(iface.get("friendly", "")).to_lower()
+		if "vmware" in friendly or "virtual" in friendly or "vbox" in friendly or "bluetooth" in friendly or "loopback" in friendly:
+			continue
+		var addrs: Array = iface.get("addresses", [])
+		for a in addrs:
+			var addr := String(a)
+			if addr.contains(".") and not addr.begins_with("127.") and not addr.begins_with("169.254."):
+				if "wi-fi" in friendly or "беспроводная" in friendly or "ethernet" in friendly or "сеть" in friendly:
+					return addr
+				if fallback == "127.0.0.1":
+					fallback = addr
+	if fallback != "127.0.0.1":
+		return fallback
 	for addr in IP.get_local_addresses():
-		if addr.begins_with("192.") or addr.begins_with("10.") or addr.begins_with("172."):
+		if addr.begins_with("192.168."):
+			return addr
+	for addr in IP.get_local_addresses():
+		if addr.begins_with("10.") or addr.begins_with("172.") or addr.begins_with("26.") or addr.begins_with("25."):
 			return addr
 	return "127.0.0.1"
 
