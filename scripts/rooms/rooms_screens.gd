@@ -329,10 +329,10 @@ void fragment() {
 
 	var a90_sign_box := Control.new()
 	a90_sign_box.set_anchors_preset(Control.PRESET_CENTER)
-	a90_sign_box.offset_left = -175
-	a90_sign_box.offset_top = -258
-	a90_sign_box.offset_right = 175
-	a90_sign_box.offset_bottom = 92
+	a90_sign_box.offset_left = -90
+	a90_sign_box.offset_top = -90
+	a90_sign_box.offset_right = 90
+	a90_sign_box.offset_bottom = 90
 	a90_sign_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	a90_root.add_child(a90_sign_box)
 	_ui["a90_sign_box"] = a90_sign_box
@@ -360,7 +360,7 @@ void fragment() {
 	a90_shake.add_child(a90_icon_center)
 
 	var a90_stop_icon := TextureRect.new()
-	a90_stop_icon.custom_minimum_size = Vector2(260, 260)
+	a90_stop_icon.custom_minimum_size = Vector2(180, 180)
 	a90_stop_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	a90_stop_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	a90_stop_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -406,13 +406,13 @@ void fragment() {
 	a90_root.add_child(a90_hint)
 	_ui["a90_hint"] = a90_hint
 
-	# A-90 hit flash (jumpscare face)
+	# A-90 hit flash (jumpscare face - same compact size)
 	var a90_scare_rect := TextureRect.new()
 	a90_scare_rect.set_anchors_preset(Control.PRESET_CENTER)
-	a90_scare_rect.offset_left = -290
-	a90_scare_rect.offset_top = -290
-	a90_scare_rect.offset_right = 290
-	a90_scare_rect.offset_bottom = 290
+	a90_scare_rect.offset_left = -90
+	a90_scare_rect.offset_top = -90
+	a90_scare_rect.offset_right = 90
+	a90_scare_rect.offset_bottom = 90
 	a90_scare_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	a90_scare_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	a90_scare_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
@@ -997,28 +997,31 @@ void fragment() {
 		_show_toast("Здоровье: %d/100" % _hp, 1.8)
 	)
 
-	add_adm_cmd.call("god mode: off", func(b: Button) -> void:
+	var btn_god: Button = add_adm_cmd.call("god mode: off", func(b: Button) -> void:
 		_admin_god_mode = not _admin_god_mode
 		b.text = "god mode: %s" % ("on" if _admin_god_mode else "off")
 		b.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3) if _admin_god_mode else Color(0.85, 0.88, 0.94))
 		_show_toast("Бог-режим: %s" % ("ВКЛ" if _admin_god_mode else "ВЫКЛ"), 1.8)
 	)
+	_ui["adm_btn_god"] = btn_god
 
-	add_adm_cmd.call("infinite stamina: off", func(b: Button) -> void:
+	var btn_stam: Button = add_adm_cmd.call("infinite stamina: off", func(b: Button) -> void:
 		_admin_inf_stamina = not _admin_inf_stamina
 		b.text = "infinite stamina: %s" % ("on" if _admin_inf_stamina else "off")
 		b.add_theme_color_override("font_color", Color(0.4, 0.85, 1.0) if _admin_inf_stamina else Color(0.85, 0.88, 0.94))
 		_show_toast("Беск. выносливость: %s" % ("ВКЛ" if _admin_inf_stamina else "ВЫКЛ"), 1.8)
 	)
+	_ui["adm_btn_stamina"] = btn_stam
 
-	add_adm_cmd.call("noclip / fly: off", func(b: Button) -> void:
+	var btn_noclip: Button = add_adm_cmd.call("noclip / fly: off", func(b: Button) -> void:
 		_admin_noclip = not _admin_noclip
 		b.text = "noclip / fly: %s" % ("on" if _admin_noclip else "off")
 		b.add_theme_color_override("font_color", Color(0.3, 1.0, 0.8) if _admin_noclip else Color(0.85, 0.88, 0.94))
 		_show_toast("Noclip (Полёт): %s [WASD + Space/Ctrl]" % ("ВКЛ" if _admin_noclip else "ВЫКЛ"), 2.2)
 	)
+	_ui["adm_btn_noclip"] = btn_noclip
 
-	add_adm_cmd.call("speed boost: 1.0x", func(b: Button) -> void:
+	var btn_speed: Button = add_adm_cmd.call("speed boost: 1.0x", func(b: Button) -> void:
 		if _admin_speed_mult < 1.5:
 			_admin_speed_mult = 2.0
 		elif _admin_speed_mult < 2.5:
@@ -1029,13 +1032,15 @@ void fragment() {
 		b.add_theme_color_override("font_color", Color(1.0, 0.6, 0.2) if _admin_speed_mult > 1.0 else Color(0.85, 0.88, 0.94))
 		_show_toast("Множитель скорости: %.1fx" % _admin_speed_mult, 1.8)
 	)
+	_ui["adm_btn_speed"] = btn_speed
 
-	add_adm_cmd.call("infinite battery: off", func(b: Button) -> void:
+	var btn_bat: Button = add_adm_cmd.call("infinite battery: off", func(b: Button) -> void:
 		_admin_inf_battery = not _admin_inf_battery
 		b.text = "infinite battery: %s" % ("on" if _admin_inf_battery else "off")
 		b.add_theme_color_override("font_color", Color(0.2, 1.0, 0.5) if _admin_inf_battery else Color(0.85, 0.88, 0.94))
 		_show_toast("Бесконечный заряд: %s" % ("ВКЛ" if _admin_inf_battery else "ВЫКЛ"), 1.8)
 	)
+	_ui["adm_btn_battery"] = btn_bat
 
 	add_adm_cmd.call("give gummy flashlight", func() -> void:
 		_has_gummy = true
@@ -1113,7 +1118,7 @@ void fragment() {
 			_show_toast("Освещение включено!", 2.0)
 	)
 
-	add_adm_cmd.call("game speed: 1.0x", func(b: Button) -> void:
+	var btn_time: Button = add_adm_cmd.call("game speed: 1.0x", func(b: Button) -> void:
 		if Engine.time_scale >= 1.9:
 			Engine.time_scale = 0.5
 			b.text = "game speed: 0.5x"
@@ -1125,6 +1130,7 @@ void fragment() {
 			b.text = "game speed: 2.0x"
 		_show_toast("Скорость игры: %.1fx" % Engine.time_scale, 1.8)
 	)
+	_ui["adm_btn_timescale"] = btn_time
 
 	add_adm_cmd.call("revive all peers", func() -> void:
 		_hp = 100
@@ -2105,6 +2111,8 @@ func _build_main_menu(root: Control) -> void:
 			var cur_v: bool = bool(_active_modifiers.get(m_key, false))
 			_active_modifiers[m_key] = not cur_v
 			update_btn_text.call()
+			if m_key == "admin_panel" and cur_v:
+				_reset_admin_cheats()
 			if _net != null and _net.is_online() and _net.is_host:
 				_net.broadcast_entity_event({"k": "mods_update", "mods": _active_modifiers})
 			var status_str := "ВКЛЮЧЕН" if not cur_v else "ВЫКЛЮЧЕН"
@@ -2429,6 +2437,8 @@ func _menu_steam_invite() -> void:
 
 
 func _menu_begin_game(multiplayer: bool = false, mode: String = "") -> void:
+	if not bool(_active_modifiers.get("admin_panel", false)):
+		_reset_admin_cheats()
 	if multiplayer and _net != null:
 		if mode == "lan":
 			_net.host_enet(int(_rng.seed))
@@ -2495,3 +2505,43 @@ func _update_pause_modifiers_ui() -> void:
 			lbl.text = "• none (default)"
 		else:
 			lbl.text = "\n".join(lines)
+
+
+func _update_admin_buttons_ui() -> void:
+	if _ui.has("adm_btn_god"):
+		var b := _ui["adm_btn_god"] as Button
+		b.text = "god mode: %s" % ("on" if _admin_god_mode else "off")
+		b.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3) if _admin_god_mode else Color(0.85, 0.88, 0.94))
+	if _ui.has("adm_btn_stamina"):
+		var b := _ui["adm_btn_stamina"] as Button
+		b.text = "infinite stamina: %s" % ("on" if _admin_inf_stamina else "off")
+		b.add_theme_color_override("font_color", Color(0.4, 0.85, 1.0) if _admin_inf_stamina else Color(0.85, 0.88, 0.94))
+	if _ui.has("adm_btn_noclip"):
+		var b := _ui["adm_btn_noclip"] as Button
+		b.text = "noclip / fly: %s" % ("on" if _admin_noclip else "off")
+		b.add_theme_color_override("font_color", Color(0.3, 1.0, 0.8) if _admin_noclip else Color(0.85, 0.88, 0.94))
+	if _ui.has("adm_btn_speed"):
+		var b := _ui["adm_btn_speed"] as Button
+		b.text = "speed boost: %.1fx" % _admin_speed_mult
+		b.add_theme_color_override("font_color", Color(1.0, 0.6, 0.2) if _admin_speed_mult > 1.0 else Color(0.85, 0.88, 0.94))
+	if _ui.has("adm_btn_battery"):
+		var b := _ui["adm_btn_battery"] as Button
+		b.text = "infinite battery: %s" % ("on" if _admin_inf_battery else "off")
+		b.add_theme_color_override("font_color", Color(0.2, 1.0, 0.5) if _admin_inf_battery else Color(0.85, 0.88, 0.94))
+	if _ui.has("adm_btn_timescale"):
+		var b := _ui["adm_btn_timescale"] as Button
+		b.text = "game speed: %.1fx" % Engine.time_scale
+		b.add_theme_color_override("font_color", Color(0.85, 0.88, 0.94))
+
+
+func _reset_admin_cheats() -> void:
+	_admin_god_mode = false
+	_admin_inf_stamina = false
+	_admin_noclip = false
+	_admin_speed_mult = 1.0
+	_admin_inf_battery = false
+	_admin_cheats_used = false
+	Engine.time_scale = 1.0
+	if is_instance_valid(player_col):
+		player_col.disabled = false
+	_update_admin_buttons_ui()

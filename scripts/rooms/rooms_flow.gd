@@ -58,6 +58,7 @@ func _reset_run(forced_seed: int = -1) -> void:
 	_door50_flicker_active = false
 	_door50_flicker_t = 0.0
 	_admin_cheats_used = false
+	call("_reset_admin_cheats")
 	_light_on = true
 	_active_tool = 0
 	_has_gummy = false
@@ -263,6 +264,7 @@ func _set_state(new_state: State) -> void:
 	elif _state == State.MENU:
 		_reset_touch_state()
 		_clear_all_vignettes()
+		call("_reset_admin_cheats")
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		(_ui["modal"] as Control).visible = false
 		(_ui["architect_overlay"] as Control).visible = false
@@ -342,7 +344,7 @@ func _clear_all_vignettes() -> void:
 func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}) -> void:
 	if _state != State.PLAYING:
 		return
-	if _admin_god_mode:
+	if _admin_god_mode and _is_admin_active():
 		_hp = 100
 		_show_toast("Бог-режим защитил от гибели (%s)!" % cause, 2.5)
 		return

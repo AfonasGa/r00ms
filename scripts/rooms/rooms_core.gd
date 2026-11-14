@@ -45,6 +45,13 @@ var _admin_speed_mult := 1.0
 var _admin_inf_battery := false
 var _admin_granted_to_all := false
 var _admin_granted_by_host := false
+
+func _is_admin_active() -> bool:
+	if not bool(_active_modifiers.get("admin_panel", false)):
+		return false
+	if has_method("_can_use_admin"):
+		return bool(call("_can_use_admin"))
+	return true
 var _haste_timer := 60.0
 var _door50_flicker_active := false
 var _door50_flicker_t := 0.0

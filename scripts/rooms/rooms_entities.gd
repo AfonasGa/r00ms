@@ -82,7 +82,7 @@ func _process_doors(delta: float) -> void:
 
 
 func _process_flashlight(delta: float) -> void:
-	if _admin_inf_battery:
+	if _admin_inf_battery and _is_admin_active():
 		_std_battery = 150.0
 		_gummy_battery = 100.0
 	if _std_low_flicker_t > 0.0:
@@ -255,7 +255,7 @@ func _process_player_movement(delta: float) -> void:
 	if inp.length_squared() > 1.0:
 		inp = inp.normalized()
 
-	if _admin_noclip:
+	if _admin_noclip and _is_admin_active():
 		var cam_b: Basis = cam.global_transform.basis
 		var forward: Vector3 = -cam_b.z
 		var right: Vector3 = cam_b.x
@@ -271,10 +271,14 @@ func _process_player_movement(delta: float) -> void:
 		player_body.velocity = Vector3.ZERO
 		return
 
+	if _admin_god_mode and _is_admin_active():
+		_hp = 100
+
 	var moving := inp.length_squared() > 0.01
-	var wants_sprint := (Input.is_key_pressed(KEY_SHIFT) or _mobile_sprint_held) and moving and (not _exhausted) and (_stamina > 0.01 or _admin_inf_stamina)
+	var inf_stam: bool = _admin_inf_stamina and _is_admin_active()
+	var wants_sprint := (Input.is_key_pressed(KEY_SHIFT) or _mobile_sprint_held) and moving and (not _exhausted) and (_stamina > 0.01 or inf_stam)
 	_is_sprinting = wants_sprint
-	if _admin_inf_stamina:
+	if inf_stam:
 		_stamina = 1.0
 		_exhausted = false
 	elif wants_sprint:
@@ -309,7 +313,8 @@ func _process_player_movement(delta: float) -> void:
 		speed = 2.8
 	if _is_shaking_gummy:
 		speed *= 0.5
-	speed *= _admin_speed_mult
+	if _is_admin_active():
+		speed *= _admin_speed_mult
 	var dir := (player_body.transform.basis * Vector3(inp.x, 0.0, inp.y)).normalized()
 
 	var accel_factor := 1.65 if bool(_active_modifiers.get("wet_floor", false)) else 11.0
