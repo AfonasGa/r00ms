@@ -3,40 +3,46 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>r00ms — Escape the Infinite Void</title>
+  <title>r00ms — Escape the Infinite Void (v2.0.2)</title>
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800;900&family=JetBrains+Mono:wght@300;400;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,600;0,700;0,800;1,400&family=Montserrat:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   
   <style>
     :root {
-      --bg: #050507;
-      --card-bg: rgba(18, 18, 22, 0.75);
-      --card-border: rgba(255, 255, 255, 0.1);
-      --card-border-hover: rgba(255, 255, 255, 0.35);
+      --bg: #07080c;
+      --bg-panel: rgba(13, 15, 22, 0.88);
+      --border: rgba(255, 255, 255, 0.12);
+      --border-hover: rgba(255, 255, 255, 0.35);
       
-      --white: #ffffff;
-      --gray-100: #e5e5eb;
-      --gray-200: #cccccc;
-      --gray-400: #888896;
-      --gray-700: #2b2b36;
-      --gray-800: #16161c;
-      --gray-900: #0a0a0e;
-      --red: #ff2b2b;
-      --red-dim: rgba(255, 43, 43, 0.15);
-      --red-border: rgba(255, 43, 43, 0.4);
+      --text: #e6e8ee;
+      --text-muted: #7e8392;
+      --text-dim: #4d5263;
+      
+      --crimson: #ff2a2a;
+      --crimson-dim: rgba(255, 42, 42, 0.12);
+      --crimson-border: rgba(255, 42, 42, 0.35);
+      
+      --gold: #d4a754;
+      --gold-bg: rgba(212, 167, 84, 0.12);
+      --gold-border: rgba(212, 167, 84, 0.45);
 
+      --emerald: #10b981;
+      --emerald-dim: rgba(16, 185, 129, 0.15);
+
+      --terminal-bg: #030406;
+      --terminal-border: #1a1e28;
+      
+      --sans: 'Montserrat', -apple-system, sans-serif;
       --mono: 'JetBrains Mono', monospace;
-      --display: 'Cinzel', serif;
-      --sans: 'Space Grotesk', sans-serif;
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      cursor: none !important; /* Hide native cursor */
+      cursor: none !important;
     }
 
     html {
@@ -45,7 +51,7 @@
 
     body {
       background-color: var(--bg);
-      color: var(--gray-100);
+      color: var(--text);
       font-family: var(--sans);
       min-height: 100vh;
       overflow-x: hidden;
@@ -53,7 +59,7 @@
       position: relative;
     }
 
-    /* CUSTOM IN-GAME CROSSHAIR CURSOR */
+    /* IN-GAME CROSSHAIR CURSOR */
     #cursor-dot {
       position: fixed;
       top: 0;
@@ -72,64 +78,66 @@
       position: fixed;
       top: 0;
       left: 0;
-      width: 28px;
-      height: 28px;
-      border: 2px solid rgba(255, 255, 255, 0.75);
+      width: 26px;
+      height: 26px;
+      border: 1.5px solid rgba(255, 255, 255, 0.85);
       border-radius: 50%;
       pointer-events: none;
       z-index: 9999;
       transform: translate(-50%, -50%);
-      transition: width 0.22s cubic-bezier(0.165, 0.84, 0.44, 1),
-                  height 0.22s cubic-bezier(0.165, 0.84, 0.44, 1),
-                  border-color 0.22s,
-                  background-color 0.22s,
+      transition: width 0.2s cubic-bezier(0.165, 0.84, 0.44, 1),
+                  height 0.2s cubic-bezier(0.165, 0.84, 0.44, 1),
+                  border-color 0.2s,
+                  background-color 0.2s,
                   transform 0.08s ease-out;
       box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
     }
 
-    /* Cursor states */
     #cursor-ring.hover-active {
-      width: 46px;
-      height: 46px;
-      border-color: rgba(255, 255, 255, 1);
+      width: 42px;
+      height: 42px;
+      border-color: #ffffff;
       background-color: rgba(255, 255, 255, 0.08);
-      box-shadow: 0 0 18px rgba(255, 255, 255, 0.5);
+      box-shadow: 0 0 16px rgba(255, 255, 255, 0.4);
     }
 
     #cursor-ring.danger-active {
-      width: 52px;
-      height: 52px;
-      border-color: var(--red);
-      background-color: rgba(255, 43, 43, 0.12);
-      box-shadow: 0 0 20px var(--red);
+      width: 48px;
+      height: 48px;
+      border-color: var(--crimson);
+      background-color: var(--crimson-dim);
+      box-shadow: 0 0 20px var(--crimson);
     }
 
     #cursor-ring.clicking {
-      transform: translate(-50%, -50%) scale(0.8);
-      border-width: 3px;
+      transform: translate(-50%, -50%) scale(0.85);
+      border-width: 2.5px;
     }
 
-    /* FLASHLIGHT SPOTLIGHT ON MOUSE */
+    /* FLASHLIGHT CONE OVERLAY */
     #flashlight {
       position: fixed;
       inset: 0;
       pointer-events: none;
       z-index: 3;
-      background: radial-gradient(circle 380px at var(--mx, 50vw) var(--my, 50vh), 
-                  rgba(255, 255, 255, 0.04) 0%, 
-                  rgba(255, 255, 255, 0.015) 50%, 
+      background: radial-gradient(circle 420px at var(--mx, 50vw) var(--my, 50vh), 
+                  rgba(255, 255, 255, 0.05) 0%, 
+                  rgba(255, 255, 255, 0.015) 55%, 
                   transparent 80%);
       transition: opacity 0.3s;
     }
 
-    /* Subtle background grid & noise */
-    .bg-grid {
+    /* LIMINAL HAZARD STRIPES & CRT AMBIENCE */
+    .hazard-stripe-bg {
       position: fixed;
       inset: 0;
-      background-image: 
-        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-      background-size: 60px 60px;
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(255, 255, 255, 0.012),
+        rgba(255, 255, 255, 0.012) 30px,
+        transparent 30px,
+        transparent 60px
+      );
       pointer-events: none;
       z-index: 1;
     }
@@ -146,9 +154,9 @@
       inset: 0;
       pointer-events: none;
       z-index: 100;
-      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.4) 50%);
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.38) 50%);
       background-size: 100% 4px;
-      opacity: 0.45;
+      opacity: 0.55;
     }
 
     .vignette {
@@ -156,28 +164,28 @@
       inset: 0;
       pointer-events: none;
       z-index: 99;
-      background: radial-gradient(circle at center, transparent 35%, rgba(0, 0, 0, 0.85) 85%, #000 100%);
+      background: radial-gradient(circle at center, transparent 30%, rgba(0, 0, 0, 0.88) 85%, #000 100%);
     }
 
     .container {
-      max-width: 1080px;
+      max-width: 1100px;
       margin: 0 auto;
-      padding: 30px 24px 100px;
+      padding: 32px 24px 120px;
       position: relative;
       z-index: 10;
     }
 
-    /* Top Navigation */
+    /* TOP NAVIGATION */
     .nav {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 14px 28px;
-      background: rgba(14, 14, 18, 0.7);
-      border: 1px solid var(--card-border);
+      padding: 12px 26px;
+      background: rgba(11, 13, 19, 0.85);
+      border: 1px solid var(--border);
       border-radius: 100px;
-      backdrop-filter: blur(20px);
-      margin-bottom: 75px;
+      backdrop-filter: blur(24px);
+      margin-bottom: 70px;
     }
 
     .nav-brand {
@@ -185,80 +193,99 @@
       align-items: center;
       gap: 12px;
       text-decoration: none;
-      color: var(--white);
-      font-family: var(--mono);
-      font-weight: 700;
+      color: #ffffff;
+      font-family: var(--sans);
+      font-weight: 800;
       letter-spacing: 2px;
-      font-size: 1.05rem;
+      font-size: 1.15rem;
+      text-transform: lowercase;
     }
 
     .nav-brand img {
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
       border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
     .nav-links {
       display: flex;
-      gap: 28px;
+      gap: 24px;
+      align-items: center;
     }
 
     .nav-links a {
-      color: var(--gray-400);
+      color: var(--text-muted);
       text-decoration: none;
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       font-weight: 500;
       transition: color 0.2s;
     }
 
     .nav-links a:hover {
-      color: var(--white);
+      color: #ffffff;
     }
 
-    /* Hero */
+    .nav-btn-play {
+      background: #ffffff;
+      color: #000000 !important;
+      font-weight: 700 !important;
+      padding: 7px 16px;
+      border-radius: 20px;
+      transition: all 0.2s !important;
+    }
+
+    .nav-btn-play:hover {
+      background: #dcdce2 !important;
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+    }
+
+    /* HERO */
     .hero {
       text-align: center;
       margin-bottom: 90px;
+      position: relative;
     }
 
-    .hero-badge {
+    .door-plate-badge {
       display: inline-flex;
       align-items: center;
-      gap: 10px;
-      padding: 6px 18px;
-      border-radius: 100px;
-      background: var(--red-dim);
-      border: 1px solid var(--red-border);
-      color: var(--red);
+      gap: 8px;
+      padding: 5px 14px;
+      border-radius: 6px;
+      background: var(--gold-bg);
+      border: 1px solid var(--gold-border);
+      color: var(--gold);
       font-family: var(--mono);
-      font-size: 0.8rem;
-      text-transform: uppercase;
+      font-size: 0.82rem;
+      font-weight: 700;
       letter-spacing: 2px;
-      margin-bottom: 28px;
+      margin-bottom: 24px;
+      text-transform: uppercase;
+      box-shadow: 0 0 20px rgba(212, 167, 84, 0.15);
     }
 
-    .hero-badge .dot {
-      width: 6px;
-      height: 6px;
-      background: var(--red);
+    .door-plate-badge .dot {
+      width: 7px;
+      height: 7px;
+      background: var(--gold);
       border-radius: 50%;
-      box-shadow: 0 0 8px var(--red);
+      box-shadow: 0 0 8px var(--gold);
     }
 
     .logo-container {
       position: relative;
-      width: 170px;
-      height: 170px;
-      margin: 0 auto 30px;
+      width: 150px;
+      height: 150px;
+      margin: 0 auto 26px;
     }
 
     .logo-container::before {
       content: '';
       position: absolute;
-      inset: -12px;
-      border-radius: 38px;
-      background: radial-gradient(circle, rgba(255, 43, 43, 0.35) 0%, rgba(255, 255, 255, 0.1) 60%, transparent 80%);
+      inset: -14px;
+      border-radius: 36px;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, rgba(255, 42, 42, 0.18) 60%, transparent 80%);
       filter: blur(14px);
       z-index: 1;
     }
@@ -267,212 +294,316 @@
       position: relative;
       width: 100%;
       height: 100%;
-      border-radius: 32px;
+      border-radius: 28px;
       object-fit: cover;
-      border: 2px solid rgba(255, 255, 255, 0.2);
-      box-shadow: 0 15px 45px rgba(0, 0, 0, 0.9);
+      border: 1.5px solid rgba(255, 255, 255, 0.22);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.95);
       z-index: 2;
-      transition: transform 0.4s ease, border-color 0.4s ease;
+      transition: transform 0.3s ease;
     }
 
     .logo-container:hover .logo-img {
-      transform: scale(1.05);
-      border-color: rgba(255, 255, 255, 0.5);
+      transform: scale(1.04);
     }
 
     h1.hero-title {
-      font-family: var(--display);
-      font-size: clamp(3.2rem, 7vw, 5.8rem);
+      font-family: var(--sans);
+      font-size: clamp(3.4rem, 8vw, 6.2rem);
       font-weight: 900;
-      letter-spacing: 14px;
-      color: var(--white);
-      text-transform: uppercase;
-      margin-bottom: 16px;
-      line-height: 1.1;
-      text-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
+      letter-spacing: 6px;
+      color: #ffffff;
+      text-transform: lowercase;
+      margin-bottom: 14px;
+      line-height: 1.05;
+      text-shadow: 0 0 40px rgba(255, 255, 255, 0.25);
     }
 
     .hero-subtitle {
-      font-size: clamp(1.05rem, 2vw, 1.35rem);
-      color: var(--gray-400);
-      max-width: 620px;
-      margin: 0 auto 32px;
-      font-weight: 300;
-      line-height: 1.5;
+      font-size: clamp(1.05rem, 2vw, 1.25rem);
+      color: var(--text-muted);
+      max-width: 640px;
+      margin: 0 auto 28px;
+      font-weight: 400;
+      line-height: 1.6;
     }
 
     .quote-box {
       font-family: var(--mono);
-      font-size: 0.9rem;
-      color: var(--gray-200);
+      font-size: 0.88rem;
+      color: var(--text);
       background: rgba(255, 255, 255, 0.04);
-      border-left: 2px solid var(--red);
-      padding: 10px 20px;
-      border-radius: 0 10px 10px 0;
+      border-left: 2px solid var(--crimson);
+      padding: 10px 18px;
+      border-radius: 0 8px 8px 0;
       display: inline-block;
-      max-width: 700px;
+      max-width: 680px;
     }
 
-    /* Section Headers */
+    /* SECTION HEADERS */
     .section-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      border-bottom: 1px solid var(--card-border);
-      padding-bottom: 14px;
-      margin-bottom: 30px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      margin-bottom: 28px;
     }
 
     .section-title {
-      font-family: var(--display);
-      font-size: 1.8rem;
-      letter-spacing: 2px;
-      color: var(--white);
+      font-family: var(--sans);
+      font-size: 1.65rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: #ffffff;
     }
 
     .section-tag {
       font-family: var(--mono);
-      font-size: 0.8rem;
-      color: var(--gray-400);
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
     }
 
-    /* Download Cards */
+    /* TERMINAL MODIFIERS WIDGET (NEW v2.0.2) */
+    .terminal-window {
+      background: var(--terminal-bg);
+      border: 1px solid var(--terminal-border);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 80px;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.8);
+    }
+
+    .terminal-topbar {
+      background: #0d1017;
+      padding: 10px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--terminal-border);
+    }
+
+    .terminal-dots {
+      display: flex;
+      gap: 7px;
+    }
+
+    .terminal-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #252a36;
+    }
+
+    .terminal-title {
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    .terminal-content {
+      padding: 24px;
+      font-family: var(--mono);
+      font-size: 0.9rem;
+    }
+
+    .terminal-prompt {
+      color: #55c76c;
+      margin-bottom: 14px;
+    }
+
+    .mod-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .mod-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+
+    .mod-item:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .mod-item.active {
+      background: rgba(255, 42, 42, 0.08);
+      border-color: var(--crimson-border);
+    }
+
+    .mod-checkbox {
+      color: var(--crimson);
+      font-weight: 700;
+      min-width: 24px;
+    }
+
+    .mod-info-title {
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 2px;
+      font-size: 0.92rem;
+    }
+
+    .mod-info-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .terminal-log {
+      border-top: 1px solid var(--terminal-border);
+      padding-top: 14px;
+      color: #9aa1b2;
+      font-size: 0.82rem;
+      min-height: 28px;
+    }
+
+    /* DOWNLOADS GRID */
     .downloads-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
-      gap: 22px;
-      margin-bottom: 85px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 18px;
+      margin-bottom: 80px;
     }
 
     .card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 20px;
-      padding: 30px 26px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 22px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      backdrop-filter: blur(25px);
-      transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+      backdrop-filter: blur(20px);
+      transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
       position: relative;
     }
 
     .card:hover {
-      transform: translateY(-6px);
-      border-color: var(--card-border-hover);
-      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.7);
+      transform: translateY(-5px);
+      border-color: var(--border-hover);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
     }
 
     .card-top {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 18px;
+      margin-bottom: 14px;
     }
 
     .card-platform {
       font-family: var(--mono);
-      font-size: 0.8rem;
-      padding: 4px 10px;
-      border-radius: 6px;
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 5px;
       background: rgba(255, 255, 255, 0.06);
-      color: var(--gray-200);
+      color: var(--text);
       border: 1px solid rgba(255, 255, 255, 0.08);
       text-transform: uppercase;
       letter-spacing: 1px;
     }
 
     .card-title {
-      font-size: 1.6rem;
-      font-weight: 700;
-      color: var(--white);
-      margin-bottom: 6px;
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 4px;
     }
 
     .card-file {
       font-family: var(--mono);
-      font-size: 0.85rem;
-      color: var(--gray-400);
-      margin-bottom: 16px;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-bottom: 12px;
     }
 
     .card-desc {
-      color: var(--gray-400);
-      font-size: 0.95rem;
-      line-height: 1.6;
-      margin-bottom: 26px;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      line-height: 1.5;
+      margin-bottom: 22px;
       flex-grow: 1;
     }
 
-    /* Buttons */
     .btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 8px;
       width: 100%;
-      padding: 14px 22px;
-      border-radius: 12px;
+      padding: 12px 18px;
+      border-radius: 10px;
       font-family: var(--sans);
-      font-size: 0.95rem;
-      font-weight: 600;
+      font-size: 0.9rem;
+      font-weight: 700;
       text-decoration: none;
-      transition: all 0.25s ease;
+      transition: all 0.2s ease;
     }
 
     .btn-white {
-      background: var(--white);
-      color: #000;
-      border: 1px solid var(--white);
+      background: #ffffff;
+      color: #000000;
+      border: 1px solid #ffffff;
     }
 
     .btn-white:hover {
       background: #cfcfd8;
-      box-shadow: 0 0 25px rgba(255, 255, 255, 0.35);
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.35);
       transform: translateY(-2px);
     }
 
     .btn-outline {
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--white);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.04);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.16);
     }
 
     .btn-outline:hover {
-      background: rgba(255, 255, 255, 0.15);
-      border-color: rgba(255, 255, 255, 0.4);
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.35);
       transform: translateY(-2px);
     }
 
-    /* Entities Interactive Cards */
+    /* ENTITIES GRID WITH AUTHENTIC SIZES */
     .entities-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       gap: 18px;
-      margin-bottom: 85px;
+      margin-bottom: 80px;
     }
 
     .entity-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 16px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
       padding: 22px;
       backdrop-filter: blur(15px);
-      transition: all 0.3s;
-      position: relative;
+      transition: all 0.25s;
     }
 
     .entity-card:hover {
-      border-color: rgba(255, 43, 43, 0.45);
+      border-color: var(--crimson-border);
       transform: translateY(-4px);
-      box-shadow: 0 10px 30px rgba(255, 43, 43, 0.12);
+      box-shadow: 0 10px 30px rgba(255, 42, 42, 0.1);
     }
 
     .entity-name {
       font-family: var(--mono);
-      font-size: 1.3rem;
+      font-size: 1.25rem;
       font-weight: 700;
-      color: var(--white);
+      color: #ffffff;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -480,177 +611,245 @@
     }
 
     .tag-red {
-      font-size: 0.7rem;
-      padding: 3px 8px;
+      font-size: 0.68rem;
+      padding: 3px 7px;
       border-radius: 4px;
-      background: var(--red-dim);
-      color: var(--red);
-      border: 1px solid var(--red-border);
+      background: var(--crimson-dim);
+      color: var(--crimson);
+      border: 1px solid var(--crimson-border);
       text-transform: uppercase;
-      font-weight: 600;
+      font-weight: 700;
     }
 
     .tag-gray {
-      font-size: 0.7rem;
-      padding: 3px 8px;
+      font-size: 0.68rem;
+      padding: 3px 7px;
       border-radius: 4px;
       background: rgba(255, 255, 255, 0.08);
-      color: var(--gray-200);
+      color: var(--text);
       border: 1px solid rgba(255, 255, 255, 0.12);
       text-transform: uppercase;
-      font-weight: 600;
+      font-weight: 700;
     }
 
-    /* INTERACTIVE SIMULATOR CARD */
+    /* INTERACTIVE SURVIVAL SIMULATOR WITH A-90 STOP SIGN */
     .sim-card {
-      background: rgba(14, 14, 18, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 20px;
-      padding: 28px;
-      margin-bottom: 85px;
-      backdrop-filter: blur(20px);
+      background: var(--terminal-bg);
+      border: 1px solid var(--terminal-border);
+      border-radius: 16px;
+      padding: 26px;
+      margin-bottom: 80px;
+      position: relative;
     }
 
     .sim-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 20px;
-      border-bottom: 1px solid var(--card-border);
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--terminal-border);
       padding-bottom: 12px;
     }
 
-    .sim-title {
+    .sim-door-tag {
       font-family: var(--mono);
-      font-size: 1.15rem;
-      color: var(--white);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .sim-status {
-      font-family: var(--mono);
-      font-size: 0.85rem;
-      color: var(--gray-400);
+      font-size: 1.05rem;
+      color: var(--gold);
+      font-weight: 700;
+      letter-spacing: 2px;
     }
 
     .sim-screen {
-      background: #000;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      padding: 24px;
-      min-height: 140px;
+      background: #020305;
+      border: 1px solid var(--terminal-border);
+      border-radius: 10px;
+      padding: 28px;
+      min-height: 160px;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       text-align: center;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
       position: relative;
       overflow: hidden;
-      transition: background-color 0.3s, border-color 0.3s;
+      transition: background-color 0.25s, border-color 0.25s;
     }
 
     .sim-screen.alert {
-      background: rgba(255, 43, 43, 0.1);
-      border-color: var(--red);
+      background: rgba(255, 42, 42, 0.12);
+      border-color: var(--crimson);
+    }
+
+    /* A-90 STOP SIGN MODAL INSIDE SIMULATOR */
+    #a90-stop-modal {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.92);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 50;
+      animation: a90Pulse 0.12s infinite alternate;
+    }
+
+    @keyframes a90Pulse {
+      0% { transform: scale(1); }
+      100% { transform: scale(1.02); }
+    }
+
+    .stop-sign-box {
+      width: 140px;
+      height: 140px;
+      background: #d81616;
+      clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #ffffff;
+      font-family: var(--sans);
+      font-weight: 900;
+      font-size: 1.85rem;
+      letter-spacing: 2px;
+      border: 4px solid #ffffff;
+      box-shadow: 0 0 35px #d81616;
+      margin-bottom: 10px;
+    }
+
+    .stop-warning-text {
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      color: #ff8080;
+      letter-spacing: 2px;
+      text-transform: uppercase;
     }
 
     .sim-main-text {
       font-family: var(--mono);
-      font-size: 1.35rem;
+      font-size: 1.25rem;
       font-weight: 700;
-      color: var(--white);
-      margin-bottom: 8px;
-      letter-spacing: 2px;
+      color: #ffffff;
+      margin-bottom: 6px;
+      letter-spacing: 1px;
     }
 
     .sim-sub-text {
       font-family: var(--mono);
-      font-size: 0.9rem;
-      color: var(--gray-400);
+      font-size: 0.85rem;
+      color: var(--text-muted);
     }
 
     .sim-actions {
       display: flex;
-      gap: 14px;
+      gap: 12px;
       flex-wrap: wrap;
     }
 
     .sim-btn {
-      padding: 10px 18px;
-      border-radius: 10px;
+      padding: 9px 16px;
+      border-radius: 8px;
       font-family: var(--mono);
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       font-weight: 600;
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--white);
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.05);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.14);
       transition: all 0.2s;
     }
 
     .sim-btn:hover {
-      background: rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.12);
       border-color: rgba(255, 255, 255, 0.35);
     }
 
     .sim-btn.active {
-      background: var(--white);
-      color: #000;
-      border-color: var(--white);
+      background: #ffffff;
+      color: #000000;
+      border-color: #ffffff;
     }
 
-    /* Mechanics */
-    .mechanics-grid {
+    /* MULTIPLAYER / STEAM SECTION */
+    .steam-banner {
+      background: linear-gradient(135deg, rgba(23, 26, 33, 0.95), rgba(13, 15, 22, 0.95));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .steam-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: #66c0f4;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+    }
+
+    .features-list {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
-      gap: 20px;
-      margin-bottom: 85px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
     }
 
-    .mechanic-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 18px;
-      padding: 26px;
-      backdrop-filter: blur(15px);
+    .feature-point {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
     }
 
-    .mechanic-card h3 {
-      font-size: 1.15rem;
-      color: var(--white);
-      margin-bottom: 10px;
-      font-weight: 600;
+    .feature-icon {
+      color: #66c0f4;
+      font-family: var(--mono);
+      font-size: 1.1rem;
+      font-weight: 700;
     }
 
-    /* Controls Table */
+    .feature-text h4 {
+      font-size: 0.95rem;
+      color: #ffffff;
+      margin-bottom: 2px;
+    }
+
+    .feature-text p {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    /* CONTROLS TABLE */
     .controls-box {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 18px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
       padding: 20px 24px;
       backdrop-filter: blur(15px);
-      margin-bottom: 85px;
+      margin-bottom: 80px;
       overflow-x: auto;
     }
 
     .controls-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
     }
 
     .controls-table th, .controls-table td {
-      padding: 13px 16px;
+      padding: 12px 14px;
       text-align: left;
-      border-bottom: 1px solid var(--card-border);
+      border-bottom: 1px solid var(--border);
     }
 
     .controls-table th {
       font-family: var(--mono);
-      font-size: 0.8rem;
-      color: var(--gray-400);
+      font-size: 0.75rem;
+      color: var(--text-dim);
       text-transform: uppercase;
       letter-spacing: 1.5px;
     }
@@ -660,54 +859,54 @@
     }
 
     kbd {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      border-radius: 6px;
-      padding: 3px 8px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 5px;
+      padding: 2px 7px;
       font-family: var(--mono);
-      font-size: 0.85rem;
-      color: var(--white);
+      font-size: 0.8rem;
+      color: #ffffff;
       box-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
     }
 
-    /* Footer */
+    /* FOOTER */
     footer {
-      border-top: 1px solid var(--card-border);
-      padding-top: 36px;
+      border-top: 1px solid var(--border);
+      padding-top: 32px;
       text-align: center;
-      color: var(--gray-400);
-      font-size: 0.85rem;
+      color: var(--text-dim);
+      font-size: 0.82rem;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
     }
 
     footer a {
-      color: var(--white);
+      color: var(--text);
       text-decoration: none;
       transition: color 0.2s;
     }
 
     footer a:hover {
-      color: var(--red);
+      color: var(--crimson);
     }
 
     @media (max-width: 768px) {
       .nav-links { display: none; }
-      .container { padding-top: 15px; }
-      h1.hero-title { letter-spacing: 8px; }
+      .container { padding-top: 16px; }
+      h1.hero-title { letter-spacing: 3px; }
       #cursor-dot, #cursor-ring { display: none; }
       * { cursor: auto !important; }
     }
   </style>
 </head>
 <body>
-  <!-- IN-GAME CUSTOM CURSOR -->
+  <!-- IN-GAME CUSTOM CROSSHAIR CURSOR -->
   <div id="cursor-dot"></div>
   <div id="cursor-ring"></div>
   <div id="flashlight"></div>
 
-  <div class="bg-grid"></div>
+  <div class="hazard-stripe-bg"></div>
   <canvas id="particles"></canvas>
   <div class="scanlines"></div>
   <div class="vignette"></div>
@@ -717,14 +916,14 @@
     <nav class="nav">
       <a href="#" class="nav-brand interactive">
         <img src="icon.png" alt="r00ms Logo">
-        <span>R00MS</span>
+        <span>r00ms</span>
       </a>
       <div class="nav-links">
-        <a href="play/" class="interactive" style="color:var(--white);font-weight:700;">▶ Играть в браузере</a>
-        <a href="#downloads" class="interactive">Скачать</a>
-        <a href="#simulator" class="interactive">Симулятор</a>
+        <a href="play/" class="nav-btn-play interactive">▶ Играть в браузере</a>
+        <a href="#modifiers" class="interactive">Модификаторы</a>
+        <a href="#downloads" class="interactive">Скачать v2.0.2</a>
         <a href="#entities" class="interactive">Сущности</a>
-        <a href="#mechanics" class="interactive">Механики</a>
+        <a href="#steam" class="interactive">Мультиплеер</a>
         <a href="#controls" class="interactive">Управление</a>
         <a href="https://github.com/AfonasGa/r00ms" target="_blank" class="interactive">GitHub</a>
       </div>
@@ -732,49 +931,98 @@
 
     <!-- HERO -->
     <section class="hero">
-      <div class="hero-badge danger-target">
+      <div class="door-plate-badge danger-target">
         <span class="dot"></span>
-        <span>Version 1.0.0 Stable</span>
+        <span>A-000 // Release v2.0.2 Stable</span>
       </div>
 
       <div class="logo-container interactive">
         <img src="icon.png" alt="r00ms" class="logo-img">
       </div>
 
-      <h1 class="hero-title interactive">R00MS</h1>
+      <h1 class="hero-title interactive">r00ms</h1>
       <p class="hero-subtitle">
-        Психологический сурвайвал-хоррор от первого лица на Godot 4. Бесконечные пустые коридоры, менеджмент света и охота сущностей.
+        Психологический сурвайвал-хоррор от первого лица в бесконечных лиминальных коридорах. 300 комнат, аутентичные сущности Doors/Rooms, кооператив через Steam и терминальные модификаторы.
       </p>
       <div class="quote-box danger-target">
-        &gt; Тысяча комнат. Двенадцать шагов до темноты. Наведите прицел, чтобы осмотреться.
+        &gt; A-020: Дверь заблокирована. A-60 уже выбивает петли. Прячьтесь в шкаф.
       </div>
     </section>
 
-    <!-- INTERACTIVE SIMULATOR SECTION -->
-    <section id="simulator">
+    <!-- TERMINAL MODIFIERS SHOWCASE (NEW IN v2.0.2) -->
+    <section id="modifiers">
       <div class="section-header">
-        <h2 class="section-title">Интерактивный симулятор выживания</h2>
-        <span class="section-tag">Interactive Terminal</span>
+        <h2 class="section-title">Терминал Модификаторов</h2>
+        <span class="section-tag">Pre-game Modifiers</span>
       </div>
 
-      <div class="sim-card">
-        <div class="sim-header">
-          <div class="sim-title">
-            <span>КОМНАТА: <span id="room-num" style="color:var(--white);">A-024</span></span>
+      <div class="terminal-window">
+        <div class="terminal-topbar">
+          <div class="terminal-dots">
+            <div class="terminal-dot"></div>
+            <div class="terminal-dot"></div>
+            <div class="terminal-dot"></div>
           </div>
-          <div class="sim-status" id="sim-status">Статус: Норма</div>
+          <div class="terminal-title">C:\r00ms\bin\modifiers.exe — Выбор условий перед запуском</div>
+          <div style="font-family:var(--mono); font-size:0.75rem; color:#55c76c;">ONLINE</div>
         </div>
 
-        <div class="sim-screen" id="sim-screen">
-          <div class="sim-main-text" id="sim-main">КОРИДОР ЧИСТ</div>
-          <div class="sim-sub-text" id="sim-sub">Свет стабилен. Впереди дверь A-025.</div>
-        </div>
+        <div class="terminal-content">
+          <div class="terminal-prompt">C:\r00ms&gt; list_modifiers --interactive</div>
 
-        <div class="sim-actions">
-          <button class="sim-btn interactive" id="btn-next-room">&gt; Открыть следующую дверь</button>
-          <button class="sim-btn interactive" id="btn-locker">&gt; Залезть в шкаф [Hide]</button>
-          <button class="sim-btn interactive" id="btn-flashlight">&gt; Вкл/Выкл фонарь</button>
-          <button class="sim-btn interactive danger-target" id="btn-trigger-a60" style="border-color:var(--red-border);color:var(--red);">&gt; Вызвать сущность A-60</button>
+          <div class="mod-grid">
+            <div class="mod-item interactive" data-mod="admin" onclick="toggleMod(this)">
+              <div class="mod-checkbox">[ ]</div>
+              <div>
+                <div class="mod-info-title">Admin Panel</div>
+                <div class="mod-info-desc">Консоль хоста в меню паузы: возрождение, бог-режим, полет (noclip), спавн и деспавн монстров, смена скорости.</div>
+              </div>
+            </div>
+
+            <div class="mod-item interactive" data-mod="wet" onclick="toggleMod(this)">
+              <div class="mod-checkbox">[ ]</div>
+              <div>
+                <div class="mod-info-title">Wet Floor</div>
+                <div class="mod-info-desc">Скользкий пол: резкое снижение трения и инерционное скольжение при поворотах и торможении.</div>
+              </div>
+            </div>
+
+            <div class="mod-item interactive" data-mod="badtime" onclick="toggleMod(this)">
+              <div class="mod-checkbox">[ ]</div>
+              <div>
+                <div class="mod-info-title">Bad Time</div>
+                <div class="mod-info-desc">Экстремальный режим: резкое учащение атак A-60, A-90 и A-120 в несколько раз.</div>
+              </div>
+            </div>
+
+            <div class="mod-item interactive" data-mod="haste" onclick="toggleMod(this)">
+              <div class="mod-checkbox">[ ]</div>
+              <div>
+                <div class="mod-info-title">Make Haste</div>
+                <div class="mod-info-desc">1 минута на каждую комнату! На стенах появляются настенные рычаги (+15s, +30s, +60s, +90s).</div>
+              </div>
+            </div>
+
+            <div class="mod-item interactive" data-mod="lights" onclick="toggleMod(this)">
+              <div class="mod-checkbox">[ ]</div>
+              <div>
+                <div class="mod-info-title">Lights Out</div>
+                <div class="mod-info-desc">Полный блэкаут во всем комплексе с самого начала. Единственный источник света — фонарь.</div>
+              </div>
+            </div>
+
+            <div class="mod-item interactive" data-mod="sprint" onclick="toggleMod(this)">
+              <div class="mod-checkbox">[ ]</div>
+              <div>
+                <div class="mod-info-title">Sprint Fatigue</div>
+                <div class="mod-info-desc">Высокая утомляемость: расход стамины ускорен в 2.2 раза, долгое восстановление дыхания.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="terminal-log" id="term-status-log">
+            &gt; Выберите модификаторы кликом мыши, чтобы протестировать логику лобби...
+          </div>
         </div>
       </div>
     </section>
@@ -782,25 +1030,25 @@
     <!-- DOWNLOADS -->
     <section id="downloads">
       <div class="section-header">
-        <h2 class="section-title">Скачать игру</h2>
-        <span class="section-tag">Stable Releases</span>
+        <h2 class="section-title">Скачать игру (v2.0.2)</h2>
+        <span class="section-tag">Direct Official Builds</span>
       </div>
 
-      <div class="downloads-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
-        <!-- Play in Web -->
-        <div class="card interactive" style="border-color: rgba(255, 255, 255, 0.4); background: rgba(25, 25, 32, 0.85);">
+      <div class="downloads-grid">
+        <!-- Play Online -->
+        <div class="card interactive" style="border-color: rgba(255, 255, 255, 0.35); background: rgba(18, 22, 32, 0.9);">
           <div>
             <div class="card-top">
-              <span class="card-platform" style="background: rgba(255, 255, 255, 0.15); color: var(--white);">WEB / ONLINE</span>
+              <span class="card-platform" style="background: rgba(255, 255, 255, 0.18); color: #ffffff;">WEB / HTML5</span>
             </div>
             <div class="card-title">Веб-версия</div>
-            <div class="card-file">HTML5 / WebAssembly</div>
+            <div class="card-file">WASM / WebGL</div>
             <p class="card-desc">
-              Запуск игры прямо в браузере без скачивания и установки. Поддерживает клавиатуру и мышь.
+              Запуск прямо в браузере без установки. Полноэкранный режим, захват мыши и поддержка клавиатуры.
             </p>
           </div>
-          <a href="play/" class="btn btn-white interactive" style="background:var(--white);color:#000;font-weight:700;">
-            ▶ Играть онлайн
+          <a href="play/" class="btn btn-white interactive">
+            ▶ Запустить онлайн
           </a>
         </div>
 
@@ -808,16 +1056,33 @@
         <div class="card interactive">
           <div>
             <div class="card-top">
-              <span class="card-platform">PC / Windows</span>
+              <span class="card-platform">Windows x64</span>
             </div>
-            <div class="card-title">Windows x64</div>
-            <div class="card-file">stable1.0.0.rar</div>
+            <div class="card-title">Windows</div>
+            <div class="card-file">r00ms-v2.0.2-windows-x86_64.zip</div>
             <p class="card-desc">
-              Версия для ПК с максимальным качеством рендера Forward+, поддержкой мыши, клавиатуры и Steam P2P кооператива.
+              Официальный ПК-релиз с поддержкой Steam Overlay, голосового чата, Spacewar P2P мультиплеера и Forward+/Compatibility.
             </p>
           </div>
-          <a href="https://github.com/AfonasGa/r00ms/releases/download/stable/stable1.0.0.rar" class="btn btn-white interactive">
+          <a href="https://github.com/AfonasGa/r00ms/releases/download/v2.0.2/r00ms-v2.0.2-windows-x86_64.zip" class="btn btn-white interactive">
             Скачать для Windows
+          </a>
+        </div>
+
+        <!-- Linux -->
+        <div class="card interactive">
+          <div>
+            <div class="card-top">
+              <span class="card-platform">Linux x64</span>
+            </div>
+            <div class="card-title">Linux</div>
+            <div class="card-file">r00ms-v2.0.2-linux-x86_64.zip</div>
+            <p class="card-desc">
+              Нативная 64-битная сборка для Linux со встроенными библиотеками Steam (`libgodotsteam.so` + `libsteam_api.so`).
+            </p>
+          </div>
+          <a href="https://github.com/AfonasGa/r00ms/releases/download/v2.0.2/r00ms-v2.0.2-linux-x86_64.zip" class="btn btn-outline interactive">
+            Скачать для Linux
           </a>
         </div>
 
@@ -828,13 +1093,13 @@
               <span class="card-platform">Android</span>
             </div>
             <div class="card-title">Android APK</div>
-            <div class="card-file">r00ms.apk</div>
+            <div class="card-file">r00ms.apk (v2.0.2)</div>
             <p class="card-desc">
-              Сборка для мобильных устройств с экранным сенсорным джойстиком, кнопками действий и поддержкой полного экрана.
+              Сборка для мобильных устройств: экранный сенсорный стик, адаптивные кнопки взаимодействия и полный экран.
             </p>
           </div>
-          <a href="https://github.com/AfonasGa/r00ms/releases/download/stable/r00ms.apk" class="btn btn-outline interactive">
-            Скачать APK (Android)
+          <a href="https://github.com/AfonasGa/r00ms/releases/download/v2.0.2/r00ms.apk" class="btn btn-outline interactive">
+            Скачать APK
           </a>
         </div>
 
@@ -842,16 +1107,16 @@
         <div class="card interactive">
           <div>
             <div class="card-top">
-              <span class="card-platform">iOS</span>
+              <span class="card-platform">iOS (Apple)</span>
             </div>
-            <div class="card-title">iOS (iPhone/iPad)</div>
+            <div class="card-title">iOS IPA</div>
             <div class="card-file">r00ms-iOS-unsigned.ipa</div>
             <p class="card-desc">
-              Пакет IPA без подписи (unsigned). Установка через Sideloadly, AltStore, SideStore или TrollStore без платного аккаунта разработчика.
+              Пакет IPA для iPhone и iPad. Установка через SideStore, AltStore, Sideloadly или TrollStore.
             </p>
           </div>
-          <a href="https://github.com/AfonasGa/r00ms/releases/download/stable/r00ms-iOS-unsigned.ipa" class="btn btn-outline interactive">
-            Скачать IPA (iOS)
+          <a href="https://github.com/AfonasGa/r00ms/releases/download/v2.0.2/r00ms-iOS-unsigned.ipa" class="btn btn-outline interactive">
+            Скачать IPA
           </a>
         </div>
       </div>
@@ -860,74 +1125,146 @@
     <!-- ENTITIES -->
     <section id="entities">
       <div class="section-header">
-        <h2 class="section-title">Сущности</h2>
-        <span class="section-tag">Hostile Entities</span>
+        <h2 class="section-title">Сущности комнат</h2>
+        <span class="section-tag">Hostile Manifestations</span>
       </div>
 
       <div class="entities-grid">
+        <!-- A-60 -->
         <div class="entity-card danger-target">
           <div class="entity-name">
             <span>A-60</span>
-            <span class="tag-red">Fatal</span>
+            <span class="tag-red">Комната 20+</span>
           </div>
           <p class="card-desc">
-            The Multi-Monster. Мчится по комнатам с ревом и искажением экрана. Единственное спасение — спрятаться в шкаф или под стол до его появления.
+            Красный искаженный лик. На 20-й комнате дверь блокируется, пока A-60 с грохотом не выбьет её. Прячьтесь в шкаф немедленно при первых звуках помех!
           </p>
         </div>
 
+        <!-- A-60 Prime -->
         <div class="entity-card danger-target">
           <div class="entity-name">
-            <span>A-60′</span>
-            <span class="tag-red">Prime</span>
+            <span>A-60 Prime</span>
+            <span class="tag-red">5s Рефлекс</span>
           </div>
           <p class="card-desc">
-            Бесшумный охотник после комнаты A-49. Выдает себя частым мерцанием света. Атакует волнами до 4 раз подряд.
+            Сверхбыстрая версия. Налетает уже через ~5 секунд после начала мерцания фонаря. Делает до 4 смертоносных петель сквозь коридоры.
           </p>
         </div>
 
+        <!-- A-90 -->
+        <div class="entity-card danger-target">
+          <div class="entity-name">
+            <span>A-90</span>
+            <span class="tag-red">Paralysis</span>
+          </div>
+          <p class="card-desc">
+            Знак «СТОП» по центру экрана. <strong>ЗАМРИТЕ!</strong> Любое движение мышью или клавишами во время знака карается мгновенным ударом на 90+ урона.
+          </p>
+        </div>
+
+        <!-- A-120 -->
         <div class="entity-card danger-target">
           <div class="entity-name">
             <span>A-120</span>
-            <span class="tag-gray">Agile</span>
+            <span class="tag-gray">Комната 120+</span>
           </div>
           <p class="card-desc">
-            Глухие барабанные шаги и оскал в дверном проёме. Прыгает сквозь комнаты вперед и назад, заставляя выжидать точный момент выхода.
+            Барабанный гул шагов и прыгающий оскал. Появляется с комнаты A-120, может разворачиваться и проверять комнаты до пяти раз.
           </p>
         </div>
 
+        <!-- Architect -->
         <div class="entity-card interactive">
           <div class="entity-name">
             <span>Архитектор</span>
-            <span class="tag-gray">Terminal</span>
+            <span class="tag-gray">Terminal Watcher</span>
           </div>
           <p class="card-desc">
-            Терминальная сущность на экране смерти. Помнит ваши предыдущие попытки, анализирует ошибки и дает подсказки в ретро-терминале.
+            Сущность в командной строке `cmd.exe` после гибели. Анализирует причину смерти, ведёт учёт попыток и открывает статистику забега.
           </p>
         </div>
       </div>
     </section>
 
-    <!-- MECHANICS -->
-    <section id="mechanics">
+    <!-- INTERACTIVE SURVIVAL SIMULATOR WITH A-90 EVENT -->
+    <section id="simulator">
       <div class="section-header">
-        <h2 class="section-title">Механики</h2>
-        <span class="section-tag">Gameplay Overview</span>
+        <h2 class="section-title">Симулятор выживания</h2>
+        <span class="section-tag">Mini-Trainer // A-60 & A-90</span>
       </div>
 
-      <div class="mechanics-grid">
-        <div class="mechanic-card interactive">
-          <h3>Синхронная генерация</h3>
-          <p class="card-desc">Все комнаты от A-000 до A-1000 генерируются на общем семени. В мультиплеере у всех участников маршрут полностью идентичен.</p>
+      <div class="sim-card">
+        <div class="sim-header">
+          <div class="sim-door-tag" id="sim-room-badge">A-020 [ЗАКРЫТО]</div>
+          <div style="font-family:var(--mono); font-size:0.8rem; color:var(--text-muted);" id="sim-status">Статус: Исследование</div>
         </div>
 
-        <div class="mechanic-card interactive">
-          <h3>Два типа фонарей</h3>
-          <p class="card-desc">Батарейный фонарь (2 минуты работы, тусклый режим с мерцанием за 30 сек до отключения) и динамо-трясосвет с ручной подзарядкой.</p>
+        <div class="sim-screen" id="sim-screen">
+          <!-- A-90 STOP SIGN MODAL -->
+          <div id="a90-stop-modal">
+            <div class="stop-sign-box">STOP</div>
+            <div class="stop-warning-text">НЕ ДВИГАЙТЕ МЫШЬ! ЗАМРИТЕ!</div>
+          </div>
+
+          <div class="sim-main-text" id="sim-main">ДВЕРЬ A-020 ЗАБЛОКИРОВАНА</div>
+          <div class="sim-sub-text" id="sim-sub">Слышен нарастающий рев за стеной... A-60 приближается выбить дверь!</div>
         </div>
 
-        <div class="mechanic-card interactive">
-          <h3>Укрытия и Спектатор</h3>
-          <p class="card-desc">Шкафы и столы с проверкой занятости (только один игрок в укрытии) и режим наблюдения за выжившими напарниками после смерти.</p>
+        <div class="sim-actions">
+          <button class="sim-btn interactive" id="btn-next-room">&gt; Открыть дверь [E]</button>
+          <button class="sim-btn interactive" id="btn-locker">&gt; Спрятаться в шкаф [Hide]</button>
+          <button class="sim-btn interactive" id="btn-flash">&gt; Вкл/Выкл фонарь</button>
+          <button class="sim-btn interactive danger-target" id="btn-test-a90" style="border-color:var(--crimson-border); color:var(--crimson);">&gt; Проверить рефлекс A-90</button>
+          <button class="sim-btn interactive danger-target" id="btn-test-a60" style="border-color:var(--crimson-border); color:var(--crimson);">&gt; Запустить атаку A-60</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEAM MULTIPLAYER SECTION -->
+    <section id="steam">
+      <div class="section-header">
+        <h2 class="section-title">Кооператив и Мультиплеер</h2>
+        <span class="section-tag">Steam P2P & Voice Chat</span>
+      </div>
+
+      <div class="steam-banner">
+        <div class="steam-badge">
+          <span>●</span> <span>Steam Integration // Spacewar (AppID 480)</span>
+        </div>
+
+        <div class="features-list">
+          <div class="feature-point">
+            <div class="feature-icon">&gt;</div>
+            <div class="feature-text">
+              <h4>Инвайт друзей через оверлей</h4>
+              <p>Мгновенное приглашение друзей прямо из меню лобби по кнопке «Invite Steam Friends» или через оверлей Shift+Tab.</p>
+            </div>
+          </div>
+
+          <div class="feature-point">
+            <div class="feature-icon">&gt;</div>
+            <div class="feature-text">
+              <h4>Голосовой и текстовый чат</h4>
+              <p>Встроенная голосовая связь по кнопке <kbd>V</kbd> с выбором аудиоустройств ввода/вывода в настройках и чат по <kbd>T</kbd>.</p>
+            </div>
+          </div>
+
+          <div class="feature-point">
+            <div class="feature-icon">&gt;</div>
+            <div class="feature-text">
+              <h4>Система лобби и спектатора</h4>
+              <p>Подключение с экраном ожидания хоста «Waiting for host...». Погибшие игроки наблюдают за выжившими от первого лица.</p>
+            </div>
+          </div>
+
+          <div class="feature-point">
+            <div class="feature-icon">&gt;</div>
+            <div class="feature-text">
+              <h4>300 процедурных комнат</h4>
+              <p>Синхронизированное семя генерации комнат, столов, шкафов, батареек и аварийного освещения на 50-й двери.</p>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -936,7 +1273,7 @@
     <section id="controls">
       <div class="section-header">
         <h2 class="section-title">Управление</h2>
-        <span class="section-tag">Keybindings</span>
+        <span class="section-tag">Controls & Keybindings</span>
       </div>
 
       <div class="controls-box interactive">
@@ -955,39 +1292,54 @@
               <td>Экранный джойстик</td>
             </tr>
             <tr>
-              <td>Бег / Спринт</td>
-              <td><kbd>Shift</kbd></td>
-              <td>Кнопка спринта</td>
+              <td>Спринт</td>
+              <td><kbd>Shift</kbd> (расходует стамину)</td>
+              <td>Кнопка Sprint</td>
             </tr>
             <tr>
               <td>Присесть</td>
               <td><kbd>Ctrl</kbd> / <kbd>C</kbd></td>
-              <td>Кнопка приседа</td>
+              <td>Кнопка Crouch</td>
             </tr>
             <tr>
-              <td>Открыть дверь / Действие</td>
-              <td><kbd>ЛКМ</kbd></td>
-              <td>Тап по двери / кнопка</td>
+              <td>Открыть дверь / Рычаг / Батарейка</td>
+              <td><kbd>ЛКМ</kbd> / <kbd>E</kbd></td>
+              <td>Тап по объекту</td>
             </tr>
             <tr>
-              <td>Фонарик / Трясосвет</td>
-              <td><kbd>ПКМ</kbd> (удержание — зарядка)</td>
-              <td>Сенсорные переключатели</td>
+              <td>Вкл/Выкл фонарь</td>
+              <td><kbd>F</kbd> / <kbd>ПКМ</kbd></td>
+              <td>Кнопка фонарика</td>
             </tr>
             <tr>
-              <td>Перезарядка батарей</td>
-              <td><kbd>R</kbd></td>
+              <td>Трясти Gummy-фонарь</td>
+              <td><kbd>ПКМ</kbd> (удержание)</td>
+              <td>Удержание иконки</td>
+            </tr>
+            <tr>
+              <td>Перезарядить батарею</td>
+              <td><kbd>R</kbd> (с анимацией подъема головы)</td>
               <td>Кнопка перезарядки</td>
             </tr>
             <tr>
-              <td>Выйти из укрытия</td>
+              <td>Выйти из шкафа</td>
               <td><kbd>S</kbd> / <kbd>ЛКМ</kbd></td>
               <td>Кнопка выхода</td>
             </tr>
             <tr>
-              <td>Пауза / Меню</td>
-              <td><kbd>ESC</kbd></td>
-              <td>Кнопка паузы</td>
+              <td>Голосовой чат</td>
+              <td><kbd>V</kbd> (удержание)</td>
+              <td>Кнопка микрофона</td>
+            </tr>
+            <tr>
+              <td>Текстовый чат</td>
+              <td><kbd>T</kbd></td>
+              <td>Иконка чата</td>
+            </tr>
+            <tr>
+              <td>Меню паузы / Админ панель</td>
+              <td><kbd>ESC</kbd> (админка доступна хосту в паузе)</td>
+              <td>Кнопка Pause</td>
             </tr>
           </tbody>
         </table>
@@ -997,12 +1349,12 @@
     <!-- FOOTER -->
     <footer>
       <div>r00ms &copy; 2026. Распространяется под лицензией <a href="https://github.com/AfonasGa/r00ms/blob/main/LICENSE" target="_blank" class="interactive">MIT</a>.</div>
-      <div>Репозиторий проекта: <a href="https://github.com/AfonasGa/r00ms" target="_blank" class="interactive">github.com/AfonasGa/r00ms</a></div>
+      <div>Репозиторий проекта: <a href="https://github.com/AfonasGa/r00ms" target="_blank" class="interactive">github.com/AfonasGa/r00ms</a> // Релиз v2.0.2 Stable</div>
     </footer>
   </div>
 
   <script>
-    // 1. SMART CUSTOM CROSSHAIR CURSOR (FROM THE GAME)
+    // 1. SMART CUSTOM CROSSHAIR
     const dot = document.getElementById('cursor-dot');
     const ring = document.getElementById('cursor-ring');
     const flashlight = document.getElementById('flashlight');
@@ -1011,8 +1363,19 @@
     let mouseY = window.innerHeight / 2;
     let ringX = mouseX;
     let ringY = mouseY;
+    let lastMouseX = mouseX;
+    let lastMouseY = mouseY;
+    let mouseMovedDuringA90 = false;
 
     window.addEventListener('mousemove', (e) => {
+      const dx = Math.abs(e.clientX - lastMouseX);
+      const dy = Math.abs(e.clientY - lastMouseY);
+      if (dx > 3 || dy > 3) {
+        mouseMovedDuringA90 = true;
+      }
+      lastMouseX = mouseX;
+      lastMouseY = mouseY;
+
       mouseX = e.clientX;
       mouseY = e.clientY;
 
@@ -1021,15 +1384,9 @@
       flashlight.style.setProperty('--my', mouseY + 'px');
     });
 
-    window.addEventListener('mousedown', () => {
-      ring.classList.add('clicking');
-    });
+    window.addEventListener('mousedown', () => ring.classList.add('clicking'));
+    window.addEventListener('mouseup', () => ring.classList.remove('clicking'));
 
-    window.addEventListener('mouseup', () => {
-      ring.classList.remove('clicking');
-    });
-
-    // Smooth physics ring follow
     function updateCursor() {
       ringX += (mouseX - ringX) * 0.22;
       ringY += (mouseY - ringY) * 0.22;
@@ -1039,105 +1396,147 @@
     }
     updateCursor();
 
-    // Smart context detection for cursor states
     function setupCursorListeners() {
-      document.querySelectorAll('.interactive, a, button, input, .card').forEach((el) => {
+      document.querySelectorAll('.interactive, a, button, input, .card, .mod-item').forEach((el) => {
         el.addEventListener('mouseenter', () => ring.classList.add('hover-active'));
         el.addEventListener('mouseleave', () => ring.classList.remove('hover-active'));
       });
 
       document.querySelectorAll('.danger-target').forEach((el) => {
-        el.addEventListener('mouseenter', () => {
-          ring.classList.add('danger-active');
-        });
-        el.addEventListener('mouseleave', () => {
-          ring.classList.remove('danger-active');
-        });
+        el.addEventListener('mouseenter', () => ring.classList.add('danger-active'));
+        el.addEventListener('mouseleave', () => ring.classList.remove('danger-active'));
       });
     }
     setupCursorListeners();
 
-    // 2. INTERACTIVE IN-GAME ROOM SIMULATOR
-    let currentRoom = 24;
+    // 2. MODIFIERS INTERACTIVE TERMINAL
+    const activeMods = new Set();
+    const logEl = document.getElementById('term-status-log');
+
+    function toggleMod(el) {
+      const mod = el.getAttribute('data-mod');
+      const box = el.querySelector('.mod-checkbox');
+      if (activeMods.has(mod)) {
+        activeMods.delete(mod);
+        el.classList.remove('active');
+        box.innerText = '[ ]';
+        logEl.innerHTML = `&gt; [MODIFIERS] Отключен модификатор: <strong>${mod.toUpperCase()}</strong>. Всего активно: ${activeMods.size}`;
+      } else {
+        activeMods.add(mod);
+        el.classList.add('active');
+        box.innerText = '[X]';
+        logEl.innerHTML = `&gt; [MODIFIERS] <span style="color:#ff4444;">ВКЛЮЧЕН</span>: <strong>${mod.toUpperCase()}</strong>! Всего активно: ${activeMods.size}`;
+      }
+    }
+
+    // 3. INTERACTIVE SIMULATOR (A-20 SMASH, A-60, A-90)
+    let currentRoom = 20;
     let inLocker = false;
     let flashOn = true;
     let a60Attacking = false;
+    let a90Active = false;
 
-    const roomNumEl = document.getElementById('room-num');
+    const roomBadge = document.getElementById('sim-room-badge');
     const simScreen = document.getElementById('sim-screen');
     const simMain = document.getElementById('sim-main');
     const simSub = document.getElementById('sim-sub');
     const simStatus = document.getElementById('sim-status');
     const btnLocker = document.getElementById('btn-locker');
-    const btnFlash = document.getElementById('btn-flashlight');
+    const btnFlash = document.getElementById('btn-flash');
+    const a90Modal = document.getElementById('a90-stop-modal');
 
     document.getElementById('btn-next-room').addEventListener('click', () => {
       if (inLocker) {
-        alert("Вы сидите в шкафу! Сначала выйдите наружу.");
+        alert('Сначала выйдите из шкафа!');
         return;
       }
       if (a60Attacking) {
         simScreen.classList.add('alert');
-        simMain.innerText = "ПОГИБЕЛЬ: A-60";
-        simSub.innerText = "Вы открыли дверь во время пролета сущности.";
-        simStatus.innerText = "Статус: DEAD";
+        simMain.innerText = 'ПОГИБЕЛЬ: A-60';
+        simSub.innerText = 'Вы открыли дверь во время пролета A-60. Шкаф не был использован.';
+        simStatus.innerText = 'Статус: FATAL';
         return;
       }
       currentRoom++;
-      roomNumEl.innerText = "A-" + String(currentRoom).padStart(3, '0');
-      simMain.innerText = "КОРИДОР A-" + String(currentRoom).padStart(3, '0');
-      simSub.innerText = "Дверь с тихим щелчком открыта. Идите вперед.";
-      simStatus.innerText = "Статус: Исследование";
+      roomBadge.innerText = 'A-' + String(currentRoom).padStart(3, '0');
+      simMain.innerText = 'КОРИДОР A-' + String(currentRoom).padStart(3, '0');
+      simSub.innerText = 'Дверь открыта. Фонарик освещает настенные полосы.';
+      simStatus.innerText = 'Статус: Исследование';
     });
 
     btnLocker.addEventListener('click', () => {
       inLocker = !inLocker;
       if (inLocker) {
-        btnLocker.innerText = "> Выйти из шкафа [Exit]";
+        btnLocker.innerText = '> Выйти из шкафа [Exit]';
         btnLocker.classList.add('active');
-        simMain.innerText = "ВЫ В УКТЫТИИ (ШКАФ)";
-        simSub.innerText = "Камера зафиксирована. Не сидите слишком долго, чтобы не пришла Тьма.";
-        simStatus.innerText = "Статус: Спрятан";
+        simMain.innerText = 'ВЫ В УКРЫТИИ (ШКАФ)';
+        simSub.innerText = 'Обзор ограничен щелями створок. Вы защищены от A-60 и A-120.';
+        simStatus.innerText = 'Статус: Спрятан';
       } else {
-        btnLocker.innerText = "> Залезть в шкаф [Hide]";
+        btnLocker.innerText = '> Спрятаться в шкаф [Hide]';
         btnLocker.classList.remove('active');
-        simMain.innerText = "КОРИДОР";
-        simSub.innerText = "Вы вышли наружу в комнату.";
-        simStatus.innerText = "Статус: В комнате";
+        simMain.innerText = 'КОРИДОР';
+        simSub.innerText = 'Вы вышли в комнату.';
+        simStatus.innerText = 'Статус: В комнате';
       }
     });
 
     btnFlash.addEventListener('click', () => {
       flashOn = !flashOn;
-      flashlight.style.opacity = flashOn ? '1' : '0.1';
-      btnFlash.innerText = flashOn ? "> Выключить фонарь" : "> Включить фонарь";
-      simSub.innerText = flashOn ? "Фонарик включен (заряд расходуется)." : "Фонарик выключен (полная темнота).";
+      flashlight.style.opacity = flashOn ? '1' : '0.05';
+      btnFlash.innerText = flashOn ? '> Выключить фонарь' : '> Включить фонарь';
+      simSub.innerText = flashOn ? 'Фонарь включен. Коридор освещен.' : 'Фонарь выключен. Полная тьма.';
     });
 
-    document.getElementById('btn-trigger-a60').addEventListener('click', () => {
-      if (a60Attacking) return;
+    document.getElementById('btn-test-a60').addEventListener('click', () => {
+      if (a60Attacking || a90Active) return;
       a60Attacking = true;
       simScreen.classList.add('alert');
-      simMain.innerText = "⚠️ ВНИМАНИЕ: A-60 ПРИБЛИЖАЕТСЯ!";
-      simSub.innerText = "Слышен грохот за стеной! Срочно прячьтесь в шкаф!";
-      simStatus.innerText = "Статус: АТАКА СУЩНОСТИ";
+      simMain.innerText = '⚠️ A-60 МЧИТСЯ СКВОЗЬ КОМНАТЫ!';
+      simSub.innerText = 'Фонарь мерцает! Срочно прячьтесь в шкаф!';
+      simStatus.innerText = 'Статус: АТАКА A-60';
 
       setTimeout(() => {
         if (inLocker) {
           simScreen.classList.remove('alert');
-          simMain.innerText = "A-60 ПРОМЧАЛСЯ МИМО";
-          simSub.innerText = "Вы успешно переждали атаку в укрытии. Выжили!";
-          simStatus.innerText = "Статус: В безопасности";
+          simMain.innerText = 'A-60 ПРОМЧАЛСЯ МИМО';
+          simSub.innerText = 'Стены содрогнулись, но шкаф спас вам жизнь. Безопасно.';
+          simStatus.innerText = 'Статус: Выжил';
         } else {
-          simMain.innerText = "ВЫ ПОГИБЛИ ОТ A-60";
-          simSub.innerText = "Вы не успели залезть в шкаф. Архитектор фиксирует смерть...";
-          simStatus.innerText = "Статус: FATAL";
+          simMain.innerText = 'ВЫ ПОГИБЛИ ОТ A-60';
+          simSub.innerText = 'Вы не успели спрятаться. Архитектор регистрирует смерть...';
+          simStatus.innerText = 'Статус: DEAD';
         }
         a60Attacking = false;
       }, 3500);
     });
 
-    // 3. BACKGROUND PARTICLES
+    document.getElementById('btn-test-a90').addEventListener('click', () => {
+      if (a90Active || a60Attacking) return;
+      a90Active = true;
+      mouseMovedDuringA90 = false;
+      a90Modal.style.display = 'flex';
+      simStatus.innerText = 'Статус: A-90 ПАРАЛИЧ!';
+
+      setTimeout(() => {
+        a90Modal.style.display = 'none';
+        a90Active = false;
+
+        if (mouseMovedDuringA90) {
+          simScreen.classList.add('alert');
+          simMain.innerText = 'СМЕРТЕЛЬНЫЙ УДАР A-90!';
+          simSub.innerText = 'Вы пошевелили мышь во время знака STOP! -90 HP.';
+          simStatus.innerText = 'Статус: DAMAGE / DEAD';
+        } else {
+          simScreen.classList.remove('alert');
+          simMain.innerText = 'A-90 ИСЧЕЗ';
+          simSub.innerText = 'Вы сохранили полную неподвижность. Сущность не нанесла урона.';
+          simStatus.innerText = 'Статус: В безопасности';
+        }
+      }, 1600);
+    });
+
+    // 4. PARTICLES
     const canvas = document.getElementById('particles');
     const ctx = canvas.getContext('2d');
     let width, height;
@@ -1154,10 +1553,10 @@
       particles.push({
         x: Math.random() * width,
         y: Math.random() * height,
-        r: Math.random() * 1.5 + 0.5,
-        dy: -(Math.random() * 0.4 + 0.15),
-        dx: (Math.random() - 0.5) * 0.3,
-        alpha: Math.random() * 0.35 + 0.05
+        r: Math.random() * 1.4 + 0.4,
+        dy: -(Math.random() * 0.35 + 0.1),
+        dx: (Math.random() - 0.5) * 0.25,
+        alpha: Math.random() * 0.3 + 0.05
       });
     }
 
