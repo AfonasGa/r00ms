@@ -84,6 +84,11 @@ func _execute_interact_target(target: Dictionary) -> bool:
 		var l_idx := int(target["locker_index"])
 		call("_enter_locker", r_idx, l_idx)
 		return true
+	elif kind == "lever":
+		var r_idx := int(target["room_index"])
+		var l_idx := int(target["lever_index"])
+		_pull_wall_lever(r_idx, l_idx)
+		return true
 	elif kind == "pickup":
 		var node := target["node"] as Node3D
 		if not is_instance_valid(node):
@@ -107,6 +112,39 @@ func _execute_interact_target(target: Dictionary) -> bool:
 		node.queue_free()
 		return true
 	return false
+
+
+func _pull_wall_lever(r_idx: int, l_idx: int) -> void:
+	var r_inst: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
+	if r_inst == null or l_idx < 0 or l_idx >= r_inst.levers.size():
+		return
+	var ld: Dictionary = r_inst.levers[l_idx]
+	if bool(ld.get("used", false)):
+		_show_toast("Рычаг уже опущен!", 1.5)
+		return
+	ld["used"] = true
+
+	var pivot: Node3D = ld.get("pivot") as Node3D
+	if is_instance_valid(pivot):
+		var tw := create_tween()
+		tw.tween_property(pivot, "rotation:x", 0.55, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+	audio.play_door_open()
+
+	# Make Haste modifier: time bonus depends on current time (15, 30, 60, 90 sec)
+	var bonus := 15.0
+	if _haste_timer <= 20.0:
+		bonus = 90.0
+	elif _haste_timer <= 40.0:
+		bonus = 60.0
+	elif _haste_timer <= 50.0:
+		bonus = 30.0
+	else:
+		bonus = 15.0
+
+	_haste_timer += bonus
+	_show_toast("Рычаг активирован! +%d сек к таймеру" % int(bonus), 2.8)
+
 
 
 func _try_tap_world_interact(screen_pos: Vector2) -> void:
@@ -154,6 +192,16 @@ func _collider_to_interact_dict(col: Object) -> Dictionary:
 			"locker_index": l_idx,
 			"label": lbl,
 		}
+	elif itype == "lever":
+		var r_idx := int(col.get_meta("room_index"))
+		var l_idx := int(col.get_meta("lever_index"))
+		var r_inst: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
+		if r_inst != null and l_idx >= 0 and l_idx < r_inst.levers.size():
+			var ld: Dictionary = r_inst.levers[l_idx]
+			if bool(ld.get("used", false)):
+				return {"type": "lever", "room_index": r_idx, "lever_index": l_idx, "label": "Рычаг (уже опущен)"}
+			else:
+				return {"type": "lever", "room_index": r_idx, "lever_index": l_idx, "label": "Потянуть рычаг (+время)"}
 	elif itype == "pickup":
 		var node3d := col as Node3D
 		if node3d != null and is_instance_valid(cam):
@@ -190,6 +238,14 @@ func _target_anchor_world_pos(tgt: Dictionary) -> Vector3:
 		var r: RoomBuilder.RoomInstance = _room_by_idx.get(int(tgt["room_index"]))
 		if r != null and is_instance_valid(r.exit_anchor):
 			return r.exit_anchor.global_position + Vector3(0.0, 1.15, 0.0)
+	elif kind == "lever":
+		var r: RoomBuilder.RoomInstance = _room_by_idx.get(int(tgt["room_index"]))
+		var li := int(tgt.get("lever_index", 0))
+		if r != null and li >= 0 and li < r.levers.size():
+			var ld: Dictionary = r.levers[li]
+			var root_node: Node3D = ld.get("root") as Node3D
+			if is_instance_valid(root_node):
+				return root_node.global_position
 	elif kind == "pickup":
 		var n := tgt.get("node") as Node3D
 		if is_instance_valid(n):
@@ -340,8 +396,12 @@ func _advance_door_progress(r_idx: int, allow_spawn: bool) -> void:
 		_current_room_idx = opened_num
 		if _net != null:
 			_net.update_lobby_progress(_world_seed, _highest_opened)
-		if opened_num >= 50 and not _power_out:
-			call("_trigger_power_outage")
+		if opened_num >= 50 and not _power_out and not _door50_flicker_active:
+			_door50_flicker_active = true
+			_door50_flicker_t = 3.0
+			_show_toast("Напряжение в сети нестабильно! Свет бешено искрит...", 3.0)
+		if _active_modifiers.get("make_haste", false):
+			_haste_timer = maxf(_haste_timer, 60.0)
 		var min_keep := 9 if _render_quality == RenderQuality.MOBILE_OPT else 14
 		var ahead_keep := 4 if _render_quality == RenderQuality.MOBILE_OPT else 6
 		while _rooms.size() < min_keep or _rooms[-1].index < _highest_opened + ahead_keep:
@@ -399,6 +459,23 @@ func _update_ui(delta: float) -> void:
 		vitals_mat.set_shader_parameter(k, next_v)
 		max_vital = maxf(max_vital, next_v)
 	vitals_rect.visible = (max_vital > 0.004)
+
+	if _ui.has("haste_lbl"):
+		var haste_lbl := _ui["haste_lbl"] as Label
+		if bool(_active_modifiers.get("make_haste", false)):
+			haste_lbl.visible = true
+			var t_sec := maxi(int(_haste_timer), 0)
+			var mins := t_sec / 60
+			var secs := t_sec % 60
+			haste_lbl.text = "[ ВРЕМЯ: %02d:%02d ]" % [mins, secs]
+			if _haste_timer <= 15.0:
+				haste_lbl.add_theme_color_override("font_color", Color(1.0, 0.22, 0.22))
+			elif _haste_timer <= 30.0:
+				haste_lbl.add_theme_color_override("font_color", Color(1.0, 0.75, 0.2))
+			else:
+				haste_lbl.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
+		else:
+			haste_lbl.visible = false
 
 	var interact_tgt := {}
 	var prompt: Label = _ui["prompt_lbl"]

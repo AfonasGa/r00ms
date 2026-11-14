@@ -31,6 +31,7 @@ class RoomInstance:
 	var lamp_meshes: Array[MeshInstance3D] = []
 	var is_dark_room: bool = false
 	var lockers: Array[Dictionary] = []
+	var levers: Array[Dictionary] = []
 
 
 class SharedAssets:
@@ -359,6 +360,13 @@ static func build_room(
 
 	# 4. Props matching RoomType
 	_populate_room_type(room_node, assets, rtype, room_index, turn_type, rng, r)
+
+	# Wall lever (used for Make Haste modifier time refills)
+	if room_index > 0 and turn_type == 0:
+		var side := -1.0 if rng.randf() < 0.5 else 1.0
+		var lz := rng.randf_range(-2.0, 2.0)
+		_build_wall_lever(room_node, assets, Vector3(side * (HALF_W - 0.08), 1.45, lz), -PI * 0.5 if side > 0 else PI * 0.5, r)
+
 	return r
 
 
@@ -844,6 +852,44 @@ static func _build_pickup(room_node: Node3D, assets: SharedAssets, local_pos: Ve
 	body.set_meta("interact_type", "pickup")
 	body.set_meta("pickup_kind", kind)
 	body.set_meta("pickup_prompt", prompt)
+
+
+static func _build_wall_lever(room_node: Node3D, assets: SharedAssets, pos: Vector3, yaw: float, r: RoomInstance) -> void:
+	var l_root := Node3D.new()
+	l_root.name = "Lever_%d" % r.levers.size()
+	l_root.position = pos
+	l_root.rotation.y = yaw
+	room_node.add_child(l_root)
+
+	_add_box(l_root, "BasePlate", Vector3.ZERO, Vector3(0.24, 0.40, 0.08), assets.locker_mat, false)
+	_add_box(l_root, "Trim", Vector3(0.0, 0.0, 0.045), Vector3(0.20, 0.36, 0.02), assets.plaque_yellow_mat, false)
+
+	var pivot := Node3D.new()
+	pivot.name = "HandlePivot"
+	pivot.position = Vector3(0.0, -0.06, 0.05)
+	pivot.rotation.x = -0.55
+	l_root.add_child(pivot)
+
+	_add_box(pivot, "Rod", Vector3(0.0, 0.12, 0.0), Vector3(0.04, 0.24, 0.04), assets.fridge_mat, false)
+	_add_box(pivot, "Knob", Vector3(0.0, 0.24, 0.0), Vector3(0.08, 0.08, 0.08), assets.medkit_mat, false)
+
+	var body := StaticBody3D.new()
+	body.name = "LeverBody"
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(0.40, 0.50, 0.35)
+	col.shape = shape
+	body.add_child(col)
+	body.set_meta("interact_type", "lever")
+	body.set_meta("room_index", r.index)
+	body.set_meta("lever_index", r.levers.size())
+	l_root.add_child(body)
+
+	r.levers.append({
+		"root": l_root,
+		"pivot": pivot,
+		"used": false
+	})
 
 
 static func _add_cyl(parent: Node3D, cyl_name: String, pos: Vector3, radius: float, height: float, mat: Material) -> MeshInstance3D:

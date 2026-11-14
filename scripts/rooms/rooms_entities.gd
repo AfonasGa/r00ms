@@ -15,7 +15,29 @@ func _physics_process(delta: float) -> void:
 	_process_doors(delta)
 	_process_flashlight(delta)
 
+	if _door50_flicker_active:
+		_door50_flicker_t -= delta
+		var f_val := randf()
+		for r in _rooms:
+			if r != null and is_instance_valid(r.light):
+				r.light.visible = (f_val > 0.35)
+				r.light.light_energy = 0.15 if f_val <= 0.35 else (1.8 if f_val > 0.85 else 0.8)
+		_shake_amount = maxf(_shake_amount, 0.007)
+		if _door50_flicker_t <= 0.0:
+			_door50_flicker_active = false
+			call("_trigger_power_outage")
+
+	if bool(_active_modifiers.get("make_haste", false)):
+		_haste_timer -= delta
+		if _haste_timer <= 0.0:
+			_haste_timer = 0.0
+			_trigger_death("Время вышло (Make Haste)", "Вы не успели дойти до двери вовремя! Активируйте настенные рычаги для продления таймера.", {})
+			return
+
 	if _is_entity_authority():
+		var bad_time: bool = bool(_active_modifiers.get("bad_time", false))
+		var cd_mult := 1.9 if bad_time else 1.0
+
 		if _highest_opened == 19 and not _a60_active and not _a120_active:
 			if _a60_door20_trigger_timer > 0.0:
 				_a60_door20_trigger_timer -= delta
@@ -27,10 +49,13 @@ func _physics_process(delta: float) -> void:
 			if _a60_prime_pending_timer <= 0.0 and _highest_opened >= 20:
 				_spawn_a60(true)
 		elif _highest_opened >= 20 and not _a60_active and not _a120_active and not _a60_prime_flicker_active:
-			_a60_random_timer -= delta
+			_a60_random_timer -= delta * cd_mult
 			if _a60_random_timer <= 0.0:
 				var max_cd := maxf(24.0, 52.0 - float(_highest_opened) * 0.12)
 				var min_cd := maxf(14.0, max_cd * 0.52)
+				if bad_time:
+					max_cd *= 0.55
+					min_cd *= 0.55
 				_a60_random_timer = _rng.randf_range(min_cd, max_cd)
 				_spawn_a60(false)
 
@@ -228,10 +253,14 @@ func _process_player_movement(delta: float) -> void:
 		inp = inp.normalized()
 
 	var moving := inp.length_squared() > 0.01
-	var wants_sprint := (Input.is_key_pressed(KEY_SHIFT) or _mobile_sprint_held) and moving and (not _exhausted) and _stamina > 0.01
+	var wants_sprint := (Input.is_key_pressed(KEY_SHIFT) or _mobile_sprint_held) and moving and (not _exhausted) and (_stamina > 0.01 or _admin_inf_stamina)
 	_is_sprinting = wants_sprint
-	if wants_sprint:
-		_stamina = maxf(_stamina - delta * 0.34, 0.0)
+	if _admin_inf_stamina:
+		_stamina = 1.0
+		_exhausted = false
+	elif wants_sprint:
+		var drain_rate := 0.75 if bool(_active_modifiers.get("sprint_fatigue", false)) else 0.34
+		_stamina = maxf(_stamina - delta * drain_rate, 0.0)
 		_stamina_regen_delay = 0.65
 		if _stamina <= 0.01:
 			_exhausted = true
@@ -263,8 +292,9 @@ func _process_player_movement(delta: float) -> void:
 		speed *= 0.5
 	var dir := (player_body.transform.basis * Vector3(inp.x, 0.0, inp.y)).normalized()
 
-	player_body.velocity.x = lerpf(player_body.velocity.x, dir.x * speed, minf(delta * 11.0, 1.0))
-	player_body.velocity.z = lerpf(player_body.velocity.z, dir.z * speed, minf(delta * 11.0, 1.0))
+	var accel_factor := 1.65 if bool(_active_modifiers.get("wet_floor", false)) else 11.0
+	player_body.velocity.x = lerpf(player_body.velocity.x, dir.x * speed, minf(delta * accel_factor, 1.0))
+	player_body.velocity.z = lerpf(player_body.velocity.z, dir.z * speed, minf(delta * accel_factor, 1.0))
 	if not player_body.is_on_floor():
 		player_body.velocity.y -= 18.0 * delta
 	else:
@@ -692,11 +722,14 @@ func _process_a90(delta: float) -> void:
 		# Authentic Paralysis (A-90): spawns from room A-90+; strictly never in first 20 rooms
 		if _highest_opened < 90 or _is_hiding or _a60_active or _a120_active or _power_out:
 			return
-		_a90_cooldown -= delta
+		var cd_rate := 1.75 if bool(_active_modifiers.get("bad_time", false)) else 1.0
+		_a90_cooldown -= delta * cd_rate
 		if _a90_cooldown > 0.0:
 			return
-		_a90_cooldown = _rng.randf_range(35.0, 70.0)
-		if _rng.randf() > 0.65:
+		var a90_min := 18.0 if bool(_active_modifiers.get("bad_time", false)) else 35.0
+		var a90_max := 38.0 if bool(_active_modifiers.get("bad_time", false)) else 70.0
+		_a90_cooldown = _rng.randf_range(a90_min, a90_max)
+		if _rng.randf() > (0.85 if bool(_active_modifiers.get("bad_time", false)) else 0.65):
 			return
 		_start_a90_local()
 		return

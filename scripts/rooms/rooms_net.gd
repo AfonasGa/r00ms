@@ -87,6 +87,8 @@ func shutdown_steam() -> void:
 
 
 func _init_steam() -> void:
+	OS.set_environment("SteamAppId", str(SPACEWAR_APP_ID))
+	OS.set_environment("SteamGameId", str(SPACEWAR_APP_ID))
 	if not Engine.has_singleton("Steam"):
 		steam_loaded = false
 		steam_ready = false

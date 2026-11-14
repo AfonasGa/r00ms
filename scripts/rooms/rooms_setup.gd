@@ -86,7 +86,11 @@ func _load_render_settings() -> void:
 	if ov.load(OVERRIDE_PATH) == OK:
 		var saved_b := String(ov.get_value("rendering", "renderer/rendering_method", ""))
 		if saved_b in ["forward_plus", "mobile", "gl_compatibility"]:
-			_render_backend = saved_b
+			if not _is_mobile_platform() and (saved_b == "mobile" or saved_b == "gl_compatibility"):
+				_render_backend = "forward_plus"
+				_active_render_backend = "forward_plus"
+			else:
+				_render_backend = saved_b
 
 
 func _save_render_settings() -> void:

@@ -28,6 +28,24 @@ var _battery_inspect_timer := 0.0
 var _held_battery: Node3D = null
 var _a60_door20_trigger_timer := 0.0
 
+# Modifiers & Admin System
+var _active_modifiers: Dictionary = {
+	"admin_panel": false,
+	"wet_floor": false,
+	"bad_time": false,
+	"make_haste": false,
+	"lights_out": false,
+	"sprint_fatigue": false,
+}
+var _admin_cheats_used := false
+var _admin_god_mode := false
+var _admin_inf_stamina := false
+var _admin_granted_to_all := false
+var _admin_granted_by_host := false
+var _haste_timer := 60.0
+var _door50_flicker_active := false
+var _door50_flicker_t := 0.0
+
 # Death transition phases (0=red flash, 1=shrink to center, 2=architect fade & talk) + spectator
 var _death_phase := 0
 var _death_phase_t := 0.0
@@ -394,6 +412,12 @@ func _is_entity_authority() -> bool:
 
 func _on_remote_entity_event(msg: Dictionary) -> void:
 	var kind := String(msg.get("k", ""))
+	if kind == "admin_grant":
+		_admin_granted_by_host = true
+		if _ui.has("btn_hud_admin"):
+			(_ui["btn_hud_admin"] as Control).visible = true
+		_show_toast("Хост предоставил вам доступ к панели администратора!", 3.0)
+		return
 	# If ANY peer gets hit/warped by A-120, despawn it across both host & clients cleanly
 	if kind == "a120_end":
 		_a120_active = false

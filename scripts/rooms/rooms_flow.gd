@@ -53,7 +53,11 @@ func _reset_run(forced_seed: int = -1) -> void:
 	_hide_yaw_offset = 0.0
 	_hide_pitch_offset = 0.0
 	player_col.disabled = false
-	_power_out = false
+	_power_out = bool(_active_modifiers.get("lights_out", false))
+	_haste_timer = 60.0
+	_door50_flicker_active = false
+	_door50_flicker_t = 0.0
+	_admin_cheats_used = false
 	_light_on = true
 	_active_tool = 0
 	_has_gummy = false
@@ -196,7 +200,7 @@ func _spawn_next_room() -> void:
 			if not _occupied_cells.has(step1) and not _occupied_cells.has(step2):
 				out_dir = cand
 
-	var r := RoomBuilder.build_room(rooms_container, _assets, idx, cell, in_dir, out_dir, room_rng, idx >= 50)
+	var r := RoomBuilder.build_room(rooms_container, _assets, idx, cell, in_dir, out_dir, room_rng, (idx >= 50 or _power_out))
 	_rooms.append(r)
 	_room_by_idx[idx] = r
 
@@ -335,6 +339,10 @@ func _clear_all_vignettes() -> void:
 func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}) -> void:
 	if _state != State.PLAYING:
 		return
+	if _admin_god_mode:
+		_hp = 100
+		_show_toast("Бог-режим защитил от гибели (%s)!" % cause, 2.5)
+		return
 	audio.play_death_sound()
 	if cause != "A-120" and cause != "A-60" and cause != "A-60'":
 		audio.play_jumpscare()
@@ -392,7 +400,8 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 		ctx[k] = extra_ctx[k]
 
 	var u_name := _get_local_username()
-	var seq := _architect.build_death_sequence(cause, _highest_opened, u_name, ctx)
+	var reported_room := 0 if _admin_cheats_used else _highest_opened
+	var seq := _architect.build_death_sequence(cause, reported_room, u_name, ctx)
 	_arch_lines.clear()
 	var raw_lines: Array = seq.get("lines", [])
 	if not raw_lines.is_empty():
@@ -414,10 +423,11 @@ func _trigger_death(cause: String, _tip: String = "", extra_ctx: Dictionary = {}
 	# Prepare formatted death report in the cmd.exe statistics window
 	if _ui.has("arch_stats_lbl"):
 		var stats_lbl := _ui["arch_stats_lbl"] as Label
+		var room_display := ("A-%03d (АДМИНКА - ПРОГРЕСС НЕ ЗАСЧИТАН)" % _highest_opened) if _admin_cheats_used else ("A-%03d" % _highest_opened)
 		stats_lbl.text = "[r00ms death report]\n" \
 			+ "---------------------------------------------------------\n" \
 			+ "Сущность:              %s\n" % cause \
-			+ "Пройдено комнат:       A-%03d\n" % _highest_opened \
+			+ "Пройдено комнат:       %s\n" % room_display \
 			+ "Всего смертей:         #%d\n" % int(seq["deaths_total"]) \
 			+ "Лучший рекорд:         A-%03d\n\n" % _architect.best_room \
 			+ "Совет по выживанию:\n" \
@@ -857,6 +867,12 @@ func _input(event: InputEvent) -> void:
 				call("_chat_submit")
 				get_viewport().set_input_as_handled()
 			return
+
+		if ke.keycode == KEY_F1 or ke.keycode == KEY_QUOTELEFT or ke.keycode == KEY_ASCIITILDE:
+			if bool(_active_modifiers.get("admin_panel", false)):
+				call("_toggle_admin_panel")
+				get_viewport().set_input_as_handled()
+				return
 
 		if _state == State.DEAD:
 			if ke.keycode == KEY_SPACE or ke.keycode == KEY_ENTER:

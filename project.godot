@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="r00ms"
-config/version="2.0.1"
+config/version="2.0.2"
 run/main_scene="res://scenes/rooms_game.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.png"
@@ -34,6 +34,8 @@ window/handheld/orientation="sensor_landscape"
 
 [rendering]
 
+renderer/rendering_method="forward_plus"
+renderer/rendering_method.mobile="mobile"
 rendering_device/driver.windows="vulkan"
 textures/vram_compression/import_s3tc_bptc=true
 textures/vram_compression/import_etc2_astc=true
