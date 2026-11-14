@@ -34,7 +34,7 @@ window/handheld/orientation="sensor_landscape"
 
 [rendering]
 
-renderer/rendering_method="forward_plus"
+renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="mobile"
 rendering_device/driver.windows="vulkan"
 textures/vram_compression/import_s3tc_bptc=true

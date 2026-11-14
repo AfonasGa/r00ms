@@ -89,6 +89,12 @@ func shutdown_steam() -> void:
 func _init_steam() -> void:
 	OS.set_environment("SteamAppId", str(SPACEWAR_APP_ID))
 	OS.set_environment("SteamGameId", str(SPACEWAR_APP_ID))
+	for p in ["res://steam_appid.txt", "user://steam_appid.txt"]:
+		if not FileAccess.file_exists(p):
+			var f := FileAccess.open(p, FileAccess.WRITE)
+			if f != null:
+				f.store_string(str(SPACEWAR_APP_ID))
+				f.close()
 	if not Engine.has_singleton("Steam"):
 		steam_loaded = false
 		steam_ready = false
@@ -99,7 +105,7 @@ func _init_steam() -> void:
 		return
 	steam_loaded = true
 
-	var init_res: Variant = _steam.call("steamInitEx", SPACEWAR_APP_ID, false)
+	var init_res: Variant = _steam.call("steamInitEx", SPACEWAR_APP_ID, true)
 	if init_res is Dictionary:
 		var d: Dictionary = init_res
 		var st := int(d.get("status", -1))
@@ -135,6 +141,7 @@ func _connect_steam_signals() -> void:
 	_safe_connect("join_game_requested", _on_steam_join_game_requested)
 	_safe_connect("p2p_session_request", _on_steam_p2p_session_request)
 	_safe_connect("p2p_session_connect_fail", _on_steam_p2p_connect_fail)
+	_safe_connect("overlay_toggled", _on_steam_overlay_toggled)
 
 
 func _safe_connect(sig_name: String, cb: Callable) -> void:
@@ -566,10 +573,7 @@ func broadcast_entity_event(payload: Dictionary, reliable: bool = true) -> void:
 
 func _process(delta: float) -> void:
 	if steam_ready and _steam != null:
-		_callback_accum += delta
-		if _callback_accum >= 0.016:
-			_callback_accum = 0.0
-			_steam.call("run_callbacks")
+		_steam.call("run_callbacks")
 
 	if mode == "steam" and _steam != null and steam_ready:
 		_poll_steam_packets()
@@ -979,6 +983,23 @@ func _on_steam_p2p_connect_fail(remote_id: int, _reason: int) -> void:
 		_steam.call("acceptP2PSessionWithUser", remote_id)
 		var bytes := var_to_bytes({"t": "hi", "n": persona_name})
 		_steam.call("sendP2PPacket", remote_id, bytes, 2, 0)
+
+
+func _on_steam_overlay_toggled(arg0: Variant = null, _arg1: Variant = null, _arg2: Variant = null) -> void:
+	var active := false
+	if arg0 is bool:
+		active = arg0
+	elif arg0 is int:
+		active = (arg0 != 0)
+	elif arg0 is Dictionary:
+		active = bool((arg0 as Dictionary).get("active", false))
+	if active:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	else:
+		var root := get_tree().current_scene
+		if root != null and int(root.get("_state")) == 1: # State.PLAYING
+			if not bool(root.get("_is_hiding")):
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _on_enet_peer_connected(id: int) -> void:

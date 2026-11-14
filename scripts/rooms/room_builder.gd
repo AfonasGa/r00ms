@@ -292,7 +292,7 @@ static func build_room(
 	r.room_type = rtype
 	var is_lobby := (rtype == "lobby")
 	# Dark rooms strictly do not appear before room 50 (unless force_dark / lights_out is enabled)
-	r.is_dark_room = force_dark or (room_index >= 50)
+	r.is_dark_room = force_dark or (room_index == 50) or (room_index > 50 and not is_lobby and rng.randf() < 0.30)
 
 	# 1. Shell Floor, Ceiling & Perimeter Walls
 	if turn_type == 0:

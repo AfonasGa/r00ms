@@ -62,7 +62,7 @@ func _detect_active_render_backend() -> String:
 			return cur
 	if _is_mobile_platform():
 		return String(ProjectSettings.get_setting("rendering/renderer/rendering_method.mobile", "mobile"))
-	return String(ProjectSettings.get_setting("rendering/renderer/rendering_method", "forward_plus"))
+	return String(ProjectSettings.get_setting("rendering/renderer/rendering_method", "gl_compatibility"))
 
 
 func _load_render_settings() -> void:
@@ -86,11 +86,7 @@ func _load_render_settings() -> void:
 	if ov.load(OVERRIDE_PATH) == OK:
 		var saved_b := String(ov.get_value("rendering", "renderer/rendering_method", ""))
 		if saved_b in ["forward_plus", "mobile", "gl_compatibility"]:
-			if not _is_mobile_platform() and (saved_b == "mobile" or saved_b == "gl_compatibility"):
-				_render_backend = "forward_plus"
-				_active_render_backend = "forward_plus"
-			else:
-				_render_backend = saved_b
+			_render_backend = saved_b
 
 
 func _save_render_settings() -> void:

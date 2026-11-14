@@ -201,7 +201,7 @@ func _spawn_next_room() -> void:
 				out_dir = cand
 
 	var haste_active: bool = bool(_active_modifiers.get("make_haste", false))
-	var r := RoomBuilder.build_room(rooms_container, _assets, idx, cell, in_dir, out_dir, room_rng, (idx >= 50 or _power_out), haste_active)
+	var r := RoomBuilder.build_room(rooms_container, _assets, idx, cell, in_dir, out_dir, room_rng, (idx == 50 or _power_out), haste_active)
 	_rooms.append(r)
 	_room_by_idx[idx] = r
 
@@ -925,7 +925,14 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
-		if ke.keycode == KEY_TAB or ke.keycode == KEY_ESCAPE:
+		# Shift+Tab: activate Steam overlay explicitly and do not swallow into pause
+		if ke.keycode == KEY_TAB and ke.shift_pressed:
+			if _net != null and _net.steam_ready and _net._steam != null:
+				_net._steam.call("activateGameOverlay", "")
+			get_viewport().set_input_as_handled()
+			return
+
+		if (ke.keycode == KEY_TAB and not ke.shift_pressed) or ke.keycode == KEY_ESCAPE:
 			if _state == State.PLAYING:
 				_set_state(State.PAUSED)
 				get_viewport().set_input_as_handled()
