@@ -81,6 +81,12 @@ func _load_render_settings() -> void:
 		_mouse_sens_mult = clampf(float(cfg.get_value("controls", "sensitivity", 1.0)), 0.4, 2.2)
 		_base_fov = clampf(float(cfg.get_value("controls", "fov", 75.0)), 65.0, 95.0)
 		_head_bob_enabled = bool(cfg.get_value("controls", "head_bob", true))
+		var saved_out := String(cfg.get_value("audio", "output_device", ""))
+		if not saved_out.is_empty() and saved_out in AudioServer.get_output_device_list():
+			AudioServer.output_device = saved_out
+		var saved_in := String(cfg.get_value("audio", "input_device", ""))
+		if not saved_in.is_empty() and saved_in in AudioServer.get_input_device_list():
+			AudioServer.input_device = saved_in
 
 	var ov := ConfigFile.new()
 	if ov.load(OVERRIDE_PATH) == OK:
@@ -101,6 +107,8 @@ func _save_render_settings() -> void:
 	cfg.set_value("controls", "sensitivity", _mouse_sens_mult)
 	cfg.set_value("controls", "fov", _base_fov)
 	cfg.set_value("controls", "head_bob", _head_bob_enabled)
+	cfg.set_value("audio", "output_device", AudioServer.output_device)
+	cfg.set_value("audio", "input_device", AudioServer.input_device)
 	cfg.save(SETTINGS_PATH)
 
 
@@ -344,21 +352,31 @@ func _setup_environment() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.005, 0.007, 0.011)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.05, 0.065, 0.095)
-	env.ambient_light_energy = 0.11
+	env.ambient_light_color = Color(0.06, 0.075, 0.10)
+	env.ambient_light_energy = 0.14
 	env.fog_enabled = (_render_quality != RenderQuality.MOBILE_OPT)
 	env.fog_light_color = Color(0.008, 0.011, 0.018)
-	env.fog_density = 0.032
+	env.fog_density = 0.024
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.tonemap_exposure = 1.05
+	env.tonemap_white = 6.0
 	env.ssao_enabled = (_render_quality == RenderQuality.HIGH)
 	env.ssao_radius = 0.85
 	env.ssao_intensity = 1.65
 	env.ssao_power = 1.6
 	env.glow_enabled = (_render_quality != RenderQuality.MOBILE_OPT)
-	env.glow_intensity = 0.62
-	env.glow_bloom = 0.24
-	env.glow_hdr_threshold = 0.90
+	env.glow_intensity = 0.82
+	env.glow_bloom = 0.35
+	env.glow_hdr_threshold = 0.85
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	world_env.environment = env
+
+	if flashlight != null:
+		flashlight.shadow_bias = 0.08
+		flashlight.shadow_normal_bias = 2.5
+		flashlight.shadow_blur = 1.5
+		flashlight.spot_angle_attenuation = 1.4
+		flashlight.spot_attenuation = 1.2
 
 
 func _build_viewmodel() -> void:

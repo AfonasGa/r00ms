@@ -710,6 +710,65 @@ void fragment() {
 	audio_btn_row.add_child(btn_reset_audio)
 	_ui["btn_reset_audio"] = btn_reset_audio
 
+	# Input / Output audio devices
+	var dev_out_lbl := Label.new()
+	dev_out_lbl.text = "Устройство вывода"
+	dev_out_lbl.add_theme_font_size_override("font_size", 13)
+	dev_out_lbl.add_theme_color_override("font_color", Color(0.86, 0.89, 0.94, 0.88))
+	m_settings_box.add_child(dev_out_lbl)
+
+	var opt_audio_out := OptionButton.new()
+	opt_audio_out.custom_minimum_size = Vector2(0, 32)
+	opt_audio_out.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	RoomsUI.style_button(opt_audio_out, neutral, 12)
+	var out_devs: PackedStringArray = AudioServer.get_output_device_list()
+	var cur_out: String = AudioServer.output_device
+	var out_idx_to_select := 0
+	for i in range(out_devs.size()):
+		var d := out_devs[i]
+		opt_audio_out.add_item(d, i)
+		if d == cur_out:
+			out_idx_to_select = i
+	if out_devs.size() > 0:
+		opt_audio_out.selected = out_idx_to_select
+	opt_audio_out.item_selected.connect(func(idx: int) -> void:
+		if idx >= 0 and idx < out_devs.size():
+			AudioServer.output_device = out_devs[idx]
+			_save_render_settings()
+			_show_toast("Вывод: %s" % out_devs[idx], 1.8)
+	)
+	m_settings_box.add_child(opt_audio_out)
+	_ui["opt_audio_out"] = opt_audio_out
+
+	var dev_in_lbl := Label.new()
+	dev_in_lbl.text = "Микрофон (Ввод)"
+	dev_in_lbl.add_theme_font_size_override("font_size", 13)
+	dev_in_lbl.add_theme_color_override("font_color", Color(0.86, 0.89, 0.94, 0.88))
+	m_settings_box.add_child(dev_in_lbl)
+
+	var opt_audio_in := OptionButton.new()
+	opt_audio_in.custom_minimum_size = Vector2(0, 32)
+	opt_audio_in.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	RoomsUI.style_button(opt_audio_in, neutral, 12)
+	var in_devs: PackedStringArray = AudioServer.get_input_device_list()
+	var cur_in: String = AudioServer.input_device
+	var in_idx_to_select := 0
+	for i in range(in_devs.size()):
+		var d := in_devs[i]
+		opt_audio_in.add_item(d, i)
+		if d == cur_in:
+			in_idx_to_select = i
+	if in_devs.size() > 0:
+		opt_audio_in.selected = in_idx_to_select
+	opt_audio_in.item_selected.connect(func(idx: int) -> void:
+		if idx >= 0 and idx < in_devs.size():
+			AudioServer.input_device = in_devs[idx]
+			_save_render_settings()
+			_show_toast("Микрофон: %s" % in_devs[idx], 1.8)
+	)
+	m_settings_box.add_child(opt_audio_in)
+	_ui["opt_audio_in"] = opt_audio_in
+
 	add_hdr.call("камера и управление")
 	make_slider.call("Чувствительность обзора", "sld_sens", "lbl_sens", 0.4, 2.2, 0.05, _mouse_sens_mult, neutral, func(val: float) -> void:
 		_mouse_sens_mult = clampf(val, 0.4, 2.2)
@@ -931,7 +990,10 @@ void fragment() {
 				_show_toast("Панель доступна только хосту!", 2.0)
 				return
 			_admin_cheats_used = true
-			cb.call()
+			if cb.get_argument_count() > 0:
+				cb.call(b)
+			else:
+				cb.call()
 		)
 		m_admin_box.add_child(b)
 		return b
@@ -959,19 +1021,17 @@ void fragment() {
 		_show_toast("Здоровье: %d/100" % _hp, 1.8)
 	)
 
-	var btn_god_cmd: Button = null
-	btn_god_cmd = add_adm_cmd.call("god mode: off", func() -> void:
+	add_adm_cmd.call("god mode: off", func(b: Button) -> void:
 		_admin_god_mode = not _admin_god_mode
-		btn_god_cmd.text = "god mode: %s" % ("on" if _admin_god_mode else "off")
-		btn_god_cmd.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3) if _admin_god_mode else Color(0.85, 0.88, 0.94))
+		b.text = "god mode: %s" % ("on" if _admin_god_mode else "off")
+		b.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3) if _admin_god_mode else Color(0.85, 0.88, 0.94))
 		_show_toast("Бог-режим: %s" % ("ВКЛ" if _admin_god_mode else "ВЫКЛ"), 1.8)
 	)
 
-	var btn_stam_cmd: Button = null
-	btn_stam_cmd = add_adm_cmd.call("infinite stamina: off", func() -> void:
+	add_adm_cmd.call("infinite stamina: off", func(b: Button) -> void:
 		_admin_inf_stamina = not _admin_inf_stamina
-		btn_stam_cmd.text = "infinite stamina: %s" % ("on" if _admin_inf_stamina else "off")
-		btn_stam_cmd.add_theme_color_override("font_color", Color(0.4, 0.85, 1.0) if _admin_inf_stamina else Color(0.85, 0.88, 0.94))
+		b.text = "infinite stamina: %s" % ("on" if _admin_inf_stamina else "off")
+		b.add_theme_color_override("font_color", Color(0.4, 0.85, 1.0) if _admin_inf_stamina else Color(0.85, 0.88, 0.94))
 		_show_toast("Беск. выносливость: %s" % ("ВКЛ" if _admin_inf_stamina else "ВЫКЛ"), 1.8)
 	)
 
@@ -1780,9 +1840,24 @@ func _build_main_menu(root: Control) -> void:
 	make_item.call(v_play, "back", func() -> void: _set_menu_view("main"), 22)
 
 	make_item.call(v_multi, "invite steam friends", func() -> void: _menu_steam_invite(), 30)
-	make_item.call(v_multi, "quick game", func() -> void: _menu_quick_multiplayer(), 30)
+
+	var btn_start_multi: Button = make_item.call(v_multi, "start", func() -> void: _menu_start_multiplayer(), 34)
+	_ui["btn_start_multi"] = btn_start_multi
+
+	var lbl_waiting_host := Label.new()
+	lbl_waiting_host.text = "Waiting for host..."
+	lbl_waiting_host.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_waiting_host.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
+	lbl_waiting_host.add_theme_font_size_override("font_size", 20)
+	lbl_waiting_host.add_theme_color_override("font_color", Color(0.80, 0.84, 0.92, 0.85))
+	lbl_waiting_host.visible = false
+	v_multi.add_child(lbl_waiting_host)
+	_ui["lbl_waiting_host"] = lbl_waiting_host
+
 	make_item.call(v_multi, "local network (host)", func() -> void:
-		_menu_begin_game(true, "lan")
+		if _net != null:
+			_net.host_enet(int(_rng.seed))
+		call("_update_menu_players_list")
 		var host_ip := _get_local_ip()
 		var host_port := _net.ENET_PORT if _net != null else 27480
 		_show_toast("Сервер запущен! Друг вводит адрес: %s:%d" % [host_ip, host_port], 5.0)
@@ -1839,7 +1914,8 @@ func _build_main_menu(root: Control) -> void:
 				port = int(parts[1])
 		if _net != null:
 			_net.join_enet(ip, port)
-		_menu_begin_game(true, "")
+		call("_update_menu_players_list")
+		_show_toast("Подключение к хосту...", 3.0)
 	)
 	lan_join_row.add_child(btn_lan_join_go)
 
@@ -1909,15 +1985,23 @@ func _build_main_menu(root: Control) -> void:
 				btn.add_theme_color_override("font_color", Color(0.72, 0.76, 0.82))
 				btn.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0))
 
+		btn.set_meta("mod_name", m_name)
+		btn.set_meta("mod_update_fn", update_btn_text)
+		_ui["menu_mod_btn_" + m_key] = btn
 		update_btn_text.call()
 		RoomsUI.style_link_button(btn, 18, HORIZONTAL_ALIGNMENT_LEFT)
 		btn.pressed.connect(func() -> void:
 			if _state != State.MENU:
 				_show_toast("Модификаторы настраиваются только до начала игры!", 2.0)
 				return
+			if _net != null and _net.is_online() and not _net.is_host:
+				_show_toast("Модификаторы может изменять только хост!", 2.0)
+				return
 			var cur_v: bool = bool(_active_modifiers.get(m_key, false))
 			_active_modifiers[m_key] = not cur_v
 			update_btn_text.call()
+			if _net != null and _net.is_online() and _net.is_host:
+				_net.broadcast_entity_event({"k": "mods_update", "mods": _active_modifiers})
 			var status_str := "ВКЛЮЧЕН" if not cur_v else "ВЫКЛЮЧЕН"
 			_show_toast("%s: %s" % [m_name, status_str], 1.8)
 		)
@@ -2026,6 +2110,12 @@ func _set_menu_view(view: String, fade: bool = true) -> void:
 func _update_menu_players_list() -> void:
 	if not _ui.has("menu_players"):
 		return
+	var is_client := (_net != null and _net.is_online() and not _net.is_host)
+	if _ui.has("btn_start_multi"):
+		(_ui["btn_start_multi"] as Control).visible = not is_client
+	if _ui.has("lbl_waiting_host"):
+		(_ui["lbl_waiting_host"] as Control).visible = is_client
+
 	var lbl := _ui["menu_players"] as Label
 	if _net == null or not _net.is_online():
 		lbl.text = "• вы (ожидание подключения)"
@@ -2141,6 +2231,30 @@ func _open_menu_settings() -> void:
 	_open_settings_panel(true)
 
 
+func _menu_start_multiplayer() -> void:
+	if _net != null and _net.is_online():
+		if not _net.is_host:
+			_show_toast("Только хост может запустить игру!", 2.0)
+			return
+		_net.broadcast_entity_event({
+			"k": "start_game",
+			"seed": _world_seed,
+			"mods": _active_modifiers
+		})
+	_menu_begin_game(true, "")
+
+
+func _update_menu_modifiers_ui() -> void:
+	var mod_keys: Array[String] = ["admin_panel", "wet_floor", "bad_time", "make_haste", "lights_out", "sprint_fatigue"]
+	for k in mod_keys:
+		var b_key: String = "menu_mod_btn_" + k
+		if _ui.has(b_key):
+			var b := _ui[b_key] as Button
+			var upd_fn = b.get_meta("mod_update_fn", null)
+			if upd_fn is Callable and (upd_fn as Callable).is_valid():
+				(upd_fn as Callable).call()
+
+
 func _menu_quick_multiplayer() -> void:
 	if _net == null:
 		return
@@ -2200,7 +2314,7 @@ func _menu_steam_invite() -> void:
 	_net.open_invite_overlay_now()
 	if mstatus != null:
 		mstatus.text = "лобби создано — пригласи друзей (Shift+Tab)"
-	_show_toast("Лобби создано. Нажми «solo» когда все зайдут, чтобы начать.", 4.0)
+	_show_toast("Лобби создано. Нажми «start» когда все зайдут, чтобы начать.", 4.0)
 
 
 func _menu_begin_game(multiplayer: bool = false, mode: String = "") -> void:

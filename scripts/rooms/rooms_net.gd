@@ -425,15 +425,24 @@ func open_steam_invite_overlay(seed_val: int = 0, room_idx: int = 0) -> void:
 func _update_rich_presence() -> void:
 	if not steam_ready or _steam == null:
 		return
+	var st := ""
 	if mode == "steam" and current_lobby_id > 0:
-		_steam.call("setRichPresence", "status", "r00ms | A-%03d | живых: %d/%d" % [
+		st = "A-%03d | %d/%d" % [
 			presence_room_idx + 1,
 			maxi(presence_alive, 0),
 			maxi(presence_total, 1),
-		])
+		]
 		_steam.call("setRichPresence", "connect", "+connect_lobby %d" % current_lobby_id)
+		_steam.call("setRichPresence", "steam_player_group", str(current_lobby_id))
+		_steam.call("setRichPresence", "steam_player_group_size", str(maxi(presence_total, 1)))
+	elif presence_room_idx > 0:
+		st = "A-%03d (Solo)" % (presence_room_idx + 1)
+		_steam.call("setRichPresence", "connect", "")
 	else:
-		_steam.call("clearRichPresence")
+		st = "В главном меню"
+		_steam.call("setRichPresence", "connect", "")
+	_steam.call("setRichPresence", "status", st)
+	_steam.call("setRichPresence", "steam_display", "#StatusWithoutScore")
 
 
 ## Pushed by game flow each heartbeat: what room the group is in and how many are alive.
@@ -606,6 +615,8 @@ func _process(delta: float) -> void:
 					"sd": run_seed if is_host else 0,
 					"r": int(_local_state.get("room", 0)),
 					"hp": int(_local_state.get("hp", 100)),
+					"insp": bool(_local_state.get("insp", false)),
+					"dh": bool(_local_state.get("dh", false)),
 					"n": persona_name,
 				}
 				if mode == "steam":
@@ -670,6 +681,7 @@ func _setup_voice() -> void:
 		mp.volume_db = -80.0 # capture taps the bus pre-fader; keep the mic silent locally
 		mp.autoplay = true
 		add_child(mp)
+		mp.play()
 		_voice_mic = mp
 
 
@@ -713,8 +725,16 @@ func _voice_playback(peer_key: String, pcm: PackedByteArray) -> void:
 		pl.play()
 		entry = {"gen": gen, "pl": pl}
 		_voice_streams[peer_key] = entry
-	var gen2: AudioStreamGenerator = entry["gen"]
-	gen2.push_buffer(frames)
+	var pl: AudioStreamPlayer = entry.get("pl")
+	if pl != null and is_instance_valid(pl):
+		if not pl.playing:
+			pl.play()
+		var playback = pl.get_stream_playback()
+		if playback is AudioStreamGeneratorPlayback:
+			var gen_pb := playback as AudioStreamGeneratorPlayback
+			var to_push: int = mini(frames.size(), gen_pb.get_frames_available())
+			if to_push > 0:
+				gen_pb.push_buffer(frames.slice(0, to_push))
 
 
 func _stop_voice_streams() -> void:
@@ -764,6 +784,8 @@ func _process_voice(delta: float) -> void:
 			elif mode == "enet" and multiplayer.has_multiplayer_peer():
 				multiplayer.send_bytes(var_to_bytes(pkt), 0, MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED)
 	else:
+		if _voice_capture != null and _voice_capture.get_frames_available() > 0:
+			_voice_capture.clear_buffer()
 		_voice_pcm = PackedByteArray()
 		_voice_flush_accum = 0.0
 

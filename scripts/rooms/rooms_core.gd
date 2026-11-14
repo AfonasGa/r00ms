@@ -313,7 +313,11 @@ func _build_net() -> void:
 	)
 	_net.session_synced.connect(_on_net_session_synced)
 	_net.chat_received.connect(func(who: String, text: String) -> void: call("_chat_append", who, text))
-	_net.members_changed.connect(func() -> void: call("_update_menu_players_list"))
+	_net.members_changed.connect(func() -> void:
+		call("_update_menu_players_list")
+		if _state == State.MENU and _net != null and _net.is_online() and not _net.is_host:
+			call("_set_menu_view", "multi")
+	)
 
 
 func _on_net_session_synced(seed_val: int, room_idx: int) -> void:
@@ -365,7 +369,7 @@ func _on_net_lobbies_updated(lobbies: Array) -> void:
 
 
 func _is_action_locked() -> bool:
-	return _locker_transition_t < 1.0 or _door_hand_timer > 0.0
+	return _locker_transition_t < 1.0 or _door_hand_timer > 0.0 or _battery_inspect_timer > 0.0
 
 
 func _is_locker_entry_anim() -> bool:
@@ -412,6 +416,24 @@ func _is_entity_authority() -> bool:
 
 func _on_remote_entity_event(msg: Dictionary) -> void:
 	var kind := String(msg.get("k", ""))
+	if kind == "start_game":
+		var s: int = int(msg.get("seed", 0))
+		if s > 0 and _world_seed != s:
+			call("_reset_run", s)
+		var m = msg.get("mods", null)
+		if m is Dictionary:
+			_active_modifiers = (m as Dictionary).duplicate()
+		if has_method("_apply_remote_modifiers"):
+			call("_apply_remote_modifiers")
+		call("_menu_begin_game", true, "")
+		return
+	if kind == "mods_update":
+		var m = msg.get("mods", null)
+		if m is Dictionary:
+			_active_modifiers = (m as Dictionary).duplicate()
+			if has_method("_update_menu_modifiers_ui"):
+				call("_update_menu_modifiers_ui")
+		return
 	if kind == "admin_grant":
 		_admin_granted_by_host = true
 		if _ui.has("btn_pause_admin"):
@@ -835,6 +857,23 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 		hg_head.rotation.x = PI * 0.5
 		var hg_lens := RoomBuilder._add_cyl(held_gummy, "GumLens", Vector3(0.0, 0.0, -0.136), 0.032, 0.008, _vm_gummy_on_mat)
 		hg_lens.rotation.x = PI * 0.5
+
+		var held_battery := Node3D.new()
+		held_battery.name = "HeldBattery"
+		held_battery.visible = false
+		held.add_child(held_battery)
+		var hb_mesh := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.03
+		cyl.bottom_radius = 0.03
+		cyl.height = 0.12
+		cyl.radial_segments = 12
+		hb_mesh.mesh = cyl
+		hb_mesh.rotation.x = PI * 0.5
+		if _assets != null and is_instance_valid(_assets.battery_mat):
+			hb_mesh.material_override = _assets.battery_mat
+		held_battery.add_child(hb_mesh)
+
 		_prep_avatar_meshes(held)
 
 		var name_lbl := Label3D.new()
@@ -855,6 +894,7 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 			"spot": spot,
 			"held_gummy": held_gummy,
 			"held_flash": held_flash,
+			"held_battery": held_battery,
 			"lbl": name_lbl,
 			"tgt_pos": Vector3.ZERO,
 			"tgt_yaw": 0.0,
@@ -909,6 +949,8 @@ func _on_remote_state(peer_key: String, msg: Dictionary) -> void:
 	rp["room"] = int(msg.get("r", 0))
 	rp["name"] = String(msg.get("n", "Player"))
 	rp["sprint"] = bool(msg.get("sp", false))
+	rp["insp"] = bool(msg.get("insp", false))
+	rp["dh"] = bool(msg.get("dh", false))
 	var tool_i := int(msg.get("tool", 0))
 	var has_gum := bool(msg.get("gum", false))
 	rp["tool"] = tool_i
@@ -1020,12 +1062,32 @@ func _process_remote_players(delta: float) -> void:
 		var arm_l_rz := -0.075 - 0.03 * sin(idle_t * 1.8) * (1.0 - wb) + (0.12 if is_hiding else 0.0)
 		arm_l.rotation = arm_l.rotation.lerp(Vector3(arm_l_rx, 0.0, arm_l_rz), anim_a)
 
-		# Right Arm: locker reach gesture > flashlight aim > opposite walk/run swing > idle sway
+		# Right Arm & Battery inspect sync
+		var is_inspecting := bool(rp.get("insp", false))
+		var is_door_hand := bool(rp.get("dh", false))
+		var hb: Node3D = rp.get("held_battery")
+		var hf: Node3D = rp.get("held_flash")
+		var hg: Node3D = rp.get("held_gummy")
+		if is_instance_valid(hb):
+			hb.visible = is_inspecting
+		if is_inspecting:
+			if is_instance_valid(hf): hf.visible = false
+			if is_instance_valid(hg): hg.visible = false
+		else:
+			var show_gummy := bool(rp.get("gummy", false)) and int(rp.get("tool", 0)) == 1
+			if is_instance_valid(hf): hf.visible = not show_gummy
+			if is_instance_valid(hg): hg.visible = show_gummy
+
 		var arm_r_rx := +sw * arm_amp + cos(idle_t * 1.5) * 0.055 * (1.0 - wb)
 		var arm_r_ry := 0.0
 		var arm_r_rz := 0.075 + 0.03 * sin(idle_t * 1.8) * (1.0 - wb)
-		if inter_t > 0.0:
-			var reach := sin(clampf(inter_t / 0.85, 0.0, 1.0) * PI)
+		if is_inspecting:
+			arm_r_rx = 2.15
+			arm_r_ry = -0.22
+			arm_r_rz = 0.35
+			head_rx = maxf(head_rx, 0.45)
+		elif is_door_hand or inter_t > 0.0:
+			var reach := 1.0 if is_door_hand else sin(clampf(inter_t / 0.85, 0.0, 1.0) * PI)
 			arm_r_rx = lerpf(arm_r_rx, 1.48, reach)
 			arm_r_ry = reach * 0.34
 			arm_r_rz = -0.16 * reach

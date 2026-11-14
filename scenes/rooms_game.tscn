@@ -30,11 +30,16 @@ far = 85.0
 [node name="Flashlight" type="SpotLight3D" parent="PlayerBody/Camera3D"]
 light_energy = 2.6
 shadow_enabled = true
+shadow_bias = 0.08
+shadow_normal_bias = 2.5
+shadow_blur = 1.5
 spot_range = 24.0
-spot_angle = 36.0
+spot_angle = 38.0
+spot_angle_attenuation = 1.4
+spot_attenuation = 1.2
 
 [node name="InteractRay" type="RayCast3D" parent="PlayerBody/Camera3D"]
-target_position = Vector3(0, 0, -5.0)
+target_position = Vector3(0, 0, -1.35)
 
 [node name="RoomsAudio" type="AudioStreamPlayer" parent="."]
 script = ExtResource("2_ra")

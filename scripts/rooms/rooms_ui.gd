@@ -18,10 +18,31 @@ static func make_panel_style(bg: Color, border: Color, radius: int = 12, border_
 
 
 static func make_button_theme_styles(accent: Color) -> Dictionary:
-	var normal := make_panel_style(Color(0.06, 0.08, 0.12, 0.90), Color(accent.r, accent.g, accent.b, 0.45), 8, 1)
-	var hover := make_panel_style(Color(0.11, 0.16, 0.25, 0.96), Color(accent.r, accent.g, accent.b, 0.95), 8, 2)
-	var pressed := make_panel_style(Color(accent.r * 0.35, accent.g * 0.35, accent.b * 0.4, 0.98), Color(1.0, 1.0, 1.0, 0.95), 8, 2)
-	return {"normal": normal, "hover": hover, "pressed": pressed}
+	var normal := make_panel_style(Color(1.0, 1.0, 1.0, 0.04), Color(accent.r, accent.g, accent.b, 0.28), 3, 1)
+	normal.content_margin_left = 12
+	normal.content_margin_right = 12
+	normal.content_margin_top = 7
+	normal.content_margin_bottom = 7
+
+	var hover := make_panel_style(Color(1.0, 1.0, 1.0, 0.10), Color(accent.r, accent.g, accent.b, 0.65), 3, 1)
+	hover.content_margin_left = 12
+	hover.content_margin_right = 12
+	hover.content_margin_top = 7
+	hover.content_margin_bottom = 7
+
+	var pressed := make_panel_style(Color(accent.r * 0.4, accent.g * 0.4, accent.b * 0.4, 0.25), Color(1.0, 1.0, 1.0, 0.85), 3, 1)
+	pressed.content_margin_left = 12
+	pressed.content_margin_right = 12
+	pressed.content_margin_top = 7
+	pressed.content_margin_bottom = 7
+
+	var disabled := make_panel_style(Color(1.0, 1.0, 1.0, 0.02), Color(1.0, 1.0, 1.0, 0.08), 3, 1)
+	disabled.content_margin_left = 12
+	disabled.content_margin_right = 12
+	disabled.content_margin_top = 7
+	disabled.content_margin_bottom = 7
+
+	return {"normal": normal, "hover": hover, "pressed": pressed, "disabled": disabled}
 
 
 static func style_button(btn: Button, accent: Color, font_size: int = 15) -> void:
@@ -30,8 +51,12 @@ static func style_button(btn: Button, accent: Color, font_size: int = 15) -> voi
 	btn.add_theme_stylebox_override("hover", styles["hover"])
 	btn.add_theme_stylebox_override("pressed", styles["pressed"])
 	btn.add_theme_stylebox_override("focus", styles["hover"])
-	btn.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0))
+	btn.add_theme_stylebox_override("disabled", styles["disabled"])
+	btn.add_theme_font_override("font", load("res://assets/fonts/Montserrat-Regular.ttf"))
+	btn.add_theme_color_override("font_color", Color(0.90, 0.93, 0.98))
 	btn.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0))
+	btn.add_theme_color_override("font_pressed_color", Color(1.0, 1.0, 1.0))
+	btn.add_theme_color_override("font_disabled_color", Color(0.55, 0.58, 0.65, 0.45))
 	btn.add_theme_font_size_override("font_size", font_size)
 	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 

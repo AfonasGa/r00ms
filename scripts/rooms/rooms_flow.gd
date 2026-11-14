@@ -1041,7 +1041,16 @@ func _input(event: InputEvent) -> void:
 
 func _apply_camera_rotation() -> void:
 	player_body.rotation = Vector3(0.0, _yaw, 0.0)
-	cam.rotation = Vector3(_pitch, 0.0, _cam_roll)
+	var inspect_pitch := 0.0
+	if _battery_inspect_timer > 0.0:
+		var prog := 2.0 - _battery_inspect_timer
+		if prog < 0.6:
+			inspect_pitch = ease(prog / 0.6, 0.4) * 0.28
+		elif prog < 1.4:
+			inspect_pitch = 0.28
+		else:
+			inspect_pitch = ease((2.0 - prog) / 0.6, 0.4) * 0.28
+	cam.rotation = Vector3(_pitch + inspect_pitch, 0.0, _cam_roll)
 
 
 func _sync_net_local_state() -> void:
@@ -1064,6 +1073,8 @@ func _sync_net_local_state() -> void:
 			"hp": _hp,
 			"tool": _active_tool,
 			"gum": _has_gummy,
+			"insp": (_battery_inspect_timer > 0.0),
+			"dh": (_door_hand_timer > 0.0),
 		})
 		# Steam rich presence: current room + how many players are still alive
 		var alive_now := 1 if _state == State.PLAYING else 0
@@ -1075,6 +1086,8 @@ func _sync_net_local_state() -> void:
 
 
 func _process(delta: float) -> void:
+	if _net != null and _net.is_online() and not _mobile_controls_enabled:
+		_net.voice_talking = Input.is_key_pressed(KEY_V) and not _chat_open
 	_sync_net_local_state()
 	_process_remote_players(delta)
 	_update_warp_fx(delta)

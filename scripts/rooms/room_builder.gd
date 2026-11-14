@@ -78,25 +78,31 @@ static func create_shared_assets() -> SharedAssets:
 	a.wall_mat.albedo_color = Color(0.92, 0.94, 0.98)
 	a.wall_mat.normal_enabled = true
 	a.wall_mat.normal_texture = wall_nrm
-	a.wall_mat.normal_scale = 0.45
-	a.wall_mat.roughness = 0.86
-	a.wall_mat.uv1_scale = Vector3(3.0, 1.5, 3.0)
+	a.wall_mat.normal_scale = 0.55
+	a.wall_mat.roughness = 0.84
+	a.wall_mat.uv1_triplanar = true
+	a.wall_mat.uv1_world_triplanar = true
+	a.wall_mat.uv1_scale = Vector3(0.35, 0.35, 0.35)
 
 	a.floor_mat = StandardMaterial3D.new()
 	a.floor_mat.albedo_texture = floor_tex
 	a.floor_mat.normal_enabled = true
 	a.floor_mat.normal_texture = carpet_nrm
-	a.floor_mat.normal_scale = 0.65
-	a.floor_mat.roughness = 0.92
-	a.floor_mat.uv1_scale = Vector3(4.5, 4.5, 4.5)
+	a.floor_mat.normal_scale = 0.70
+	a.floor_mat.roughness = 0.90
+	a.floor_mat.uv1_triplanar = true
+	a.floor_mat.uv1_world_triplanar = true
+	a.floor_mat.uv1_scale = Vector3(0.45, 0.45, 0.45)
 
 	a.tile_floor_mat = StandardMaterial3D.new()
 	a.tile_floor_mat.albedo_texture = tile_tex
 	a.tile_floor_mat.normal_enabled = true
 	a.tile_floor_mat.normal_texture = tile_nrm
-	a.tile_floor_mat.normal_scale = 0.55
-	a.tile_floor_mat.roughness = 0.48
-	a.tile_floor_mat.uv1_scale = Vector3(4.0, 4.0, 4.0)
+	a.tile_floor_mat.normal_scale = 0.60
+	a.tile_floor_mat.roughness = 0.42
+	a.tile_floor_mat.uv1_triplanar = true
+	a.tile_floor_mat.uv1_world_triplanar = true
+	a.tile_floor_mat.uv1_scale = Vector3(0.45, 0.45, 0.45)
 
 	a.grate_mat = StandardMaterial3D.new()
 	a.grate_mat.albedo_texture = grate_tex
@@ -106,7 +112,7 @@ static func create_shared_assets() -> SharedAssets:
 
 	a.ceiling_mat = StandardMaterial3D.new()
 	a.ceiling_mat.albedo_color = Color(0.08, 0.09, 0.11)
-	a.ceiling_mat.roughness = 0.95
+	a.ceiling_mat.roughness = 0.88
 
 	a.metal_mat = StandardMaterial3D.new()
 	a.metal_mat.albedo_color = Color(0.24, 0.27, 0.32)
@@ -373,23 +379,38 @@ static func build_room(
 
 
 static func _build_bridge_shell(room_node: Node3D, assets: SharedAssets, r: RoomInstance) -> void:
-	# Entry & exit solid ledges + deep pit below + elevated steel grate bridge with railings
-	_add_box(room_node, "PitFloor", Vector3(0.0, -2.5, 0.0), Vector3(HALF_W * 2.0, 0.2, CELL_SIZE), assets.floor_mat)
-	_add_box(room_node, "LedgeEntry", Vector3(0.0, -1.2, 4.4), Vector3(HALF_W * 2.0, 2.4, 3.2), assets.wall_mat)
-	_add_box(room_node, "LedgeExit", Vector3(0.0, -1.2, -4.7), Vector3(HALF_W * 2.0, 2.4, 2.6), assets.wall_mat)
-	_add_box(room_node, "EntryCarpet", Vector3(0.0, -0.04, 4.4), Vector3(HALF_W * 2.0, 0.08, 3.2), assets.floor_mat, false)
-	_add_box(room_node, "ExitCarpet", Vector3(0.0, -0.04, -4.7), Vector3(HALF_W * 2.0, 0.08, 2.6), assets.floor_mat, false)
+	# Entry & exit solid ledges spanning fully from room doors to the central chasm
+	var ledge_len := HALF_CELL - 3.0 # 6.0m solid ledge on each side
+	var entry_z := (HALF_CELL + 3.0) * 0.5 # Center at +6.0
+	var exit_z := (-HALF_CELL - 3.0) * 0.5 # Center at -6.0
 
-	_add_box(room_node, "BridgeDeck", Vector3(0.0, -0.08, -0.3), Vector3(2.8, 0.16, 6.4), assets.grate_mat).set_meta("floor_surface", "metal")
-	# Steel safety rails on bridge
+	_add_box(room_node, "PitFloor", Vector3(0.0, -2.5, 0.0), Vector3(HALF_W * 2.0, 0.2, CELL_SIZE), assets.floor_mat)
+	_add_box(room_node, "LedgeEntry", Vector3(0.0, -1.2, entry_z), Vector3(HALF_W * 2.0, 2.4, ledge_len), assets.wall_mat)
+	_add_box(room_node, "LedgeExit", Vector3(0.0, -1.2, exit_z), Vector3(HALF_W * 2.0, 2.4, ledge_len), assets.wall_mat)
+	_add_box(room_node, "EntryCarpet", Vector3(0.0, -0.04, entry_z), Vector3(HALF_W * 2.0, 0.08, ledge_len), assets.floor_mat, false)
+	_add_box(room_node, "ExitCarpet", Vector3(0.0, -0.04, exit_z), Vector3(HALF_W * 2.0, 0.08, ledge_len), assets.floor_mat, false)
+
+	# Elevated steel grate bridge deck connecting both ledges with 0.4m overlap on both ends (zero gaps)
+	_add_box(room_node, "BridgeDeck", Vector3(0.0, -0.08, 0.0), Vector3(3.0, 0.16, 6.8), assets.grate_mat).set_meta("floor_surface", "metal")
+
+	# Steel safety rails along bridge sides
 	for side_s in [-1.0, 1.0]:
-		var rx: float = side_s * 1.32
-		_add_box(room_node, "RailTop", Vector3(rx, 0.92, -0.3), Vector3(0.08, 0.08, 6.4), assets.metal_mat)
-		for pz in [-3.1, -1.0, 1.0, 2.6]:
-			_add_box(room_node, "RailPost", Vector3(rx, 0.45, pz), Vector3(0.08, 0.92, 0.08), assets.metal_mat, false)
+		var rx: float = side_s * 1.42
+		_add_box(room_node, "RailTop", Vector3(rx, 1.0, 0.0), Vector3(0.08, 0.08, 6.8), assets.metal_mat)
+		_add_box(room_node, "RailMid", Vector3(rx, 0.5, 0.0), Vector3(0.06, 0.06, 6.8), assets.metal_mat)
+		for pz in [-3.2, -1.6, 0.0, 1.6, 3.2]:
+			_add_box(room_node, "RailPost", Vector3(rx, 0.5, pz), Vector3(0.08, 1.0, 0.08), assets.metal_mat, false)
+
+	# Pit edge safety railings so players cannot walk off the ledges into the void
+	var side_gap := (HALF_W - 1.45)
+	for p_side: float in [-1.0, 1.0]:
+		var px: float = p_side * (1.45 + side_gap * 0.5)
+		_add_box(room_node, "PitEdgeRailEntry", Vector3(px, 1.0, 3.0), Vector3(side_gap, 0.08, 0.08), assets.metal_mat)
+		_add_box(room_node, "PitEdgeRailExit", Vector3(px, 1.0, -3.0), Vector3(side_gap, 0.08, 0.08), assets.metal_mat)
+
 	# Locker cleanly on entry landing so player can always hide!
-	_build_locker(room_node, assets, Vector3(HALF_W - 0.55, 0.0, 4.1), -PI * 0.5, r)
-	_build_desk(room_node, assets, Vector3(-2.4, -2.4, 0.2), 0.2)
+	_build_locker(room_node, assets, Vector3(HALF_W - 0.55, 0.0, entry_z), -PI * 0.5, r)
+	_build_desk(room_node, assets, Vector3(-2.4, -2.4, 0.0), 0.2)
 
 
 static func _build_exit_door(anchor: Node3D, assets: SharedAssets, next_room_num: int, r: RoomInstance) -> void:

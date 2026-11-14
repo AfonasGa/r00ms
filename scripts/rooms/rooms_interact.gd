@@ -171,11 +171,16 @@ func _try_tap_world_interact(screen_pos: Vector2) -> void:
 func _collider_to_interact_dict(col: Object) -> Dictionary:
 	if col == null or not col.has_meta("interact_type"):
 		return {}
+	if _is_action_locked() or _battery_inspect_timer > 0.0:
+		return {}
+	var cam_pos := cam.global_position if is_instance_valid(cam) else player_body.global_position
 	var itype := String(col.get_meta("interact_type"))
 	if itype == "door":
 		var r_idx := int(col.get_meta("room_index"))
 		var room_inst: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
 		if room_inst != null and not room_inst.door_opened:
+			if is_instance_valid(room_inst.exit_anchor) and cam_pos.distance_to(room_inst.exit_anchor.global_position) > 1.65:
+				return {}
 			if r_idx == 19 and not room_inst.door_broken:
 				return {"type": "door", "room_index": r_idx, "label": "Дверь A-020 (ЗАБЛОКИРОВАНА)"}
 			return {"type": "door", "room_index": r_idx, "label": "Открыть дверь A-%03d" % (r_idx + 1)}
@@ -183,6 +188,10 @@ func _collider_to_interact_dict(col: Object) -> Dictionary:
 		var r_idx := int(col.get_meta("room_index"))
 		var l_idx := int(col.get_meta("locker_index"))
 		var r_inst: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
+		if r_inst != null and l_idx >= 0 and l_idx < r_inst.lockers.size():
+			var ln: Node3D = r_inst.lockers[l_idx].get("node")
+			if is_instance_valid(ln) and cam_pos.distance_to(ln.global_position) > 1.55:
+				return {}
 		var lbl := "Занято" if _is_locker_occupied(r_idx, l_idx) else "Спрятаться"
 		if lbl != "Занято" and r_inst != null and l_idx >= 0 and l_idx < r_inst.lockers.size():
 			lbl = String(r_inst.lockers[l_idx].get("label", lbl))
@@ -198,14 +207,17 @@ func _collider_to_interact_dict(col: Object) -> Dictionary:
 		var r_inst: RoomBuilder.RoomInstance = _room_by_idx.get(r_idx)
 		if r_inst != null and l_idx >= 0 and l_idx < r_inst.levers.size():
 			var ld: Dictionary = r_inst.levers[l_idx]
+			var root_node: Node3D = ld.get("root") as Node3D
+			if is_instance_valid(root_node) and cam_pos.distance_to(root_node.global_position) > 1.40:
+				return {}
 			if bool(ld.get("used", false)):
 				return {"type": "lever", "room_index": r_idx, "lever_index": l_idx, "label": "Рычаг (уже опущен)"}
 			else:
 				return {"type": "lever", "room_index": r_idx, "lever_index": l_idx, "label": "Потянуть рычаг (+время)"}
 	elif itype == "pickup":
 		var node3d := col as Node3D
-		if node3d != null and is_instance_valid(cam):
-			if cam.global_position.distance_to(node3d.global_position) > 1.75:
+		if node3d != null:
+			if cam_pos.distance_to(node3d.global_position) > 1.35:
 				return {}
 		return {
 			"type": "pickup",
@@ -254,6 +266,8 @@ func _target_anchor_world_pos(tgt: Dictionary) -> Vector3:
 
 
 func _find_smart_reticle_target() -> Dictionary:
+	if _is_action_locked() or _battery_inspect_timer > 0.0:
+		return {}
 	var direct := _find_interact_target()
 	if not direct.is_empty():
 		var wp := _target_anchor_world_pos(direct)
@@ -282,7 +296,7 @@ func _find_smart_reticle_target() -> Dictionary:
 			var lk := String(ld.get("kind", "locker"))
 			var loc := Vector3(0.0, 0.56, 0.22) if lk == "under_desk" else Vector3(0.0, 1.16, 0.34)
 			var wp := ln.global_transform * loc
-			if cam_pos.distance_to(wp) > 2.8 or cam.is_position_behind(wp):
+			if cam_pos.distance_to(wp) > 1.55 or cam.is_position_behind(wp):
 				continue
 			var ang := cam_fwd.angle_to((wp - cam_pos).normalized())
 			if ang < best_angle and _has_los_to_interact(space_state, cam_pos, wp, r.index):
@@ -298,7 +312,7 @@ func _find_smart_reticle_target() -> Dictionary:
 				}
 		if not r.door_opened and is_instance_valid(r.exit_anchor):
 			var dwp := r.exit_anchor.global_position + Vector3(0.0, 1.15, 0.0)
-			if cam_pos.distance_to(dwp) <= 2.8 and not cam.is_position_behind(dwp):
+			if cam_pos.distance_to(dwp) <= 1.65 and not cam.is_position_behind(dwp):
 				var dang := cam_fwd.angle_to((dwp - cam_pos).normalized())
 				if dang < best_angle and _has_los_to_interact(space_state, cam_pos, dwp, r.index):
 					best_angle = dang
