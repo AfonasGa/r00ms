@@ -200,7 +200,8 @@ func _spawn_next_room() -> void:
 			if not _occupied_cells.has(step1) and not _occupied_cells.has(step2):
 				out_dir = cand
 
-	var r := RoomBuilder.build_room(rooms_container, _assets, idx, cell, in_dir, out_dir, room_rng, (idx >= 50 or _power_out))
+	var haste_active: bool = bool(_active_modifiers.get("make_haste", false))
+	var r := RoomBuilder.build_room(rooms_container, _assets, idx, cell, in_dir, out_dir, room_rng, (idx >= 50 or _power_out), haste_active)
 	_rooms.append(r)
 	_room_by_idx[idx] = r
 
@@ -284,6 +285,8 @@ func _set_state(new_state: State) -> void:
 		var btn_res: Button = _ui["btn_resume"]
 		if _state == State.PAUSED:
 			_open_settings_panel(false)
+			_open_admin_panel(false)
+			call("_update_pause_modifiers_ui")
 			title.visible = false
 			desc.visible = false
 			btn_res.text = "continue"
@@ -930,6 +933,8 @@ func _input(event: InputEvent) -> void:
 			elif _state == State.PAUSED:
 				if _ui.has("m_settings_scroll") and (_ui["m_settings_scroll"] as Control).visible:
 					_open_settings_panel(false)
+				elif _ui.has("m_admin_scroll") and (_ui["m_admin_scroll"] as Control).visible:
+					_open_admin_panel(false)
 				else:
 					_set_state(State.PLAYING)
 				get_viewport().set_input_as_handled()

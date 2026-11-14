@@ -134,8 +134,12 @@ func _reset_audio_defaults() -> void:
 func _open_settings_panel(open: bool) -> void:
 	if _ui.has("m_main_box"):
 		(_ui["m_main_box"] as Control).visible = not open
+	if _ui.has("m_mods_box"):
+		(_ui["m_mods_box"] as Control).visible = not open
 	if _ui.has("m_settings_scroll"):
 		(_ui["m_settings_scroll"] as Control).visible = open
+	if _ui.has("m_admin_scroll"):
+		(_ui["m_admin_scroll"] as Control).visible = false
 	if _ui.has("m_brand"):
 		(_ui["m_brand"] as Control).visible = not open
 	if not open and _settings_from_menu:
@@ -154,6 +158,19 @@ func _open_settings_panel(open: bool) -> void:
 		var desc: Label = _ui["m_desc"]
 		title.visible = false
 		desc.visible = false
+
+
+func _open_admin_panel(open: bool) -> void:
+	if _ui.has("m_main_box"):
+		(_ui["m_main_box"] as Control).visible = not open
+	if _ui.has("m_mods_box"):
+		(_ui["m_mods_box"] as Control).visible = not open
+	if _ui.has("m_admin_scroll"):
+		(_ui["m_admin_scroll"] as Control).visible = open
+	if _ui.has("m_settings_scroll"):
+		(_ui["m_settings_scroll"] as Control).visible = false
+	if _ui.has("m_brand"):
+		(_ui["m_brand"] as Control).visible = not open
 
 
 func _pause_summary_text() -> String:

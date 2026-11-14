@@ -285,21 +285,6 @@ void fragment() {
 	hud_group.add_child(haste_lbl)
 	_ui["haste_lbl"] = haste_lbl
 
-	# Admin toggle button on HUD (top right)
-	var btn_adm := Button.new()
-	btn_adm.name = "BtnHudAdmin"
-	btn_adm.text = "[ADM]"
-	btn_adm.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	btn_adm.offset_left = -84
-	btn_adm.offset_top = 18
-	btn_adm.offset_right = -18
-	btn_adm.offset_bottom = 48
-	RoomsUI.style_button(btn_adm, Color(0.9, 0.35, 0.35), 11)
-	btn_adm.pressed.connect(Callable(self, "_toggle_admin_panel"))
-	btn_adm.visible = false
-	hud_group.add_child(btn_adm)
-	_ui["btn_hud_admin"] = btn_adm
-
 	_build_mobile_ui(hud_group)
 
 	# --- A-90 "Stop Sign" (screen-space entity) ---
@@ -464,7 +449,6 @@ void fragment() {
 
 	# Main menu (drawn under the pause modal / death screen)
 	call("_build_main_menu", root)
-	call("_build_admin_panel", root)
 
 	# Pause / Victory Overlay (minimal text links + animated white noise)
 	var modal := Control.new()
@@ -551,6 +535,16 @@ void fragment() {
 	m_main_box.add_child(btn_settings)
 	_ui["btn_settings"] = btn_settings
 
+	var btn_pause_admin := Button.new()
+	btn_pause_admin.name = "BtnPauseAdmin"
+	btn_pause_admin.text = "admin panel"
+	btn_pause_admin.custom_minimum_size = Vector2(0, 46)
+	RoomsUI.style_link_button(btn_pause_admin, 26)
+	btn_pause_admin.pressed.connect(func(): _open_admin_panel(true))
+	btn_pause_admin.visible = false
+	m_main_box.add_child(btn_pause_admin)
+	_ui["btn_pause_admin"] = btn_pause_admin
+
 	var btn_exit := Button.new()
 	btn_exit.text = "exit"
 	btn_exit.custom_minimum_size = Vector2(0, 46)
@@ -566,6 +560,38 @@ void fragment() {
 	m_underline.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	m_main_box.add_child(m_underline)
 	_ui["m_underline"] = m_underline
+
+	# Active modifiers list on the right side of pause menu (strictly in pause)
+	var m_mods_box := VBoxContainer.new()
+	m_mods_box.anchor_left = 0.65
+	m_mods_box.anchor_right = 0.95
+	m_mods_box.anchor_top = 0.12
+	m_mods_box.anchor_bottom = 0.85
+	m_mods_box.add_theme_constant_override("separation", 6)
+	modal.add_child(m_mods_box)
+	_ui["m_mods_box"] = m_mods_box
+
+	var m_mods_hdr := Label.new()
+	m_mods_hdr.text = "modifiers"
+	m_mods_hdr.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Medium.ttf"))
+	m_mods_hdr.add_theme_font_size_override("font_size", 24)
+	m_mods_hdr.add_theme_color_override("font_color", Color(0.9, 0.92, 0.96, 0.9))
+	m_mods_box.add_child(m_mods_hdr)
+
+	var m_mods_div := ColorRect.new()
+	m_mods_div.custom_minimum_size = Vector2(140, 1)
+	m_mods_div.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	m_mods_div.color = Color(1.0, 1.0, 1.0, 0.25)
+	m_mods_box.add_child(m_mods_div)
+
+	var m_mods_list := Label.new()
+	m_mods_list.text = "• none (default)"
+	m_mods_list.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
+	m_mods_list.add_theme_font_size_override("font_size", 15)
+	m_mods_list.add_theme_color_override("font_color", Color(0.72, 0.76, 0.84, 0.85))
+	m_mods_list.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	m_mods_box.add_child(m_mods_list)
+	_ui["m_mods_list"] = m_mods_list
 
 	# Settings panel (shares the same modal, replaces the links while open)
 	var m_settings_scroll := ScrollContainer.new()
@@ -849,6 +875,161 @@ void fragment() {
 	btn_settings_back.pressed.connect(func(): _open_settings_panel(false))
 	m_settings_box.add_child(btn_settings_back)
 	_ui["btn_settings_back"] = btn_settings_back
+
+	# Admin panel inside Pause Modal (minimalist r00ms style)
+	var m_admin_scroll := ScrollContainer.new()
+	m_admin_scroll.set_anchors_preset(Control.PRESET_CENTER)
+	m_admin_scroll.offset_left = -280
+	m_admin_scroll.offset_right = 280
+	m_admin_scroll.offset_top = -280
+	m_admin_scroll.offset_bottom = 280
+	m_admin_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	m_admin_scroll.visible = false
+	modal.add_child(m_admin_scroll)
+	_ui["m_admin_scroll"] = m_admin_scroll
+
+	var asb := m_admin_scroll.get_v_scroll_bar()
+	asb.custom_minimum_size.x = 4
+	asb.add_theme_stylebox_override("scroll", sb_track)
+	asb.add_theme_stylebox_override("grabber", sb_grab)
+	asb.add_theme_stylebox_override("grabber_highlight", sb_grab_hi)
+	asb.add_theme_stylebox_override("grabber_pressed", sb_grab_hi)
+
+	var m_admin_box := VBoxContainer.new()
+	m_admin_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	m_admin_box.add_theme_constant_override("separation", 6)
+	m_admin_scroll.add_child(m_admin_box)
+	_ui["m_admin_box"] = m_admin_box
+
+	var adm_title := Label.new()
+	adm_title.text = "admin console"
+	adm_title.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Medium.ttf"))
+	adm_title.add_theme_font_size_override("font_size", 24)
+	adm_title.add_theme_color_override("font_color", Color(0.95, 0.95, 0.98))
+	m_admin_box.add_child(adm_title)
+
+	var adm_sub := Label.new()
+	adm_sub.text = "[ прогресс и рекорды аннулируются ]"
+	adm_sub.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
+	adm_sub.add_theme_font_size_override("font_size", 12)
+	adm_sub.add_theme_color_override("font_color", Color(0.95, 0.45, 0.45, 0.85))
+	m_admin_box.add_child(adm_sub)
+
+	var adm_div := ColorRect.new()
+	adm_div.custom_minimum_size = Vector2(0, 1)
+	adm_div.color = Color(1.0, 1.0, 1.0, 0.22)
+	m_admin_box.add_child(adm_div)
+
+	var add_adm_cmd := func(txt: String, cb: Callable, col: Color = Color(0.85, 0.88, 0.94)) -> Button:
+		var b := Button.new()
+		b.text = txt
+		b.custom_minimum_size = Vector2(0, 36)
+		RoomsUI.style_link_button(b, 17, HORIZONTAL_ALIGNMENT_LEFT)
+		b.add_theme_color_override("font_color", col)
+		b.pressed.connect(func() -> void:
+			if not _can_use_admin():
+				_show_toast("Панель доступна только хосту!", 2.0)
+				return
+			_admin_cheats_used = true
+			cb.call()
+		)
+		m_admin_box.add_child(b)
+		return b
+
+	add_adm_cmd.call("revive", func() -> void:
+		_hp = 100
+		_is_hiding = false
+		call("_set_state", State.PLAYING)
+		if _ui.has("arch_root"):
+			(_ui["arch_root"] as Control).visible = false
+		if _ui.has("arch_stats_win"):
+			(_ui["arch_stats_win"] as Control).visible = false
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_show_toast("Возрождение выполнено!", 2.0)
+	, Color(0.35, 1.0, 0.55))
+
+	add_adm_cmd.call("kill", func() -> void:
+		_open_admin_panel(false)
+		call("_set_state", State.PLAYING)
+		call("_trigger_death", "Команда администратора", "Админ нажал Kill в консоли управления.", {})
+	, Color(1.0, 0.4, 0.4))
+
+	add_adm_cmd.call("+50 hp", func() -> void:
+		_hp = mini(_hp + 50, 100)
+		_show_toast("Здоровье: %d/100" % _hp, 1.8)
+	)
+
+	var btn_god_cmd: Button = null
+	btn_god_cmd = add_adm_cmd.call("god mode: off", func() -> void:
+		_admin_god_mode = not _admin_god_mode
+		btn_god_cmd.text = "god mode: %s" % ("on" if _admin_god_mode else "off")
+		btn_god_cmd.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3) if _admin_god_mode else Color(0.85, 0.88, 0.94))
+		_show_toast("Бог-режим: %s" % ("ВКЛ" if _admin_god_mode else "ВЫКЛ"), 1.8)
+	)
+
+	var btn_stam_cmd: Button = null
+	btn_stam_cmd = add_adm_cmd.call("infinite stamina: off", func() -> void:
+		_admin_inf_stamina = not _admin_inf_stamina
+		btn_stam_cmd.text = "infinite stamina: %s" % ("on" if _admin_inf_stamina else "off")
+		btn_stam_cmd.add_theme_color_override("font_color", Color(0.4, 0.85, 1.0) if _admin_inf_stamina else Color(0.85, 0.88, 0.94))
+		_show_toast("Беск. выносливость: %s" % ("ВКЛ" if _admin_inf_stamina else "ВЫКЛ"), 1.8)
+	)
+
+	add_adm_cmd.call("spawn a-60", func() -> void:
+		call("_spawn_a60", false)
+		_show_toast("Спавн A-60 запущен!", 2.0)
+	)
+
+	add_adm_cmd.call("spawn a-60 prime", func() -> void:
+		call("_spawn_a60", true)
+		_show_toast("Спавн A-60 Prime запущен!", 2.0)
+	)
+
+	add_adm_cmd.call("spawn a-90", func() -> void:
+		call("_start_a90_local")
+		_show_toast("Тест рефлекса A-90 запущен!", 2.0)
+	)
+
+	add_adm_cmd.call("spawn a-120", func() -> void:
+		call("_spawn_a120")
+		_show_toast("Спавн A-120 запущен!", 2.0)
+	)
+
+	add_adm_cmd.call("tp to next door", func() -> void:
+		var target_r: RoomBuilder.RoomInstance = call("_find_first_closed_door_room")
+		if target_r != null and is_instance_valid(target_r.exit_anchor):
+			player_body.global_position = target_r.exit_anchor.global_position - Vector3(0, 0, 1.5)
+			_show_toast("Телепортация к двери A-%03d!" % (target_r.index + 1), 2.0)
+			_open_admin_panel(false)
+			call("_set_state", State.PLAYING)
+	)
+
+	add_adm_cmd.call("refill battery", func() -> void:
+		_std_battery = 150.0
+		_gummy_battery = 100.0
+		_batteries = mini(_batteries + 2, 8)
+		_show_toast("Фонарик и батарейки восполнены!", 2.0)
+	)
+
+	add_adm_cmd.call("grant admin to all", func() -> void:
+		if _net != null and _net.is_online():
+			_net.broadcast_entity_event({"k": "admin_grant"}, true)
+			_show_toast("Права администратора выданы всем игрокам!", 2.5)
+		else:
+			_show_toast("В одиночной игре админка уже доступна", 2.0)
+	)
+
+	var adm_back_div := ColorRect.new()
+	adm_back_div.custom_minimum_size = Vector2(0, 1)
+	adm_back_div.color = Color(1.0, 1.0, 1.0, 0.15)
+	m_admin_box.add_child(adm_back_div)
+
+	var btn_adm_back := Button.new()
+	btn_adm_back.text = "← back"
+	btn_adm_back.custom_minimum_size = Vector2(0, 42)
+	RoomsUI.style_link_button(btn_adm_back, 20)
+	btn_adm_back.pressed.connect(func(): _open_admin_panel(false))
+	m_admin_box.add_child(btn_adm_back)
 
 	# Death screen: two cmd.exe terminal windows (minimal, mouse unlocked)
 	# Architect Death Void (Full-screen CRT Matrix green terminal + ASCII Art)
@@ -1674,18 +1855,108 @@ func _build_main_menu(root: Control) -> void:
 	v_multi.add_child(menu_status)
 	_ui["menu_status"] = menu_status
 
+	# Left: Modifiers panel (strictly visible only in multiplayer view)
+	var menu_multi_mods := VBoxContainer.new()
+	menu_multi_mods.name = "MenuMultiModifiers"
+	menu_multi_mods.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	menu_multi_mods.offset_left = 60
+	menu_multi_mods.offset_right = 360
+	menu_multi_mods.offset_top = -140
+	menu_multi_mods.offset_bottom = 260
+	menu_multi_mods.add_theme_constant_override("separation", 8)
+	menu_multi_mods.visible = false
+	menu.add_child(menu_multi_mods)
+	_ui["menu_multi_modifiers"] = menu_multi_mods
+
+	var mods_hdr := Label.new()
+	mods_hdr.text = "Modifiers"
+	mods_hdr.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Medium.ttf"))
+	mods_hdr.add_theme_font_size_override("font_size", 30)
+	mods_hdr.add_theme_color_override("font_color", Color(0.95, 0.96, 0.98))
+	menu_multi_mods.add_child(mods_hdr)
+
+	var mods_div := ColorRect.new()
+	mods_div.custom_minimum_size = Vector2(140, 1)
+	mods_div.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	mods_div.color = Color(1.0, 1.0, 1.0, 0.3)
+	menu_multi_mods.add_child(mods_div)
+
+	var mod_defs := [
+		{"key": "admin_panel", "name": "Admin Panel"},
+		{"key": "wet_floor", "name": "Wet Floor"},
+		{"key": "bad_time", "name": "Bad Time"},
+		{"key": "make_haste", "name": "Make Haste"},
+		{"key": "lights_out", "name": "Lights Out"},
+		{"key": "sprint_fatigue", "name": "Sprint Fatigue"},
+	]
+
+	for m in mod_defs:
+		var m_key: String = m["key"]
+		var m_name: String = m["name"]
+		var btn := Button.new()
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.custom_minimum_size = Vector2(0, 36)
+		btn.focus_mode = Control.FOCUS_NONE
+
+		var update_btn_text := func() -> void:
+			var active: bool = bool(_active_modifiers.get(m_key, false))
+			var check_mark := "[X] " if active else "[ ] "
+			btn.text = check_mark + m_name
+			if active:
+				btn.add_theme_color_override("font_color", Color(0.28, 1.0, 0.42))
+				btn.add_theme_color_override("font_hover_color", Color(0.45, 1.0, 0.58))
+			else:
+				btn.add_theme_color_override("font_color", Color(0.72, 0.76, 0.82))
+				btn.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0))
+
+		update_btn_text.call()
+		RoomsUI.style_link_button(btn, 18, HORIZONTAL_ALIGNMENT_LEFT)
+		btn.pressed.connect(func() -> void:
+			if _state != State.MENU:
+				_show_toast("Модификаторы настраиваются только до начала игры!", 2.0)
+				return
+			var cur_v: bool = bool(_active_modifiers.get(m_key, false))
+			_active_modifiers[m_key] = not cur_v
+			update_btn_text.call()
+			var status_str := "ВКЛЮЧЕН" if not cur_v else "ВЫКЛЮЧЕН"
+			_show_toast("%s: %s" % [m_name, status_str], 1.8)
+		)
+		menu_multi_mods.add_child(btn)
+
+	# Right: Lobby Players List (strictly visible only in multiplayer view)
+	var menu_multi_players := VBoxContainer.new()
+	menu_multi_players.name = "MenuMultiPlayers"
+	menu_multi_players.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	menu_multi_players.offset_left = -360
+	menu_multi_players.offset_right = -60
+	menu_multi_players.offset_top = -140
+	menu_multi_players.offset_bottom = 260
+	menu_multi_players.add_theme_constant_override("separation", 8)
+	menu_multi_players.visible = false
+	menu.add_child(menu_multi_players)
+	_ui["menu_multi_players"] = menu_multi_players
+
+	var plyr_hdr := Label.new()
+	plyr_hdr.text = "Players"
+	plyr_hdr.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Medium.ttf"))
+	plyr_hdr.add_theme_font_size_override("font_size", 30)
+	plyr_hdr.add_theme_color_override("font_color", Color(0.95, 0.96, 0.98))
+	menu_multi_players.add_child(plyr_hdr)
+
+	var plyr_div := ColorRect.new()
+	plyr_div.custom_minimum_size = Vector2(140, 1)
+	plyr_div.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	plyr_div.color = Color(1.0, 1.0, 1.0, 0.3)
+	menu_multi_players.add_child(plyr_div)
+
 	var menu_players := Label.new()
-	menu_players.text = ""
+	menu_players.text = "• вы (ожидание подключения)"
 	menu_players.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	menu_players.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	menu_players.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
-	menu_players.add_theme_font_size_override("font_size", 12)
-	menu_players.add_theme_color_override("font_color", Color(0.55, 0.72, 0.62, 0.9))
-	menu_players.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	menu_players.offset_left = 24
-	menu_players.offset_top = 20
-	menu_players.offset_right = 320
-	menu_players.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	menu.add_child(menu_players)
+	menu_players.add_theme_font_size_override("font_size", 16)
+	menu_players.add_theme_color_override("font_color", Color(0.72, 0.78, 0.86, 0.9))
+	menu_multi_players.add_child(menu_players)
 	_ui["menu_players"] = menu_players
 	if _net != null:
 		_net.members_changed.connect(func() -> void: call("_update_menu_players_list"))
@@ -1712,8 +1983,6 @@ func _build_main_menu(root: Control) -> void:
 	menu.add_child(btn_quit)
 	_ui["menu_exit"] = btn_quit
 
-	call("_build_modifiers_terminal", menu)
-
 	_set_menu_view("main", false)
 
 
@@ -1735,7 +2004,22 @@ func _set_menu_view(view: String, fade: bool = true) -> void:
 	if cur != null and fade:
 		cur.modulate.a = 0.0
 		create_tween().tween_property(cur, "modulate:a", 1.0, 0.22)
-	if view == "multi":
+
+	var is_multi := (view == "multi")
+	if _ui.has("menu_multi_modifiers"):
+		var mm := _ui["menu_multi_modifiers"] as Control
+		mm.visible = is_multi
+		if is_multi and fade:
+			mm.modulate.a = 0.0
+			create_tween().tween_property(mm, "modulate:a", 1.0, 0.22)
+	if _ui.has("menu_multi_players"):
+		var mp := _ui["menu_multi_players"] as Control
+		mp.visible = is_multi
+		if is_multi and fade:
+			mp.modulate.a = 0.0
+			create_tween().tween_property(mp, "modulate:a", 1.0, 0.22)
+
+	if is_multi:
 		call("_update_menu_players_list")
 
 
@@ -1743,14 +2027,17 @@ func _update_menu_players_list() -> void:
 	if not _ui.has("menu_players"):
 		return
 	var lbl := _ui["menu_players"] as Label
-	if _net == null:
-		lbl.text = ""
+	if _net == null or not _net.is_online():
+		lbl.text = "• вы (ожидание подключения)"
 		return
 	var names: Array[String] = _net.get_member_names()
-	if names.size() <= 1:
-		lbl.text = ""
+	if names.is_empty():
+		lbl.text = "• вы"
 	else:
-		lbl.text = "в лобби:\n" + "\n".join(names)
+		var lines: Array[String] = []
+		for n in names:
+			lines.append("• " + n)
+		lbl.text = "\n".join(lines)
 
 
 # --- Text chat ---------------------------------------------------------------
@@ -1924,8 +2211,6 @@ func _menu_begin_game(multiplayer: bool = false, mode: String = "") -> void:
 		_haste_timer = 60.0
 	if bool(_active_modifiers.get("lights_out", false)):
 		call("_trigger_power_outage")
-	if _ui.has("btn_hud_admin"):
-		(_ui["btn_hud_admin"] as Control).visible = bool(_active_modifiers.get("admin_panel", false))
 
 	var menu := _ui.get("main_menu") as Control
 	if menu == null:
@@ -1943,289 +2228,6 @@ func _menu_begin_game(multiplayer: bool = false, mode: String = "") -> void:
 	)
 
 
-func _build_modifiers_terminal(parent: Control) -> void:
-	var term := Panel.new()
-	term.name = "ModifiersTerminal"
-	term.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
-	term.offset_left = -340
-	term.offset_right = -40
-	term.offset_top = -170
-	term.offset_bottom = 220
-
-	var panel_sb := StyleBoxFlat.new()
-	panel_sb.bg_color = Color(0.04, 0.05, 0.07, 0.95)
-	panel_sb.border_width_left = 1
-	panel_sb.border_width_top = 1
-	panel_sb.border_width_right = 1
-	panel_sb.border_width_bottom = 1
-	panel_sb.border_color = Color(0.24, 0.28, 0.35, 0.9)
-	panel_sb.corner_radius_top_left = 4
-	panel_sb.corner_radius_top_right = 4
-	panel_sb.corner_radius_bottom_left = 4
-	panel_sb.corner_radius_bottom_right = 4
-	term.add_theme_stylebox_override("panel", panel_sb)
-	parent.add_child(term)
-	_ui["modifiers_terminal"] = term
-
-	# Title bar: C:\... - [] X
-	var title_bar := Panel.new()
-	title_bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	title_bar.offset_bottom = 26
-	var tb_sb := StyleBoxFlat.new()
-	tb_sb.bg_color = Color(0.12, 0.14, 0.18, 1.0)
-	tb_sb.corner_radius_top_left = 4
-	tb_sb.corner_radius_top_right = 4
-	title_bar.add_theme_stylebox_override("panel", tb_sb)
-	term.add_child(title_bar)
-
-	var tb_lbl := Label.new()
-	tb_lbl.text = " C:\\... - [Modifiers]"
-	tb_lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
-	tb_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	tb_lbl.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
-	tb_lbl.add_theme_font_size_override("font_size", 11)
-	tb_lbl.add_theme_color_override("font_color", Color(0.75, 0.78, 0.84))
-	title_bar.add_child(tb_lbl)
-
-	var tb_btns := Label.new()
-	tb_btns.text = "_ [] X "
-	tb_btns.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-	tb_btns.offset_left = -60
-	tb_btns.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	tb_btns.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	tb_btns.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
-	tb_btns.add_theme_font_size_override("font_size", 10)
-	tb_btns.add_theme_color_override("font_color", Color(0.65, 0.68, 0.75))
-	title_bar.add_child(tb_btns)
-
-	# Terminal body
-	var body_vbox := VBoxContainer.new()
-	body_vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
-	body_vbox.offset_top = 32
-	body_vbox.offset_left = 14
-	body_vbox.offset_right = -14
-	body_vbox.offset_bottom = -10
-	body_vbox.add_theme_constant_override("separation", 6)
-	term.add_child(body_vbox)
-
-	var hdr := Label.new()
-	hdr.text = "Modifiers"
-	hdr.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Medium.ttf"))
-	hdr.add_theme_font_size_override("font_size", 16)
-	hdr.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0))
-	body_vbox.add_child(hdr)
-
-	var div := ColorRect.new()
-	div.custom_minimum_size = Vector2(0, 1)
-	div.color = Color(0.25, 0.29, 0.36, 0.8)
-	body_vbox.add_child(div)
-
-	var mod_defs := [
-		{"key": "admin_panel", "name": "Admin Panel"},
-		{"key": "wet_floor", "name": "Wet Floor"},
-		{"key": "bad_time", "name": "Bad Time"},
-		{"key": "make_haste", "name": "Make Haste"},
-		{"key": "lights_out", "name": "Lights Out"},
-		{"key": "sprint_fatigue", "name": "Sprint Fatigue"},
-	]
-
-	for m in mod_defs:
-		var m_key: String = m["key"]
-		var m_name: String = m["name"]
-		var btn := Button.new()
-		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.custom_minimum_size = Vector2(0, 34)
-		btn.focus_mode = Control.FOCUS_NONE
-
-		var update_btn_text := func() -> void:
-			var active: bool = bool(_active_modifiers.get(m_key, false))
-			var check_mark := "[X] " if active else "[ ] "
-			btn.text = check_mark + m_name
-			if active:
-				btn.add_theme_color_override("font_color", Color(0.28, 1.0, 0.42))
-				btn.add_theme_color_override("font_hover_color", Color(0.45, 1.0, 0.58))
-			else:
-				btn.add_theme_color_override("font_color", Color(0.72, 0.76, 0.82))
-				btn.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0))
-
-		update_btn_text.call()
-		RoomsUI.style_link_button(btn, 13, HORIZONTAL_ALIGNMENT_LEFT)
-		btn.pressed.connect(func() -> void:
-			if _state != State.MENU:
-				_show_toast("Модификаторы настраиваются только до начала игры!", 2.0)
-				return
-			var cur_v: bool = bool(_active_modifiers.get(m_key, false))
-			_active_modifiers[m_key] = not cur_v
-			update_btn_text.call()
-			var status_str := "ВКЛЮЧЕН" if not cur_v else "ВЫКЛЮЧЕН"
-			_show_toast("%s: %s" % [m_name, status_str], 1.8)
-		)
-		body_vbox.add_child(btn)
-
-
-func _build_admin_panel(root: Control) -> void:
-	var adm := Panel.new()
-	adm.name = "AdminPanel"
-	adm.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	adm.offset_left = 32
-	adm.offset_right = 370
-	adm.offset_top = -250
-	adm.offset_bottom = 250
-	adm.visible = false
-
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.05, 0.06, 0.09, 0.95)
-	sb.border_width_left = 2
-	sb.border_width_top = 2
-	sb.border_width_right = 2
-	sb.border_width_bottom = 2
-	sb.border_color = Color(0.85, 0.35, 0.35, 0.9)
-	sb.corner_radius_top_left = 5
-	sb.corner_radius_top_right = 5
-	sb.corner_radius_bottom_left = 5
-	sb.corner_radius_bottom_right = 5
-	adm.add_theme_stylebox_override("panel", sb)
-	root.add_child(adm)
-	_ui["admin_panel"] = adm
-
-	# Title bar
-	var tb := Panel.new()
-	tb.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	tb.offset_bottom = 28
-	var tbs := StyleBoxFlat.new()
-	tbs.bg_color = Color(0.55, 0.12, 0.12, 1.0)
-	tbs.corner_radius_top_left = 5
-	tbs.corner_radius_top_right = 5
-	tb.add_theme_stylebox_override("panel", tbs)
-	adm.add_child(tb)
-
-	var tb_lbl := Label.new()
-	tb_lbl.text = " [!] ADMIN PANEL (CHEATS: PROGRESS DISABLED)"
-	tb_lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
-	tb_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	tb_lbl.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
-	tb_lbl.add_theme_font_size_override("font_size", 10)
-	tb_lbl.add_theme_color_override("font_color", Color(1.0, 0.95, 0.95))
-	tb.add_child(tb_lbl)
-
-	var btn_close := Button.new()
-	btn_close.text = "X"
-	btn_close.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-	btn_close.offset_left = -28
-	RoomsUI.style_link_button(btn_close, 12, HORIZONTAL_ALIGNMENT_CENTER)
-	btn_close.pressed.connect(func() -> void: call("_toggle_admin_panel"))
-	tb.add_child(btn_close)
-
-	var content := VBoxContainer.new()
-	content.set_anchors_preset(Control.PRESET_FULL_RECT)
-	content.offset_top = 34
-	content.offset_left = 12
-	content.offset_right = -12
-	content.offset_bottom = -10
-	content.add_theme_constant_override("separation", 4)
-	adm.add_child(content)
-
-	var warn := Label.new()
-	warn.text = "Внимание: при использовании админки\nрекорды и прогресс аннулируются!"
-	warn.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
-	warn.add_theme_font_size_override("font_size", 10)
-	warn.add_theme_color_override("font_color", Color(1.0, 0.55, 0.55))
-	content.add_child(warn)
-
-	var add_cmd := func(lbl: String, cb: Callable, col: Color = Color(0.8, 0.85, 0.9)) -> Button:
-		var b := Button.new()
-		b.text = lbl
-		b.custom_minimum_size = Vector2(0, 26)
-		RoomsUI.style_button(b, col, 11)
-		b.pressed.connect(func() -> void:
-			if not _can_use_admin():
-				_show_toast("Панель доступна только хосту!", 2.0)
-				return
-			_admin_cheats_used = true
-			cb.call()
-		)
-		content.add_child(b)
-		return b
-
-	# Admin controls:
-	add_cmd.call("Возродить (Revive)", func() -> void:
-		_hp = 100
-		_is_hiding = false
-		_state = State.PLAYING
-		if _ui.has("arch_root"):
-			(_ui["arch_root"] as Control).visible = false
-		if _ui.has("arch_stats_win"):
-			(_ui["arch_stats_win"] as Control).visible = false
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-		_show_toast("Возрождение выполнено!", 2.0)
-	, Color(0.2, 0.9, 0.4))
-
-	add_cmd.call("Убить себя (Kill)", func() -> void:
-		call("_trigger_death", "Команда администратора", "Админ нажал Kill в панели управления.", {})
-	, Color(0.9, 0.25, 0.25))
-
-	add_cmd.call("+50 Здоровья (HP)", func() -> void:
-		_hp = mini(_hp + 50, 100)
-		_show_toast("Здоровье: %d/100" % _hp, 1.8)
-	, Color(0.3, 0.85, 0.5))
-
-	var btn_god: Button = null
-	btn_god = add_cmd.call("Бог-режим: ВЫКЛ", func() -> void:
-		_admin_god_mode = not _admin_god_mode
-		btn_god.text = "Бог-режим: %s" % ("ВКЛ" if _admin_god_mode else "ВЫКЛ")
-		_show_toast("Бог-режим: %s" % ("ВКЛ" if _admin_god_mode else "ВЫКЛ"), 1.8)
-	, Color(0.9, 0.7, 0.2))
-
-	var btn_inf_stam: Button = null
-	btn_inf_stam = add_cmd.call("Беск. выносливость: ВЫКЛ", func() -> void:
-		_admin_inf_stamina = not _admin_inf_stamina
-		btn_inf_stam.text = "Беск. выносливость: %s" % ("ВКЛ" if _admin_inf_stamina else "ВЫКЛ")
-		_show_toast("Беск. выносливость: %s" % ("ВКЛ" if _admin_inf_stamina else "ВЫКЛ"), 1.8)
-	, Color(0.4, 0.75, 1.0))
-
-	add_cmd.call("Спавн A-60", func() -> void:
-		call("_spawn_a60", false)
-		_show_toast("Спавн A-60 запущен!", 2.0)
-	, Color(0.95, 0.35, 0.35))
-
-	add_cmd.call("Спавн A-60 Prime", func() -> void:
-		call("_spawn_a60", true)
-		_show_toast("Спавн A-60 Prime запущен!", 2.0)
-	, Color(1.0, 0.2, 0.2))
-
-	add_cmd.call("Спавн A-90", func() -> void:
-		call("_start_a90_local")
-		_show_toast("Тест рефлекса A-90 запущен!", 2.0)
-	, Color(0.95, 0.5, 0.2))
-
-	add_cmd.call("Спавн A-120", func() -> void:
-		call("_spawn_a120")
-		_show_toast("Спавн A-120 запущен!", 2.0)
-	, Color(0.8, 0.3, 0.9))
-
-	add_cmd.call("ТП к следующей двери", func() -> void:
-		var target_r: RoomBuilder.RoomInstance = call("_find_first_closed_door_room")
-		if target_r != null and is_instance_valid(target_r.exit_anchor):
-			player_body.global_position = target_r.exit_anchor.global_position - Vector3(0, 0, 1.5)
-			_show_toast("Телепортация к двери A-%03d!" % (target_r.index + 1), 2.0)
-	, Color(0.3, 0.9, 0.9))
-
-	add_cmd.call("Зарядить фонарик (Батарея 100%)", func() -> void:
-		_std_battery = 150.0
-		_gummy_battery = 100.0
-		_batteries = mini(_batteries + 2, 8)
-		_show_toast("Фонарик и батарейки восполнены!", 2.0)
-	, Color(1.0, 0.85, 0.3))
-
-	add_cmd.call("Выдать админку всем", func() -> void:
-		if _net != null and _net.is_online():
-			_net.broadcast_entity_event({"k": "admin_grant"}, true)
-			_show_toast("Права администратора выданы всем игрокам!", 2.5)
-		else:
-			_show_toast("В одиночной игре админка уже доступна", 2.0)
-	, Color(0.8, 0.4, 1.0))
-
-
 func _can_use_admin() -> bool:
 	if not bool(_active_modifiers.get("admin_panel", false)):
 		return false
@@ -2235,15 +2237,36 @@ func _can_use_admin() -> bool:
 
 
 func _toggle_admin_panel() -> void:
-	if not _ui.has("admin_panel"):
-		return
 	if not _can_use_admin():
 		_show_toast("Панель администратора доступна только хосту!", 2.0)
 		return
-	var adm := _ui["admin_panel"] as Control
-	adm.visible = not adm.visible
-	if adm.visible:
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	elif _state == State.PLAYING and not _is_hiding:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if _state == State.PLAYING:
+		call("_set_state", State.PAUSED)
+		_open_admin_panel(true)
+	elif _state == State.PAUSED:
+		var adm_vis: bool = _ui.has("m_admin_scroll") and (_ui["m_admin_scroll"] as Control).visible
+		_open_admin_panel(not adm_vis)
 
+
+func _update_pause_modifiers_ui() -> void:
+	if _ui.has("btn_pause_admin"):
+		var can_adm: bool = bool(_active_modifiers.get("admin_panel", false)) and _can_use_admin()
+		(_ui["btn_pause_admin"] as Control).visible = can_adm
+	if _ui.has("m_mods_list"):
+		var lines: Array[String] = []
+		var mod_names := {
+			"admin_panel": "admin panel",
+			"wet_floor": "wet floor",
+			"bad_time": "bad time",
+			"make_haste": "make haste",
+			"lights_out": "lights out",
+			"sprint_fatigue": "sprint fatigue",
+		}
+		for k in mod_names.keys():
+			if bool(_active_modifiers.get(k, false)):
+				lines.append("• " + mod_names[k])
+		var lbl := _ui["m_mods_list"] as Label
+		if lines.is_empty():
+			lbl.text = "• none (default)"
+		else:
+			lbl.text = "\n".join(lines)

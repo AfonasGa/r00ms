@@ -260,7 +260,8 @@ static func build_room(
 	in_dir: Vector3,
 	out_dir: Vector3,
 	rng: RandomNumberGenerator,
-	force_dark: bool = false
+	force_dark: bool = false,
+	haste_enabled: bool = false
 ) -> RoomInstance:
 	var r := RoomInstance.new()
 	r.index = room_index
@@ -290,7 +291,8 @@ static func build_room(
 	var rtype := _pick_room_type(room_index, turn_type, rng)
 	r.room_type = rtype
 	var is_lobby := (rtype == "lobby")
-	r.is_dark_room = force_dark or (room_index >= 50) or (not is_lobby and room_index >= 4 and rng.randf() < 0.22)
+	# Dark rooms strictly do not appear before room 50 (unless force_dark / lights_out is enabled)
+	r.is_dark_room = force_dark or (room_index >= 50)
 
 	# 1. Shell Floor, Ceiling & Perimeter Walls
 	if turn_type == 0:
@@ -361,8 +363,8 @@ static func build_room(
 	# 4. Props matching RoomType
 	_populate_room_type(room_node, assets, rtype, room_index, turn_type, rng, r)
 
-	# Wall lever (used for Make Haste modifier time refills)
-	if room_index > 0 and turn_type == 0:
+	# Wall lever (used for Make Haste modifier time refills - strictly only when modifier is enabled)
+	if haste_enabled and room_index > 0 and turn_type == 0:
 		var side := -1.0 if rng.randf() < 0.5 else 1.0
 		var lz := rng.randf_range(-2.0, 2.0)
 		_build_wall_lever(room_node, assets, Vector3(side * (HALF_W - 0.08), 1.45, lz), -PI * 0.5 if side > 0 else PI * 0.5, r)

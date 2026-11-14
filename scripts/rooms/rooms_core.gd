@@ -414,8 +414,8 @@ func _on_remote_entity_event(msg: Dictionary) -> void:
 	var kind := String(msg.get("k", ""))
 	if kind == "admin_grant":
 		_admin_granted_by_host = true
-		if _ui.has("btn_hud_admin"):
-			(_ui["btn_hud_admin"] as Control).visible = true
+		if _ui.has("btn_pause_admin"):
+			(_ui["btn_pause_admin"] as Control).visible = true
 		_show_toast("Хост предоставил вам доступ к панели администратора!", 3.0)
 		return
 	# If ANY peer gets hit/warped by A-120, despawn it across both host & clients cleanly
