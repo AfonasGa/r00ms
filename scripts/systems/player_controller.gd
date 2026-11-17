@@ -246,7 +246,7 @@ func is_light_exposed() -> bool:
 	return not is_covering_gummy
 
 
-func reset_for_run() -> void:
+func reset_for_run(start_room: int = 0) -> void:
 	stamina = 1.0
 	stamina_regen_delay = 0.0
 	exhausted = false
@@ -274,14 +274,19 @@ func reset_for_run() -> void:
 	hide_yaw_offset = 0.0
 	hide_pitch_offset = 0.0
 	hide_time = 0.0
-	player_col.disabled = false
+	if player_col != null:
+		player_col.disabled = false
 
 	light_on = true
 	active_tool = 0
-	has_gummy = false
+	has_gummy = (start_room >= 100)
 	std_battery = 150.0
 	gummy_battery = 100.0
 	batteries = 0
+	if start_room >= 50:
+		batteries = 2
+	if start_room >= 150:
+		batteries = 4
 	std_low_power = false
 	std_low_power_regen = 0.0
 	std_low_flicker_t = 0.0
@@ -300,20 +305,23 @@ func reset_for_run() -> void:
 	if cover_hand != null:
 		cover_hand.visible = false
 
-	player_body.position = Vector3(0.0, 0.05, 4.0)
-	player_body.velocity = Vector3.ZERO
-	player_body.rotation = Vector3.ZERO
+	if player_body != null:
+		player_body.position = Vector3(0.0, 0.05, 4.0)
+		player_body.velocity = Vector3.ZERO
+		player_body.rotation = Vector3.ZERO
 	target_yaw = 0.0
 	target_pitch = 0.0
 	yaw = 0.0
 	pitch = 0.0
 	cam_roll = 0.0
 	fov = settings.base_fov if settings != null else 75.0
-	cam.fov = fov
-	cam.position = Vector3(0.0, 1.48, 0.0)
-	cam.rotation = Vector3.ZERO
-	apply_camera_rotation()
-	flashlight.visible = true
+	if cam != null:
+		cam.fov = fov
+		cam.position = Vector3(0.0, 1.48, 0.0)
+		cam.rotation = Vector3.ZERO
+		apply_camera_rotation()
+	if flashlight != null:
+		flashlight.visible = true
 
 
 func set_active_tool(tool_idx: int) -> void:

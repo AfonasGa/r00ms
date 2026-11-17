@@ -125,19 +125,23 @@ func _connect_net_signals() -> void:
 	)
 
 
-func reset_run(forced_seed: int = -1) -> void:
+func reset_run(forced_seed: int = -1, start_room: int = -1) -> void:
 	admin_ctrl.reset_all(player_col)
 	ui_mgr.update_admin_buttons_ui()
 
+	var actual_start: int = start_room if start_room >= 0 else settings_mgr.selected_start_room
+	if actual_start < 0 or (actual_start % 50 != 0):
+		actual_start = 0
+
 	var haste_on := bool(active_modifiers.get("make_haste", false))
 	var lights_out_on := bool(active_modifiers.get("lights_out", false))
-	room_mgr.reset_world(forced_seed, settings_mgr.render_quality, lights_out_on, haste_on, settings_mgr.room_vis_radius)
+	room_mgr.reset_world(forced_seed, settings_mgr.render_quality, lights_out_on, haste_on, settings_mgr.room_vis_radius, actual_start)
 	rng.seed = room_mgr.world_seed
 
 	hp = 100
 	run_time = 0.0
 	victory_reached = false
-	checkpoint_room = 0
+	checkpoint_room = actual_start
 	haste_timer = 60.0
 	_death_phase = 0
 	_death_phase_t = 0.0
@@ -147,9 +151,17 @@ func reset_run(forced_seed: int = -1) -> void:
 	_spectate_last_hiding = false
 	_spectate_user_orbited = false
 
-	player_ctrl.reset_for_run()
+	player_ctrl.reset_for_run(actual_start)
 	entity_dir.reset_for_run()
 	audio.low_hp_mode = false
+
+	player_body.position = Vector3(0.0, 0.05, 4.0)
+	player_body.velocity = Vector3.ZERO
+	player_ctrl.yaw = 0.0
+	player_ctrl.pitch = 0.0
+	player_ctrl.target_yaw = 0.0
+	player_ctrl.target_pitch = 0.0
+	player_ctrl.apply_camera_rotation()
 
 	ui_mgr.reticle_lag_offset = Vector2.ZERO
 	ui_mgr.reticle_screen_pos = Vector2.ZERO
@@ -253,8 +265,18 @@ func set_state(new_state: int) -> void:
 
 
 func exit_to_main_menu() -> void:
-	reset_run(-1)
+	reset_run(-1, settings_mgr.selected_start_room)
 	set_state(State.MENU)
+
+
+func set_selected_checkpoint(room_num: int) -> void:
+	if room_num % 50 != 0:
+		return
+	settings_mgr.selected_start_room = room_num
+	checkpoint_room = room_num
+	settings_mgr.save_settings()
+	if state == State.MENU:
+		reset_run(-1, room_num)
 
 
 func can_use_admin() -> bool:
@@ -374,13 +396,16 @@ func advance_door_progress(r_idx: int, allow_spawn: bool) -> void:
 
 		if opened_num == 19:
 			entity_dir.a60_door20_trigger_timer = 5.0
-		elif opened_num == 100:
-			checkpoint_room = 100
-			ui_mgr.show_toast(RoomsI18n.t("toast_cp", [100]), 3.5)
-		elif opened_num == 200:
-			checkpoint_room = 200
-			ui_mgr.show_toast(RoomsI18n.t("toast_cp", [200]), 3.5)
-		elif opened_num >= 300 and not victory_reached:
+		if opened_num % 50 == 0:
+			checkpoint_room = opened_num
+			var is_new := settings_mgr.unlock_checkpoint(opened_num)
+			if is_new:
+				ui_mgr.show_toast(RoomsI18n.t("toast_checkpoint_unlocked", [opened_num]), 4.0)
+			else:
+				ui_mgr.show_toast(RoomsI18n.t("toast_cp", [opened_num]), 3.5)
+			audio.play_architect_blip()
+			ui_mgr.update_checkpoint_ui()
+		if opened_num >= 300 and not victory_reached:
 			victory_reached = true
 			set_state(State.VICTORY)
 			return
@@ -997,7 +1022,7 @@ func _input(event: InputEvent) -> void:
 				advance_architect_dialogue()
 				get_viewport().set_input_as_handled()
 			elif ke.keycode == KEY_R:
-				reset_run(-1)
+				reset_run(-1, checkpoint_room)
 				get_viewport().set_input_as_handled()
 			return
 		if state == State.MENU:
@@ -1017,7 +1042,7 @@ func _input(event: InputEvent) -> void:
 			elif ke.keycode == KEY_D or ke.keycode == KEY_RIGHT:
 				cycle_spectate_target(1)
 			elif ke.keycode == KEY_R:
-				reset_run(-1)
+				reset_run(-1, checkpoint_room)
 			return
 		if ke.keycode == KEY_F11:
 			var win := get_window()

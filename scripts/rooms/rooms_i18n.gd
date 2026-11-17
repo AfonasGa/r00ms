@@ -195,6 +195,8 @@ const DICT: Dictionary = {
 	"toast_power_flicker": {"ru": "Напряжение в сети нестабильно! Свет бешено искрит...", "en": "Power grid unstable! The lights are flickering wildly..."},
 	"toast_power_out": {"ru": "Электричество вырубилось! Дальше света больше не будет...", "en": "Power went out! There will be no lights ahead..."},
 	"toast_cp": {"ru": "Контрольная точка A-%03d достигнута!", "en": "Checkpoint A-%03d reached!"},
+	"toast_checkpoint_unlocked": {"ru": "Открыт новый чекпоинт A-%03d!", "en": "New checkpoint A-%03d unlocked!"},
+	"menu_checkpoint": {"ru": "Чекпоинт: A-%03d", "en": "Checkpoint: A-%03d"},
 	"toast_god_dmg": {"ru": "Бог-режим защитил от урона (%s)!", "en": "God mode blocked damage (%s)!"},
 	"toast_god_death": {"ru": "Бог-режим защитил от гибели (%s)!", "en": "God mode prevented death (%s)!"},
 	"toast_a075_blind": {"ru": "A-075 (Затвор) ОСЛЕПИЛ ВАС!", "en": "A-075 (Shutter) BLINDED YOU!"},

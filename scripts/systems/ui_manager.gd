@@ -664,6 +664,42 @@ func _build_main_menu(root: Control) -> void:
 	make_item.call(v_main, "settings", func() -> void: open_menu_settings(), 28, "m_btn_settings")
 
 	make_item.call(v_play, "solo", func() -> void: game.call("menu_begin_game", false, ""), 34, "m_btn_solo")
+
+	var cp_row := HBoxContainer.new()
+	cp_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	cp_row.add_theme_constant_override("separation", 8)
+	v_play.add_child(cp_row)
+	ui["cp_row"] = cp_row
+
+	var btn_cp_prev := Button.new()
+	btn_cp_prev.text = " < "
+	btn_cp_prev.flat = true
+	btn_cp_prev.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
+	btn_cp_prev.add_theme_font_size_override("font_size", 22)
+	btn_cp_prev.add_theme_color_override("font_color", Color(0.85, 0.88, 0.95))
+	btn_cp_prev.pressed.connect(func() -> void: _cycle_checkpoint(-1))
+	cp_row.add_child(btn_cp_prev)
+	ui["btn_cp_prev"] = btn_cp_prev
+
+	var btn_cp_val := Button.new()
+	btn_cp_val.flat = true
+	btn_cp_val.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Medium.ttf"))
+	btn_cp_val.add_theme_font_size_override("font_size", 22)
+	btn_cp_val.add_theme_color_override("font_color", Color(0.40, 0.95, 0.65))
+	btn_cp_val.pressed.connect(func() -> void: _cycle_checkpoint(1))
+	cp_row.add_child(btn_cp_val)
+	ui["btn_cp_val"] = btn_cp_val
+
+	var btn_cp_next := Button.new()
+	btn_cp_next.text = " > "
+	btn_cp_next.flat = true
+	btn_cp_next.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
+	btn_cp_next.add_theme_font_size_override("font_size", 22)
+	btn_cp_next.add_theme_color_override("font_color", Color(0.85, 0.88, 0.95))
+	btn_cp_next.pressed.connect(func() -> void: _cycle_checkpoint(1))
+	cp_row.add_child(btn_cp_next)
+	ui["btn_cp_next"] = btn_cp_next
+
 	make_item.call(v_play, "multiplayer", func() -> void: set_menu_view("multi"), 30, "m_btn_multi")
 	make_item.call(v_play, "back", func() -> void: set_menu_view("main"), 22, "m_btn_play_back")
 
@@ -1968,6 +2004,7 @@ func apply_localization() -> void:
 		game.call("refresh_mobile_mode")
 	if face_editor != null:
 		face_editor.apply_localization()
+	update_checkpoint_ui()
 
 
 func update_lan_servers_list(servers: Array) -> void:
@@ -2093,6 +2130,37 @@ func set_menu_view(view: String, fade: bool = true) -> void:
 			net.stop_lan_discovery()
 
 
+func _cycle_checkpoint(dir: int) -> void:
+	if settings == null:
+		return
+	var list: Array[int] = settings.get_unlocked_checkpoints()
+	if list.is_empty():
+		return
+	var cur_idx := list.find(settings.selected_start_room)
+	if cur_idx < 0:
+		cur_idx = 0
+	var next_idx := (cur_idx + dir) % list.size()
+	if next_idx < 0:
+		next_idx = list.size() - 1
+	var new_room := list[next_idx]
+	game.call("set_selected_checkpoint", new_room)
+	update_checkpoint_ui()
+
+
+func update_checkpoint_ui() -> void:
+	if not ui.has("btn_cp_val"):
+		return
+	var btn := ui["btn_cp_val"] as Button
+	var cur_room: int = settings.selected_start_room if settings != null else 0
+	btn.text = RoomsI18n.t("menu_checkpoint", [cur_room])
+	var list: Array[int] = settings.get_unlocked_checkpoints() if settings != null else [0]
+	var can_cycle := (list.size() > 1)
+	if ui.has("btn_cp_prev"):
+		(ui["btn_cp_prev"] as Button).disabled = not can_cycle
+	if ui.has("btn_cp_next"):
+		(ui["btn_cp_next"] as Button).disabled = not can_cycle
+
+
 func show_main_menu(fresh: bool = false) -> void:
 	var menu := ui.get("main_menu") as Control
 	if menu == null:
@@ -2100,6 +2168,7 @@ func show_main_menu(fresh: bool = false) -> void:
 	menu.visible = true
 	menu.modulate.a = 1.0
 	set_menu_view("main", false)
+	update_checkpoint_ui()
 	if fresh:
 		menu.modulate.a = 0.0
 		create_tween().tween_property(menu, "modulate:a", 1.0, 0.55)

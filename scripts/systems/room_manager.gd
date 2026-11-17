@@ -85,7 +85,7 @@ static func rotate_right(d: Vector3) -> Vector3:
 
 
 func _pick_room_type(room_index: int, turn_type: int, rng: RandomNumberGenerator) -> String:
-	if room_index == 0:
+	if room_index == 0 or (room_index % 50 == 0 and turn_type == 0):
 		return "lobby"
 	if turn_type == -1:
 		return "l_turn_left"
@@ -148,7 +148,7 @@ func _release_room_scene(r: RoomScene) -> void:
 		r.queue_free()
 
 
-func reset_world(forced_seed: int, render_quality: int, lights_out_mod: bool, haste_enabled: bool, vis_radius: int) -> void:
+func reset_world(forced_seed: int, render_quality: int, lights_out_mod: bool, haste_enabled: bool, vis_radius: int, start_room_idx: int = 0) -> void:
 	for r in rooms:
 		_release_room_scene(r)
 	rooms.clear()
@@ -165,9 +165,9 @@ func reset_world(forced_seed: int, render_quality: int, lights_out_mod: bool, ha
 
 	next_cell = Vector2i.ZERO
 	next_in_dir = Vector3(0.0, 0.0, -1.0)
-	next_room_index = 0
-	highest_opened = 0
-	current_room_idx = 0
+	next_room_index = start_room_idx
+	highest_opened = start_room_idx
+	current_room_idx = start_room_idx
 	power_out = lights_out_mod
 	door50_flicker_active = false
 	door50_flicker_t = 0.0

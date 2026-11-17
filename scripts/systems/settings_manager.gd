@@ -27,6 +27,26 @@ var language := "ru"
 var mobile_controls_enabled := false
 var mobile_override := 0 # 0=auto, 1=force on, -1=force off
 
+var max_checkpoint_unlocked: int = 0
+var selected_start_room: int = 0
+
+
+func unlock_checkpoint(room_num: int) -> bool:
+	if (room_num % 50 == 0) and room_num > max_checkpoint_unlocked:
+		max_checkpoint_unlocked = room_num
+		save_settings()
+		return true
+	return false
+
+
+func get_unlocked_checkpoints() -> Array[int]:
+	var list: Array[int] = [0]
+	var cur := 50
+	while cur <= max_checkpoint_unlocked:
+		list.append(cur)
+		cur += 50
+	return list
+
 
 func is_mobile_platform() -> bool:
 	return OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios") or OS.get_name() in ["Android", "iOS"]
@@ -68,6 +88,11 @@ func load_settings() -> void:
 		if not saved_in.is_empty() and saved_in in AudioServer.get_input_device_list():
 			AudioServer.input_device = saved_in
 
+		max_checkpoint_unlocked = int(cfg.get_value("gameplay", "max_checkpoint", 0))
+		selected_start_room = int(cfg.get_value("gameplay", "selected_start_room", 0))
+		if selected_start_room > max_checkpoint_unlocked or (selected_start_room % 50 != 0):
+			selected_start_room = 0
+
 	RoomsI18n.set_lang(language)
 	language = RoomsI18n.lang
 
@@ -93,6 +118,8 @@ func save_settings() -> void:
 	cfg.set_value("controls", "head_bob", head_bob_enabled)
 	cfg.set_value("audio", "output_device", AudioServer.output_device)
 	cfg.set_value("audio", "input_device", AudioServer.input_device)
+	cfg.set_value("gameplay", "max_checkpoint", max_checkpoint_unlocked)
+	cfg.set_value("gameplay", "selected_start_room", selected_start_room)
 	cfg.save(SETTINGS_PATH)
 
 
