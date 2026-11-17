@@ -1,0 +1,48 @@
+[gd_scene format=3]
+
+[sub_resource type="BoxMesh" id="BoxMesh_tav6c"]
+size = Vector3(0.36, 0.36, 0.36)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ga8ei"]
+size = Vector3(0.55, 0.06, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_d1kbm"]
+size = Vector3(0.55, 0.06, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_cidkc"]
+size = Vector3(0.55, 0.06, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_toa06"]
+size = Vector3(0.55, 0.06, 0.22)
+
+[node name="PottedPlant" type="Node3D" unique_id=1560321744]
+
+[node name="Pot" type="MeshInstance3D" parent="." unique_id=1078334313]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.18, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_tav6c")
+metadata/mat_slot = "plant_pot"
+
+[node name="Leaf0" type="MeshInstance3D" parent="." unique_id=340316038]
+transform = Transform3D(0.96105546, -0.27635565, 0, 0.27635565, 0.96105546, 0, 0, 0, 1, 0, 0.5, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_ga8ei")
+metadata/mat_slot = "plant_leaf"
+
+[node name="Leaf1" type="MeshInstance3D" parent="." unique_id=2044935791]
+transform = Transform3D(0.68322736, 0.19646497, 0.7032794, -0.27635565, 0.96105546, 0, -0.6758905, -0.19435523, 0.71091354, 0, 0.5, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_d1kbm")
+metadata/mat_slot = "plant_leaf"
+
+[node name="Leaf2" type="MeshInstance3D" parent="." unique_id=52566978]
+transform = Transform3D(0.010375722, -0.0029835838, 0.9999417, 0.27635565, 0.96105546, 0, -0.9609994, 0.27633953, 0.010796174, 0, 0.5, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_cidkc")
+metadata/mat_slot = "plant_leaf"
+
+[node name="Leaf3" type="MeshInstance3D" parent="." unique_id=1317160847]
+transform = Transform3D(-0.66847485, -0.19222283, 0.71846485, -0.27635565, 0.96105546, 0, -0.6904846, -0.19855182, -0.69556326, 0, 0.5, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_toa06")
+metadata/mat_slot = "plant_leaf"

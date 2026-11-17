@@ -1,7 +1,16 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scripts/rooms/rooms_game.gd" id="1_rg"]
 [ext_resource type="Script" path="res://scripts/rooms/rooms_audio.gd" id="2_ra"]
+[ext_resource type="Script" path="res://scripts/rooms/rooms_net.gd" id="3_rn"]
+[ext_resource type="Script" path="res://scripts/systems/settings_manager.gd" id="4_sm"]
+[ext_resource type="Script" path="res://scripts/systems/admin_controller.gd" id="5_ac"]
+[ext_resource type="Script" path="res://scripts/systems/room_manager.gd" id="6_rm"]
+[ext_resource type="Script" path="res://scripts/systems/avatar_manager.gd" id="7_am"]
+[ext_resource type="Script" path="res://scripts/systems/player_controller.gd" id="8_pc"]
+[ext_resource type="Script" path="res://scripts/systems/interaction_controller.gd" id="9_ic"]
+[ext_resource type="Script" path="res://scripts/systems/entity_director.gd" id="10_ed"]
+[ext_resource type="Script" path="res://scripts/systems/ui_manager.gd" id="11_um"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.35
@@ -36,9 +45,38 @@ spot_angle_attenuation = 1.4
 spot_attenuation = 1.2
 
 [node name="InteractRay" type="RayCast3D" parent="PlayerBody/Camera3D"]
-target_position = Vector3(0, 0, -1.35)
+target_position = Vector3(0, 0, -3.65)
+
+[node name="Systems" type="Node" parent="."]
+
+[node name="SettingsManager" type="Node" parent="Systems"]
+script = ExtResource("4_sm")
+
+[node name="AdminController" type="Node" parent="Systems"]
+script = ExtResource("5_ac")
+
+[node name="RoomManager" type="Node" parent="Systems"]
+script = ExtResource("6_rm")
+
+[node name="AvatarManager" type="Node" parent="Systems"]
+script = ExtResource("7_am")
+
+[node name="PlayerController" type="Node" parent="Systems"]
+script = ExtResource("8_pc")
+
+[node name="InteractionController" type="Node" parent="Systems"]
+script = ExtResource("9_ic")
+
+[node name="EntityDirector" type="Node" parent="Systems"]
+script = ExtResource("10_ed")
+
+[node name="UIManager" type="Node" parent="Systems"]
+script = ExtResource("11_um")
 
 [node name="RoomsAudio" type="AudioStreamPlayer" parent="."]
 script = ExtResource("2_ra")
+
+[node name="RoomsNet" type="Node" parent="."]
+script = ExtResource("3_rn")
 
 [node name="UILayer" type="CanvasLayer" parent="."]

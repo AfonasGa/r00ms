@@ -1,0 +1,49 @@
+[gd_scene format=3]
+
+[sub_resource type="BoxMesh" id="BoxMesh_ymmln"]
+size = Vector3(0.24, 0.4, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_o0jn2"]
+size = Vector3(0.2, 0.36, 0.02)
+
+[sub_resource type="BoxMesh" id="BoxMesh_er51n"]
+size = Vector3(0.04, 0.24, 0.04)
+
+[sub_resource type="BoxMesh" id="BoxMesh_m0etj"]
+size = Vector3(0.08, 0.08, 0.08)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_jydys"]
+size = Vector3(0.4, 0.5, 0.35)
+
+[node name="WallLever" type="Node3D" unique_id=816794524]
+
+[node name="BasePlate" type="MeshInstance3D" parent="." unique_id=1520696180]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_ymmln")
+metadata/mat_slot = "locker"
+
+[node name="Trim" type="MeshInstance3D" parent="." unique_id=775731760]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.045)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_o0jn2")
+metadata/mat_slot = "plaque_yellow"
+
+[node name="HandlePivot" type="Node3D" parent="." unique_id=1608308352]
+transform = Transform3D(1, 0, 0, 0, 0.8525245, 0.52268726, 0, -0.52268726, 0.8525245, 0, -0.06, 0.05)
+
+[node name="Rod" type="MeshInstance3D" parent="HandlePivot" unique_id=2099334371]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.12, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_er51n")
+metadata/mat_slot = "fridge"
+
+[node name="Knob" type="MeshInstance3D" parent="HandlePivot" unique_id=1833900064]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.24, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_m0etj")
+metadata/mat_slot = "medkit"
+
+[node name="LeverBody" type="StaticBody3D" parent="." unique_id=1897914447]
+
+[node name="Col" type="CollisionShape3D" parent="LeverBody" unique_id=1908295521]
+shape = SubResource("BoxShape3D_jydys")

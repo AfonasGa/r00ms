@@ -1,0 +1,195 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/rooms/room_scene.gd" id="1_5sdyb"]
+[ext_resource type="PackedScene" path="res://scenes/props/exit_door.tscn" id="2_yplyv"]
+[ext_resource type="PackedScene" path="res://scenes/props/locker.tscn" id="3_e4n2c"]
+[ext_resource type="PackedScene" path="res://scenes/props/potted_plant.tscn" id="4_kt21g"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_4q5re"]
+size = Vector3(8.4, 0.2, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_h8udd"]
+size = Vector3(8.4, 0.2, 18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_22kes"]
+size = Vector3(8.4, 0.2, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_qgury"]
+size = Vector3(8.4, 0.2, 18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_qfw4k"]
+size = Vector3(0.22, 3.8, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_s7awl"]
+size = Vector3(0.22, 3.8, 18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_5h1ts"]
+size = Vector3(0.22, 3.8, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_1v0tm"]
+size = Vector3(0.22, 3.8, 18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ku508"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_rca1r"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_r0iml"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_kotag"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_5wqif"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_xs2c1"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_1d6rf"]
+size = Vector3(0.08, 3.8, 0.16)
+
+[sub_resource type="BoxMesh" id="BoxMesh_3ikd2"]
+size = Vector3(0.08, 3.8, 0.16)
+
+[node name="Room_double_plant" type="Node3D" unique_id=315401562]
+script = ExtResource("1_5sdyb")
+room_type = "double_plant"
+
+[node name="Floor" type="StaticBody3D" parent="." unique_id=983963976]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=288588454]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_4q5re")
+metadata/mat_slot = "floor"
+
+[node name="Col" type="CollisionShape3D" parent="Floor" unique_id=478726502]
+shape = SubResource("BoxShape3D_h8udd")
+
+[node name="Ceiling" type="StaticBody3D" parent="." unique_id=1580643170]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.9, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Ceiling" unique_id=360833113]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_22kes")
+metadata/mat_slot = "ceiling"
+
+[node name="Col" type="CollisionShape3D" parent="Ceiling" unique_id=304496171]
+shape = SubResource("BoxShape3D_qgury")
+
+[node name="WallLeft" type="StaticBody3D" parent="." unique_id=1859415965]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.31, 1.9, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="WallLeft" unique_id=1202969080]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_qfw4k")
+metadata/mat_slot = "wall"
+
+[node name="Col" type="CollisionShape3D" parent="WallLeft" unique_id=349357274]
+shape = SubResource("BoxShape3D_s7awl")
+
+[node name="WallRight" type="StaticBody3D" parent="." unique_id=1194133631]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.31, 1.9, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="WallRight" unique_id=1180427230]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_5h1ts")
+metadata/mat_slot = "wall"
+
+[node name="Col" type="CollisionShape3D" parent="WallRight" unique_id=899768051]
+shape = SubResource("BoxShape3D_1v0tm")
+
+[node name="ExitAnchor" type="Node3D" parent="." unique_id=1210987141 instance=ExtResource("2_yplyv")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -9)
+
+[node name="Troffer_0" type="MeshInstance3D" parent="." unique_id=911222256]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.95, 3.77, -5.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_ku508")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_1" type="MeshInstance3D" parent="." unique_id=2138922221]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.95, 3.77, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_rca1r")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_2" type="MeshInstance3D" parent="." unique_id=934080799]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.95, 3.77, 5.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_r0iml")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_3" type="MeshInstance3D" parent="." unique_id=537484990]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.95, 3.77, -5.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_kotag")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_4" type="MeshInstance3D" parent="." unique_id=1871256405]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.95, 3.77, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_5wqif")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_5" type="MeshInstance3D" parent="." unique_id=1271303020]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.95, 3.77, 5.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_xs2c1")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="CeilingLight_0" type="OmniLight3D" parent="." unique_id=1370896657]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.45, -4.5)
+light_color = Color(0.86, 0.92, 1, 1)
+light_energy = 1.15
+distance_fade_enabled = true
+distance_fade_begin = 26.0
+omni_range = 13.5
+omni_attenuation = 1.25
+
+[node name="CeilingLight_1" type="OmniLight3D" parent="." unique_id=763187707]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.45, 4.5)
+light_color = Color(0.86, 0.92, 1, 1)
+light_energy = 1.15
+distance_fade_enabled = true
+distance_fade_begin = 26.0
+omni_range = 13.5
+omni_attenuation = 1.25
+
+[node name="Locker_0" type="Node3D" parent="." unique_id=1639668258 instance=ExtResource("3_e4n2c")]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -3.72, 0, -3)
+metadata/hiding_kind = "locker"
+
+[node name="Locker_1" type="Node3D" parent="." unique_id=1490239404 instance=ExtResource("3_e4n2c")]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 3.72, 0, -3)
+metadata/hiding_kind = "locker"
+
+[node name="Plant_0" type="Node3D" parent="." unique_id=1560321744 instance=ExtResource("4_kt21g")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.1, 0, 1.5)
+
+[node name="Plant_1" type="Node3D" parent="." unique_id=663279386 instance=ExtResource("4_kt21g")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.1, 0, 1.5)
+
+[node name="TrimL" type="MeshInstance3D" parent="." unique_id=817194734]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.16, 1.9, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_1d6rf")
+metadata/mat_slot = "wood"
+
+[node name="TrimR" type="MeshInstance3D" parent="." unique_id=1316136905]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.16, 1.9, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_3ikd2")
+metadata/mat_slot = "wood"
+
+[node name="LootSpawn" type="Marker3D" parent="." unique_id=2041461633]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8, 0.14, 3)
+metadata/loot_spawn = true

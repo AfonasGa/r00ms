@@ -1,0 +1,462 @@
+[gd_scene format=3 uid="uid://06ugygnbk606"]
+
+[ext_resource type="Script" uid="uid://b4dnhls6igwx2" path="res://scripts/rooms/room_scene.gd" id="1_tasqy"]
+[ext_resource type="PackedScene" path="res://scenes/props/exit_door.tscn" id="2_gklr8"]
+[ext_resource type="PackedScene" path="res://scenes/props/locker.tscn" id="3_eh0vy"]
+[ext_resource type="PackedScene" path="res://scenes/props/desk_static.tscn" id="4_o45ya"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_p7rit"]
+size = Vector3(8.4, 0.2, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_sfnpm"]
+size = Vector3(8.4, 0.2, 18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_tutdj"]
+size = Vector3(0.22, 3.8, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_6yaro"]
+size = Vector3(0.22, 3.8, 18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_gk22j"]
+size = Vector3(0.22, 3.8, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_bivec"]
+size = Vector3(0.22, 3.8, 18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_olhmr"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_0inpl"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_24o71"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_oi8be"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_qyepd"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_72gbx"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ynou1"]
+size = Vector3(8.4, 0.2, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_u2wwx"]
+size = Vector3(8.4, 0.2, 18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ai284"]
+size = Vector3(8.4, 2.4, 6)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_buyw1"]
+size = Vector3(8.4, 2.4, 6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_5c6di"]
+size = Vector3(8.4, 2.4, 6)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_rtw6o"]
+size = Vector3(8.4, 2.4, 6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_2pwob"]
+size = Vector3(8.4, 0.08, 6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_bo3na"]
+size = Vector3(8.4, 0.08, 6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_s7xha"]
+size = Vector3(3, 0.16, 6.0174437)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_117qq"]
+size = Vector3(3, 0.16, 6.8)
+
+[sub_resource type="BoxMesh" id="BoxMesh_3vuc6"]
+size = Vector3(0.08, 0.08, 6.8)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_r5pp3"]
+size = Vector3(0.08, 0.08, 6.8)
+
+[sub_resource type="BoxMesh" id="BoxMesh_3yawu"]
+size = Vector3(0.06, 0.06, 6.8)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pi2cx"]
+size = Vector3(0.06, 0.06, 6.8)
+
+[sub_resource type="BoxMesh" id="BoxMesh_fmcv2"]
+size = Vector3(0.08, 1, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_frgsd"]
+size = Vector3(0.08, 1, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_u1mbl"]
+size = Vector3(0.08, 1, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_174gj"]
+size = Vector3(0.08, 1, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_wp6p1"]
+size = Vector3(0.08, 1, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_17tg1"]
+size = Vector3(0.08, 0.08, 6.8)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_opx1k"]
+size = Vector3(0.08, 0.08, 6.8)
+
+[sub_resource type="BoxMesh" id="BoxMesh_evhwd"]
+size = Vector3(0.06, 0.06, 6.8)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_q4ev2"]
+size = Vector3(0.06, 0.06, 6.8)
+
+[sub_resource type="BoxMesh" id="BoxMesh_2rwha"]
+size = Vector3(0.08, 1, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_gsj3v"]
+size = Vector3(0.08, 1, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_iaaq5"]
+size = Vector3(0.08, 1, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_13vfr"]
+size = Vector3(0.08, 1, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_jomyl"]
+size = Vector3(0.08, 1, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_yjgvy"]
+size = Vector3(2.75, 0.08, 0.08)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_femtv"]
+size = Vector3(2.75, 0.08, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_hoo8h"]
+size = Vector3(2.75, 0.08, 0.08)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_g3j71"]
+size = Vector3(2.75, 0.08, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_8uu0b"]
+size = Vector3(2.75, 0.08, 0.08)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pjnly"]
+size = Vector3(2.75, 0.08, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ndwkb"]
+size = Vector3(2.75, 0.08, 0.08)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_nihjb"]
+size = Vector3(2.75, 0.08, 0.08)
+
+[node name="Room_bridge_room" type="Node3D" unique_id=173289011]
+script = ExtResource("1_tasqy")
+room_type = "bridge_room"
+
+[node name="Ceiling" type="StaticBody3D" parent="." unique_id=455326693]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.9, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Ceiling" unique_id=888949311]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_p7rit")
+metadata/mat_slot = "ceiling"
+
+[node name="Col" type="CollisionShape3D" parent="Ceiling" unique_id=686307959]
+shape = SubResource("BoxShape3D_sfnpm")
+
+[node name="WallLeft" type="StaticBody3D" parent="." unique_id=918278174]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.31, 1.9, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="WallLeft" unique_id=114070172]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_tutdj")
+metadata/mat_slot = "wall"
+
+[node name="Col" type="CollisionShape3D" parent="WallLeft" unique_id=137734322]
+shape = SubResource("BoxShape3D_6yaro")
+
+[node name="WallRight" type="StaticBody3D" parent="." unique_id=36883384]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.31, 1.9, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="WallRight" unique_id=1660870110]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_gk22j")
+metadata/mat_slot = "wall"
+
+[node name="Col" type="CollisionShape3D" parent="WallRight" unique_id=971796232]
+shape = SubResource("BoxShape3D_bivec")
+
+[node name="ExitAnchor" parent="." unique_id=1210987141 instance=ExtResource("2_gklr8")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -9)
+
+[node name="Troffer_0" type="MeshInstance3D" parent="." unique_id=234459318]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.95, 3.77, -5.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_olhmr")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_1" type="MeshInstance3D" parent="." unique_id=537260227]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.95, 3.77, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_0inpl")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_2" type="MeshInstance3D" parent="." unique_id=1327283669]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.95, 3.77, 5.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_24o71")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_3" type="MeshInstance3D" parent="." unique_id=1898516537]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.95, 3.77, -5.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_oi8be")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_4" type="MeshInstance3D" parent="." unique_id=2033205590]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.95, 3.77, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_qyepd")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_5" type="MeshInstance3D" parent="." unique_id=2096865493]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.95, 3.77, 5.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_72gbx")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="CeilingLight_0" type="OmniLight3D" parent="." unique_id=36251804]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.45, -4.5)
+light_color = Color(0.86, 0.92, 1, 1)
+light_energy = 1.15
+distance_fade_enabled = true
+distance_fade_begin = 26.0
+omni_range = 13.5
+omni_attenuation = 1.25
+
+[node name="CeilingLight_1" type="OmniLight3D" parent="." unique_id=840163389]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.45, 4.5)
+light_color = Color(0.86, 0.92, 1, 1)
+light_energy = 1.15
+distance_fade_enabled = true
+distance_fade_begin = 26.0
+omni_range = 13.5
+omni_attenuation = 1.25
+
+[node name="PitFloor" type="StaticBody3D" parent="." unique_id=24850258]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -2.5, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="PitFloor" unique_id=195857425]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_ynou1")
+metadata/mat_slot = "floor"
+
+[node name="Col" type="CollisionShape3D" parent="PitFloor" unique_id=214647995]
+shape = SubResource("BoxShape3D_u2wwx")
+
+[node name="LedgeEntry" type="StaticBody3D" parent="." unique_id=1052913826]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.2, 6)
+
+[node name="Mesh" type="MeshInstance3D" parent="LedgeEntry" unique_id=1732448835]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_ai284")
+metadata/mat_slot = "wall"
+
+[node name="Col" type="CollisionShape3D" parent="LedgeEntry" unique_id=91034492]
+shape = SubResource("BoxShape3D_buyw1")
+
+[node name="LedgeExit" type="StaticBody3D" parent="." unique_id=1821201929]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.2, -6)
+
+[node name="Mesh" type="MeshInstance3D" parent="LedgeExit" unique_id=935757016]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_5c6di")
+metadata/mat_slot = "wall"
+
+[node name="Col" type="CollisionShape3D" parent="LedgeExit" unique_id=435700514]
+shape = SubResource("BoxShape3D_rtw6o")
+
+[node name="EntryCarpet" type="MeshInstance3D" parent="." unique_id=1417186945]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.04, 6)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_2pwob")
+metadata/mat_slot = "floor"
+
+[node name="ExitCarpet" type="MeshInstance3D" parent="." unique_id=1862712833]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.04, -6)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_bo3na")
+metadata/mat_slot = "floor"
+
+[node name="BridgeDeck" type="StaticBody3D" parent="." unique_id=461053935]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.08, 0)
+metadata/floor_surface = "metal"
+
+[node name="Mesh" type="MeshInstance3D" parent="BridgeDeck" unique_id=1784870591]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.0011658669)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_s7xha")
+metadata/mat_slot = "grate"
+
+[node name="Col" type="CollisionShape3D" parent="BridgeDeck" unique_id=1054978166]
+shape = SubResource("BoxShape3D_117qq")
+
+[node name="RailTop_0" type="StaticBody3D" parent="." unique_id=907279425]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.42, 1, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="RailTop_0" unique_id=956014962]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_3vuc6")
+metadata/mat_slot = "metal"
+
+[node name="Col" type="CollisionShape3D" parent="RailTop_0" unique_id=1398590646]
+shape = SubResource("BoxShape3D_r5pp3")
+
+[node name="RailMid_0" type="StaticBody3D" parent="." unique_id=947756753]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.42, 0.5, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="RailMid_0" unique_id=1406226517]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_3yawu")
+metadata/mat_slot = "metal"
+
+[node name="Col" type="CollisionShape3D" parent="RailMid_0" unique_id=111640540]
+shape = SubResource("BoxShape3D_pi2cx")
+
+[node name="RailPost_0_0" type="MeshInstance3D" parent="." unique_id=1995010256]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.42, 0.5, -3.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_fmcv2")
+metadata/mat_slot = "metal"
+
+[node name="RailPost_0_1" type="MeshInstance3D" parent="." unique_id=2112294155]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.42, 0.5, -1.6)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_frgsd")
+metadata/mat_slot = "metal"
+
+[node name="RailPost_0_2" type="MeshInstance3D" parent="." unique_id=1176334234]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.42, 0.5, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_u1mbl")
+metadata/mat_slot = "metal"
+
+[node name="RailPost_0_3" type="MeshInstance3D" parent="." unique_id=330049418]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.42, 0.5, 1.6)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_174gj")
+metadata/mat_slot = "metal"
+
+[node name="RailPost_0_4" type="MeshInstance3D" parent="." unique_id=635047218]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.42, 0.5, 3.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_wp6p1")
+metadata/mat_slot = "metal"
+
+[node name="RailTop_1" type="StaticBody3D" parent="." unique_id=860914338]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.42, 1, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="RailTop_1" unique_id=749643094]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_17tg1")
+metadata/mat_slot = "metal"
+
+[node name="Col" type="CollisionShape3D" parent="RailTop_1" unique_id=657295959]
+shape = SubResource("BoxShape3D_opx1k")
+
+[node name="RailMid_1" type="StaticBody3D" parent="." unique_id=2062175941]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.42, 0.5, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="RailMid_1" unique_id=1439142734]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_evhwd")
+metadata/mat_slot = "metal"
+
+[node name="Col" type="CollisionShape3D" parent="RailMid_1" unique_id=495779297]
+shape = SubResource("BoxShape3D_q4ev2")
+
+[node name="RailPost_1_0" type="MeshInstance3D" parent="." unique_id=1130809104]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.42, 0.5, -3.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_2rwha")
+metadata/mat_slot = "metal"
+
+[node name="RailPost_1_1" type="MeshInstance3D" parent="." unique_id=1775495748]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.42, 0.5, -1.6)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_gsj3v")
+metadata/mat_slot = "metal"
+
+[node name="RailPost_1_2" type="MeshInstance3D" parent="." unique_id=1728537851]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.42, 0.5, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_iaaq5")
+metadata/mat_slot = "metal"
+
+[node name="RailPost_1_3" type="MeshInstance3D" parent="." unique_id=1025963065]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.42, 0.5, 1.6)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_13vfr")
+metadata/mat_slot = "metal"
+
+[node name="RailPost_1_4" type="MeshInstance3D" parent="." unique_id=2005437551]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.42, 0.5, 3.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_jomyl")
+metadata/mat_slot = "metal"
+
+[node name="PitEdgeRailEntry_0" type="StaticBody3D" parent="." unique_id=883780635]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.825, 1, 3)
+
+[node name="Mesh" type="MeshInstance3D" parent="PitEdgeRailEntry_0" unique_id=1377149682]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_yjgvy")
+metadata/mat_slot = "metal"
+
+[node name="Col" type="CollisionShape3D" parent="PitEdgeRailEntry_0" unique_id=2108999049]
+shape = SubResource("BoxShape3D_femtv")
+
+[node name="PitEdgeRailExit_0" type="StaticBody3D" parent="." unique_id=1210954203]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.825, 1, -3)
+
+[node name="Mesh" type="MeshInstance3D" parent="PitEdgeRailExit_0" unique_id=170054774]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_hoo8h")
+metadata/mat_slot = "metal"
+
+[node name="Col" type="CollisionShape3D" parent="PitEdgeRailExit_0" unique_id=702039087]
+shape = SubResource("BoxShape3D_g3j71")
+
+[node name="PitEdgeRailEntry_1" type="StaticBody3D" parent="." unique_id=966464368]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.825, 1, 3)
+
+[node name="Mesh" type="MeshInstance3D" parent="PitEdgeRailEntry_1" unique_id=2089963577]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_8uu0b")
+metadata/mat_slot = "metal"
+
+[node name="Col" type="CollisionShape3D" parent="PitEdgeRailEntry_1" unique_id=371300445]
+shape = SubResource("BoxShape3D_pjnly")
+
+[node name="PitEdgeRailExit_1" type="StaticBody3D" parent="." unique_id=720456198]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.825, 1, -3)
+
+[node name="Mesh" type="MeshInstance3D" parent="PitEdgeRailExit_1" unique_id=2034145972]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_ndwkb")
+metadata/mat_slot = "metal"
+
+[node name="Col" type="CollisionShape3D" parent="PitEdgeRailExit_1" unique_id=380771221]
+shape = SubResource("BoxShape3D_nihjb")
+
+[node name="Locker_0" parent="." unique_id=1639668258 instance=ExtResource("3_eh0vy")]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 3.65, 0, 6)
+
+[node name="PitDesk" parent="." unique_id=1137174194 instance=ExtResource("4_o45ya")]
+transform = Transform3D(0.9800666, 0, 0.19866933, 0, 1, 0, -0.19866933, 0, 0.9800666, -2.4, -2.4, 0)

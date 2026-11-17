@@ -1,0 +1,38 @@
+[gd_scene format=3]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_mj0q5"]
+size = Vector3(0.32, 0.28, 0.36)
+
+[sub_resource type="BoxMesh" id="BoxMesh_3uy35"]
+size = Vector3(0.11, 0.11, 0.26)
+
+[sub_resource type="BoxMesh" id="BoxMesh_6pjd1"]
+size = Vector3(0.12, 0.08, 0.14)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_xbak7"]
+top_radius = 0.062
+bottom_radius = 0.062
+height = 0.06
+radial_segments = 12
+
+[node name="Pickup_gummy" type="StaticBody3D" unique_id=228782063]
+
+[node name="Col" type="CollisionShape3D" parent="." unique_id=1607082114]
+shape = SubResource("BoxShape3D_mj0q5")
+
+[node name="Chassis" type="MeshInstance3D" parent="." unique_id=1153276607]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_3uy35")
+metadata/mat_slot = "gummy"
+
+[node name="Grip" type="MeshInstance3D" parent="." unique_id=320704335]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.02, -0.04)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_6pjd1")
+metadata/mat_slot = "locker"
+
+[node name="Head" type="MeshInstance3D" parent="." unique_id=1702449213]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0.14)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_xbak7")
+metadata/mat_slot = "fridge"

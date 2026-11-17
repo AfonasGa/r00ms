@@ -1,0 +1,143 @@
+[gd_scene format=3]
+
+[sub_resource type="BoxMesh" id="BoxMesh_twch4"]
+size = Vector3(3.2, 3.8, 0.22)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_rhlfs"]
+size = Vector3(3.2, 3.8, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_kdfwc"]
+size = Vector3(3.2, 3.8, 0.22)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ci7bc"]
+size = Vector3(3.2, 3.8, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_46v16"]
+size = Vector3(2, 1.05, 0.22)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_n6pst"]
+size = Vector3(2, 1.05, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_0hijk"]
+size = Vector3(0.1, 2.75, 0.28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_2y7j1"]
+size = Vector3(0.1, 2.75, 0.28)
+
+[sub_resource type="BoxMesh" id="BoxMesh_c233b"]
+size = Vector3(0.1, 2.75, 0.28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ewgrn"]
+size = Vector3(0.1, 2.75, 0.28)
+
+[sub_resource type="BoxMesh" id="BoxMesh_17ig4"]
+size = Vector3(1.15, 0.34, 0.03)
+
+[sub_resource type="BoxMesh" id="BoxMesh_w0hjc"]
+size = Vector3(1.8, 2.71, 0.1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_de4rd"]
+size = Vector3(1.8, 2.71, 0.1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_g0gwq"]
+size = Vector3(0.1, 0.06, 0.06)
+
+[sub_resource type="BoxMesh" id="BoxMesh_0i8p2"]
+size = Vector3(0.1, 0.06, 0.06)
+
+[node name="ExitAnchor" type="Node3D" unique_id=1210987141]
+
+[node name="DoorWallL" type="StaticBody3D" parent="." unique_id=1023428289]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.6, 1.9, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="DoorWallL" unique_id=310676054]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_twch4")
+metadata/mat_slot = "wall"
+
+[node name="Col" type="CollisionShape3D" parent="DoorWallL" unique_id=1688703944]
+shape = SubResource("BoxShape3D_rhlfs")
+
+[node name="DoorWallR" type="StaticBody3D" parent="." unique_id=432231886]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.6, 1.9, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="DoorWallR" unique_id=731785524]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_kdfwc")
+metadata/mat_slot = "wall"
+
+[node name="Col" type="CollisionShape3D" parent="DoorWallR" unique_id=79615466]
+shape = SubResource("BoxShape3D_ci7bc")
+
+[node name="DoorHeader" type="StaticBody3D" parent="." unique_id=1650512373]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.275, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="DoorHeader" unique_id=1777689141]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_46v16")
+metadata/mat_slot = "wall"
+
+[node name="Col" type="CollisionShape3D" parent="DoorHeader" unique_id=1539774724]
+shape = SubResource("BoxShape3D_n6pst")
+
+[node name="FrameL" type="StaticBody3D" parent="." unique_id=574919829]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.95, 1.375, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="FrameL" unique_id=1927371103]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_0hijk")
+metadata/mat_slot = "plank_dark"
+
+[node name="Col" type="CollisionShape3D" parent="FrameL" unique_id=1707219169]
+shape = SubResource("BoxShape3D_2y7j1")
+
+[node name="FrameR" type="StaticBody3D" parent="." unique_id=519044450]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.95, 1.375, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="FrameR" unique_id=1713091763]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_c233b")
+metadata/mat_slot = "plank_dark"
+
+[node name="Col" type="CollisionShape3D" parent="FrameR" unique_id=1239559410]
+shape = SubResource("BoxShape3D_ewgrn")
+
+[node name="YellowPlaqueBg" type="MeshInstance3D" parent="." unique_id=1358615422]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.01, 0.125)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_17ig4")
+metadata/mat_slot = "plaque_yellow"
+
+[node name="ExitSign" type="Label3D" parent="." unique_id=980768750]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.01, 0.15)
+pixel_size = 0.0046
+modulate = Color(0.08, 0.08, 0.08, 1)
+text = "A-001"
+font_size = 44
+
+[node name="DoorPivot" type="Node3D" parent="." unique_id=630604732]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, 0, 0)
+
+[node name="DoorLeaf" type="StaticBody3D" parent="DoorPivot" unique_id=342151358]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.9, 1.355, 0)
+metadata/interact_type = "door"
+
+[node name="Mesh" type="MeshInstance3D" parent="DoorPivot/DoorLeaf" unique_id=510526863]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_w0hjc")
+metadata/mat_slot = "door"
+
+[node name="Col" type="CollisionShape3D" parent="DoorPivot/DoorLeaf" unique_id=1330472739]
+shape = SubResource("BoxShape3D_de4rd")
+
+[node name="DoorKnob" type="MeshInstance3D" parent="DoorPivot" unique_id=1725069458]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.62, 1.05, 0.075)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_g0gwq")
+metadata/mat_slot = "fridge"
+
+[node name="DoorKnobBack" type="MeshInstance3D" parent="DoorPivot" unique_id=1354156889]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.62, 1.05, -0.075)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_0i8p2")
+metadata/mat_slot = "fridge"

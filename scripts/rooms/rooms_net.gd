@@ -16,9 +16,12 @@ signal session_synced(seed_val: int, room_idx: int)
 signal entity_event_received(msg: Dictionary)
 signal chat_received(peer_name: String, text: String)
 signal members_changed
+signal face_received(peer_key: String, png_bytes: PackedByteArray)
+signal lan_servers_updated(servers: Array)
 
 const SPACEWAR_APP_ID := 480
 const ENET_PORT := 27480
+const LAN_DISCOVERY_PORT := 27481
 const LOBBY_FILTER_TAG := "r00ms_spacewar_v1"
 const FRIEND_FLAG_IMMEDIATE := 4
 
@@ -40,6 +43,15 @@ var _friend_lobby_entries: Array[Dictionary] = []
 
 var _enet: ENetMultiplayerPeer = null
 var _enet_connected_ids: Array[int] = []
+var _enet_join_timeout := 0.0
+var _enet_connected_flag := false
+
+# UDP LAN Auto-Discovery (for mobile & PC same-Wi-Fi one-tap join)
+var _lan_broadcaster: PacketPeerUDP = null
+var _lan_listener: PacketPeerUDP = null
+var _lan_broadcast_accum := 0.0
+var _lan_servers: Dictionary = {} # ip -> {ip, port, name, players, last_seen}
+var _lan_discovering := false
 
 var _send_accum := 0.0
 var _send_tick := 0
@@ -66,9 +78,16 @@ var _voice_pcm: PackedByteArray = PackedByteArray()
 var _voice_flush_accum := 0.0
 var _voice_streams: Dictionary = {}  # peer_key -> {gen, pl}
 const VOICE_FLUSH_SEC := 0.06
+var _local_face_png: PackedByteArray = PackedByteArray()
 
 
 func _ready() -> void:
+	if OS.get_name() in ["Android", "iOS"]:
+		var m := OS.get_model_name().strip_edges()
+		if not m.is_empty() and m != "GenericDevice":
+			persona_name = m.substr(0, 18)
+		else:
+			persona_name = "Phone-%03d" % (randi() % 1000)
 	_init_steam()
 	if OS.get_name() in ["Windows", "macOS", "Linux"]:
 		_setup_voice()
@@ -77,6 +96,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	stop_lan_discovery()
 	disconnect_session()
 
 
@@ -458,35 +478,148 @@ func update_presence(room_idx: int, alive: int, total: int) -> void:
 func host_enet(seed_val: int, port: int = ENET_PORT) -> Error:
 	disconnect_session()
 	var enet := ENetMultiplayerPeer.new()
+	# Bind explicitly to IPv4 0.0.0.0 so Android/iOS/PC sockets accept all Wi-Fi IPv4 peers!
+	enet.set_bind_ip("0.0.0.0")
 	var err := enet.create_server(port, 8)
 	if err != OK:
-		emit_signal("status_changed", "Ошибка запуска ENet сервера (%d)" % err)
+		# Fallback to default bind if platform prefers dual-stack
+		enet.set_bind_ip("*")
+		err = enet.create_server(port, 8)
+	if err != OK:
+		emit_signal("status_changed", "ENet host error (%d)" % err)
 		return err
 	_enet = enet
 	multiplayer.multiplayer_peer = enet
 	_wire_enet_signals()
 	is_host = true
+	_enet_connected_flag = true
+	_enet_join_timeout = 0.0
 	run_seed = seed_val
 	mode = "enet"
+	_start_lan_broadcaster()
 	var lan_ip := _get_local_lan_ip()
-	emit_signal("status_changed", "Локальная сеть: %s:%d — друг вводит этот адрес" % [lan_ip, port])
+	emit_signal("status_changed", "LAN: %s:%d" % [lan_ip, port])
 	return OK
 
 
 func join_enet(ip: String = "127.0.0.1", port: int = ENET_PORT) -> Error:
+	var clean_ip := ip.strip_edges().replace(" ", "").replace("\t", "").replace("\r", "").replace("\n", "")
+	if clean_ip.is_empty():
+		emit_signal("status_changed", RoomsI18n.t("toast_lan_bad_ip"))
+		return ERR_INVALID_PARAMETER
 	disconnect_session()
 	var enet := ENetMultiplayerPeer.new()
-	var err := enet.create_client(ip, port)
+	var err := enet.create_client(clean_ip, port)
 	if err != OK:
-		emit_signal("status_changed", "Ошибка подключения ENet к %s:%d (%d)" % [ip, port, err])
+		emit_signal("status_changed", "ENet join error %s:%d (%d)" % [clean_ip, port, err])
 		return err
 	_enet = enet
 	multiplayer.multiplayer_peer = enet
 	_wire_enet_signals()
 	is_host = false
+	_enet_connected_flag = false
+	_enet_join_timeout = 8.0
 	mode = "enet"
-	emit_signal("status_changed", "Подключение к %s:%d..." % [ip, port])
+	emit_signal("status_changed", RoomsI18n.t("toast_lan_joining", [clean_ip, port]))
 	return OK
+
+
+func start_lan_discovery() -> void:
+	if _lan_discovering:
+		return
+	_lan_discovering = true
+	_lan_servers.clear()
+	_lan_listener = PacketPeerUDP.new()
+	var err := _lan_listener.bind(LAN_DISCOVERY_PORT, "0.0.0.0")
+	if err != OK:
+		err = _lan_listener.bind(LAN_DISCOVERY_PORT)
+	if err != OK:
+		_lan_listener = null
+
+
+func stop_lan_discovery() -> void:
+	_lan_discovering = false
+	if _lan_listener != null:
+		_lan_listener.close()
+		_lan_listener = null
+	_lan_servers.clear()
+
+
+func _start_lan_broadcaster() -> void:
+	_stop_lan_broadcaster()
+	_lan_broadcaster = PacketPeerUDP.new()
+	_lan_broadcaster.set_broadcast_enabled(true)
+	_lan_broadcast_accum = 1.5
+
+
+func _stop_lan_broadcaster() -> void:
+	if _lan_broadcaster != null:
+		_lan_broadcaster.close()
+		_lan_broadcaster = null
+
+
+func _tick_lan_discovery(delta: float) -> void:
+	# 1. Host broadcasts presence every 1.1s to both global & subnet broadcast
+	if mode == "enet" and is_host and _lan_broadcaster != null:
+		_lan_broadcast_accum += delta
+		if _lan_broadcast_accum >= 1.1:
+			_lan_broadcast_accum = 0.0
+			var my_ip := _get_local_lan_ip()
+			var payload := JSON.stringify({
+				"app": "r00ms_lan",
+				"name": persona_name,
+				"ip": my_ip,
+				"port": ENET_PORT,
+				"players": _enet_connected_ids.size() + 1,
+			}).to_utf8_buffer()
+			_lan_broadcaster.set_dest_address("255.255.255.255", LAN_DISCOVERY_PORT)
+			_lan_broadcaster.put_packet(payload)
+			var parts := my_ip.split(".")
+			if parts.size() == 4 and not my_ip.begins_with("127."):
+				var subnet_bcast := "%s.%s.%s.255" % [parts[0], parts[1], parts[2]]
+				_lan_broadcaster.set_dest_address(subnet_bcast, LAN_DISCOVERY_PORT)
+				_lan_broadcaster.put_packet(payload)
+
+	# 2. Client listens for LAN hosts
+	if _lan_discovering and _lan_listener != null:
+		var changed := false
+		var now_s := float(Time.get_ticks_msec()) * 0.001
+		var my_ip := _get_local_lan_ip()
+		var guard := 0
+		while _lan_listener.get_available_packet_count() > 0 and guard < 16:
+			guard += 1
+			var pkt := _lan_listener.get_packet()
+			var sender_ip := _lan_listener.get_packet_ip()
+			if pkt.is_empty():
+				continue
+			var parsed: Variant = JSON.parse_string(pkt.get_string_from_utf8())
+			if parsed is Dictionary:
+				var d: Dictionary = parsed
+				if String(d.get("app", "")) != "r00ms_lan":
+					continue
+				var host_ip := sender_ip if (not sender_ip.is_empty() and sender_ip.contains(".")) else String(d.get("ip", ""))
+				if host_ip.is_empty() or host_ip == my_ip or host_ip.begins_with("127."):
+					continue
+				_lan_servers[host_ip] = {
+					"ip": host_ip,
+					"port": int(d.get("port", ENET_PORT)),
+					"name": String(d.get("name", "Host")),
+					"players": int(d.get("players", 1)),
+					"last_seen": now_s,
+				}
+				changed = true
+		var stale: Array[String] = []
+		for k in _lan_servers.keys():
+			if now_s - float((_lan_servers[k] as Dictionary).get("last_seen", 0.0)) > 4.5:
+				stale.append(String(k))
+		for k in stale:
+			_lan_servers.erase(k)
+			changed = true
+		if changed:
+			var arr: Array = []
+			for k in _lan_servers.keys():
+				arr.append(_lan_servers[k])
+			emit_signal("lan_servers_updated", arr)
 
 
 func _wire_enet_signals() -> void:
@@ -516,9 +649,12 @@ func disconnect_session() -> void:
 		if multiplayer.multiplayer_peer != null:
 			multiplayer.multiplayer_peer = null
 
+	_stop_lan_broadcaster()
 	_peer_steam_ids.clear()
 	_enet_connected_ids.clear()
 	_enet = null
+	_enet_connected_flag = false
+	_enet_join_timeout = 0.0
 	current_lobby_id = 0
 	is_host = false
 	_last_synced_lobby = 0
@@ -534,6 +670,22 @@ func disconnect_session() -> void:
 
 func update_local_state(state_dict: Dictionary) -> void:
 	_local_state = state_dict
+
+
+func set_local_face_bytes(png_bytes: PackedByteArray) -> void:
+	_local_face_png = png_bytes
+	if is_online() and not _local_face_png.is_empty():
+		broadcast_face(_local_face_png)
+
+
+func broadcast_face(png_bytes: PackedByteArray) -> void:
+	if mode == "offline" or png_bytes.is_empty() or png_bytes.size() > 65536:
+		return
+	var msg := {"t": "face", "d": png_bytes}
+	if mode == "steam":
+		_steam_send_all(msg, 2)
+	elif mode == "enet" and multiplayer.has_multiplayer_peer():
+		multiplayer.send_bytes(var_to_bytes(msg), 0, MultiplayerPeer.TRANSFER_MODE_RELIABLE)
 
 
 func broadcast_door_opened(room_index: int, slam: bool = false) -> void:
@@ -589,7 +741,12 @@ func _process(delta: float) -> void:
 		_poll_voice_packets()
 	elif mode == "enet" and multiplayer.has_multiplayer_peer():
 		_poll_enet_packets()
+		if not is_host and not _enet_connected_flag and _enet_join_timeout > 0.0:
+			_enet_join_timeout -= delta
+			if _enet_join_timeout <= 0.0:
+				_on_enet_connection_failed()
 
+	_tick_lan_discovery(delta)
 	_process_voice(delta)
 
 	if mode != "offline":
@@ -617,6 +774,7 @@ func _process(delta: float) -> void:
 					"hp": int(_local_state.get("hp", 100)),
 					"insp": bool(_local_state.get("insp", false)),
 					"dh": bool(_local_state.get("dh", false)),
+					"cov": bool(_local_state.get("cov", false)),
 					"n": persona_name,
 				}
 				if mode == "steam":
@@ -830,6 +988,14 @@ func _handle_packet(peer_key: String, msg: Dictionary) -> void:
 			emit_signal("members_changed")
 		if is_host and run_seed > 0:
 			broadcast_session_sync(run_seed, run_room_idx)
+		if not _local_face_png.is_empty():
+			broadcast_face(_local_face_png)
+	elif mtype == "face":
+		var raw_face: Variant = msg.get("d", PackedByteArray())
+		if raw_face is PackedByteArray:
+			var fb := raw_face as PackedByteArray
+			if fb.size() > 0 and fb.size() <= 65536:
+				emit_signal("face_received", peer_key, fb)
 	elif mtype == "ent":
 		emit_signal("entity_event_received", msg)
 
@@ -912,6 +1078,8 @@ func _on_steam_lobby_joined(lobby_id: int, _perm: int, _locked: bool, response: 
 	_update_rich_presence()
 	_steam.call("requestLobbyData", lobby_id)
 	_steam_send_all({"t": "hi", "n": persona_name}, 2)
+	if not _local_face_png.is_empty():
+		broadcast_face(_local_face_png)
 	emit_signal("status_changed", get_summary_status())
 	_try_emit_lobby_sync(lobby_id)
 
@@ -1019,9 +1187,8 @@ func _on_steam_overlay_toggled(arg0: Variant = null, _arg1: Variant = null, _arg
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	else:
 		var root := get_tree().current_scene
-		if root != null and int(root.get("_state")) == 1: # State.PLAYING
-			if not bool(root.get("_is_hiding")):
-				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		if root != null and root.has_method("is_playing_active") and bool(root.call("is_playing_active")):
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _on_enet_peer_connected(id: int) -> void:
@@ -1046,41 +1213,55 @@ func _on_enet_peer_disconnected(id: int) -> void:
 
 
 func _on_enet_connected_to_server() -> void:
+	_enet_connected_flag = true
+	_enet_join_timeout = 0.0
 	var sm := multiplayer as SceneMultiplayer
 	if sm != null and not sm.peer_packet.is_connected(_on_enet_packet_received):
 		sm.peer_packet.connect(_on_enet_packet_received)
 	if multiplayer.has_multiplayer_peer():
 		multiplayer.send_bytes(var_to_bytes({"t": "hi", "n": persona_name}), 1, MultiplayerPeer.TRANSFER_MODE_RELIABLE)
+		if not _local_face_png.is_empty():
+			broadcast_face(_local_face_png)
 	emit_signal("status_changed", get_summary_status())
 
 
 func _on_enet_connection_failed() -> void:
 	disconnect_session()
-	emit_signal("status_changed", "ENet: не удалось подключиться")
+	emit_signal("status_changed", RoomsI18n.t("toast_lan_fail"))
 
 
-## Returns the LAN IP of this machine, prioritizing real adapters (Wi-Fi/Ethernet) and filtering out virtual ones.
+## Returns the LAN IP of this device (PC, Android wlan0/ap0, iOS en0), prioritizing Wi-Fi/Ethernet IPv4.
 func _get_local_lan_ip() -> String:
-	var fallback := "127.0.0.1"
+	var best_lan := ""
+	var fallback := ""
 	for iface in IP.get_local_interfaces():
+		var if_name: String = String(iface.get("name", "")).to_lower()
 		var friendly: String = String(iface.get("friendly", "")).to_lower()
-		if "vmware" in friendly or "virtual" in friendly or "vbox" in friendly or "bluetooth" in friendly or "loopback" in friendly:
+		var combined := if_name + " " + friendly
+		if "vmware" in combined or "virtual" in combined or "vbox" in combined or "bluetooth" in combined or "loopback" in combined or "rmnet" in combined or "ccmni" in combined or "pdp_ip" in combined or "tun" in combined or "ppp" in combined or "dummy" in combined:
 			continue
+		var is_preferred := ("wlan" in combined or "swlan" in combined or "ap0" in combined or "wi-fi" in combined or "wifi" in combined or "беспроводная" in combined or "en0" in if_name or "ethernet" in combined or "eth0" in if_name or "сеть" in combined)
 		var addrs: Array = iface.get("addresses", [])
 		for a in addrs:
 			var addr := String(a)
-			if addr.contains(".") and not addr.begins_with("127.") and not addr.begins_with("169.254."):
-				if "wi-fi" in friendly or "беспроводная" in friendly or "ethernet" in friendly or "сеть" in friendly:
+			if not addr.contains(".") or addr.begins_with("127.") or addr.begins_with("169.254.") or addr.begins_with("0."):
+				continue
+			if is_preferred:
+				if addr.begins_with("192.168."):
 					return addr
-				if fallback == "127.0.0.1":
-					fallback = addr
-	if fallback != "127.0.0.1":
+				if best_lan.is_empty():
+					best_lan = addr
+			elif fallback.is_empty():
+				fallback = addr
+	if not best_lan.is_empty():
+		return best_lan
+	if not fallback.is_empty():
 		return fallback
 	for addr in IP.get_local_addresses():
 		if addr.begins_with("192.168."):
 			return addr
 	for addr in IP.get_local_addresses():
-		if addr.begins_with("10.") or addr.begins_with("172.") or addr.begins_with("26.") or addr.begins_with("25."):
+		if addr.begins_with("10.") or addr.begins_with("172."):
 			return addr
 	return "127.0.0.1"
 

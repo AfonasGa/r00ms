@@ -1,0 +1,56 @@
+[gd_scene format=3]
+
+[sub_resource type="BoxMesh" id="BoxMesh_yh7fg"]
+size = Vector3(1.38, 0.07, 0.78)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_8yhu1"]
+size = Vector3(1.38, 0.07, 0.78)
+
+[sub_resource type="BoxMesh" id="BoxMesh_17sdx"]
+size = Vector3(0.07, 0.74, 0.07)
+
+[sub_resource type="BoxMesh" id="BoxMesh_jdgms"]
+size = Vector3(0.07, 0.74, 0.07)
+
+[sub_resource type="BoxMesh" id="BoxMesh_843h1"]
+size = Vector3(0.07, 0.74, 0.07)
+
+[sub_resource type="BoxMesh" id="BoxMesh_btcy5"]
+size = Vector3(0.07, 0.74, 0.07)
+
+[node name="DeskStatic" type="Node3D" unique_id=1137174194]
+
+[node name="Top" type="StaticBody3D" parent="." unique_id=887486479]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.76, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Top" unique_id=1328969752]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_yh7fg")
+metadata/mat_slot = "wood"
+
+[node name="Col" type="CollisionShape3D" parent="Top" unique_id=1378383391]
+shape = SubResource("BoxShape3D_8yhu1")
+
+[node name="LegFL" type="MeshInstance3D" parent="." unique_id=1836824365]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.62, 0.37, 0.32)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_17sdx")
+metadata/mat_slot = "metal"
+
+[node name="LegFR" type="MeshInstance3D" parent="." unique_id=1321824417]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.62, 0.37, 0.32)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_jdgms")
+metadata/mat_slot = "metal"
+
+[node name="LegBL" type="MeshInstance3D" parent="." unique_id=1893818190]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.62, 0.37, -0.32)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_843h1")
+metadata/mat_slot = "metal"
+
+[node name="LegBR" type="MeshInstance3D" parent="." unique_id=1461192985]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.62, 0.37, -0.32)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_btcy5")
+metadata/mat_slot = "metal"

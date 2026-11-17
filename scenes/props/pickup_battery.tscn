@@ -1,0 +1,56 @@
+[gd_scene format=3]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_kcvhp"]
+size = Vector3(0.32, 0.28, 0.36)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_nx8ru"]
+top_radius = 0.068
+bottom_radius = 0.068
+height = 0.21
+radial_segments = 12
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_dcicw"]
+top_radius = 0.07
+bottom_radius = 0.07
+height = 0.055
+radial_segments = 12
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_uiwmq"]
+top_radius = 0.069
+bottom_radius = 0.069
+height = 0.032
+radial_segments = 12
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_q6f44"]
+top_radius = 0.025
+bottom_radius = 0.025
+height = 0.024
+radial_segments = 12
+
+[node name="Pickup_battery" type="StaticBody3D" unique_id=843697246]
+
+[node name="Col" type="CollisionShape3D" parent="." unique_id=631664304]
+shape = SubResource("BoxShape3D_kcvhp")
+
+[node name="Cell" type="MeshInstance3D" parent="." unique_id=452808103]
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_nx8ru")
+metadata/mat_slot = "locker"
+
+[node name="GlowBand" type="MeshInstance3D" parent="." unique_id=2114397931]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.04, 0)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_dcicw")
+metadata/mat_slot = "battery"
+
+[node name="TopCap" type="MeshInstance3D" parent="." unique_id=1024823571]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.095, 0)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_uiwmq")
+metadata/mat_slot = "plaque_yellow"
+
+[node name="Nub" type="MeshInstance3D" parent="." unique_id=517384542]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.122, 0)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_q6f44")
+metadata/mat_slot = "fridge"

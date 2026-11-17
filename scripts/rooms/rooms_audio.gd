@@ -1,7 +1,7 @@
 class_name RoomsAudio
 extends AudioStreamPlayer
 
-## Procedural horror audio synthesizer for Rooms: ambient hum, footsteps, doors, lockers, and entities.
+## Horror audio manager for Rooms: real foley/reverb samples, corridor ambience, footsteps, doors, lockers, and entities.
 
 var muted := false:
 	set(v):
@@ -22,25 +22,42 @@ var entity_volume := 1.0:
 var ambient_volume := 1.0:
 	set(v):
 		ambient_volume = clampf(v, 0.0, 1.0)
+		apply_volume_settings()
+
 var _master_bus_idx := 0
 var _sfx_bus_idx := -1
 var _entities_bus_idx := -1
+var _ambient_bus_idx := -1
+var _a120_distant_bus_idx := -1
+
 var a60_intensity := 0.0
 var low_hp_mode := false
-
-var _playback: AudioStreamGeneratorPlayback = null
-var _sample_rate := 22050.0
-var _hum_phase := 0.0
-var _growl_phase := 0.0
 var _hb_timer := 0.0
-var _noise_seed := 1337
-var _voices: Array[Dictionary] = []
+
+var _room_ambient: AudioStreamPlayer
+var _sfx_heartbeat: AudioStreamPlayer
+var _sfx_door_open: AudioStreamPlayer
+var _sfx_locker_enter: AudioStreamPlayer
+var _sfx_locker_exit: AudioStreamPlayer
+var _sfx_desk_crawl: AudioStreamPlayer
+var _sfx_flashlight_click: AudioStreamPlayer
+var _sfx_flashlight_low: AudioStreamPlayer
+var _sfx_flashlight_flicker: AudioStreamPlayer
+var _sfx_gummy_shake: AudioStreamPlayer
+var _sfx_pickup: AudioStreamPlayer
+var _sfx_power_down: AudioStreamPlayer
+var _sfx_pant_in: AudioStreamPlayer
+var _sfx_pant_out: AudioStreamPlayer
+var _sfx_arch_appear: AudioStreamPlayer
+var _sfx_arch_blip: AudioStreamPlayer
+var _sfx_a90_warn: AudioStreamPlayer
+var _sfx_a90_hit: AudioStreamPlayer
+var _sfx_jumpscare: AudioStreamPlayer
 
 var _hs_ambience: AudioStreamPlayer
 var _hs_distant: AudioStreamPlayer
 var _hs_nearby: AudioStreamPlayer
 var _hs_scream: AudioStreamPlayer
-var _a120_distant_bus_idx := -1
 var _hs_active := false
 
 var _a60_rumble: AudioStreamPlayer
@@ -48,6 +65,10 @@ var _a60_ambience: AudioStreamPlayer
 var _a60_near: AudioStreamPlayer
 var _a60_door_break: AudioStreamPlayer
 var _a60_jumpscare: AudioStreamPlayer
+var _a075_warn: AudioStreamPlayer
+var _a075_scan: AudioStreamPlayer
+var _a075_attack: AudioStreamPlayer
+var _a075_despawn: AudioStreamPlayer
 var _death_player: AudioStreamPlayer
 var _darkness_whisper: AudioStreamPlayer
 var _foot_iron: AudioStreamPlayer
@@ -74,26 +95,23 @@ var _hs_rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_hs_rng.randomize()
-	var gen := AudioStreamGenerator.new()
-	gen.mix_rate = _sample_rate
-	gen.buffer_length = 0.08
-	stream = gen
 	autoplay = false
-	play()
-	_playback = get_stream_playback() as AudioStreamGeneratorPlayback
-	_setup_a120_players()
+	_setup_audio_players()
 
 
 func _exit_tree() -> void:
 	stop_a120()
 	stop_a60()
+	stop_a075_scan()
 	stop_darkness()
-	_playback = null
+	if is_instance_valid(_room_ambient) and _room_ambient.playing:
+		_room_ambient.stop()
 	stop()
 
 
-func _setup_a120_players() -> void:
+func _setup_audio_players() -> void:
 	_master_bus_idx = maxi(AudioServer.get_bus_index("Master"), 0)
+
 	_entities_bus_idx = AudioServer.get_bus_index("Entities")
 	if _entities_bus_idx == -1:
 		_entities_bus_idx = AudioServer.bus_count
@@ -108,6 +126,13 @@ func _setup_a120_players() -> void:
 		AudioServer.set_bus_name(_sfx_bus_idx, "SFX")
 		AudioServer.set_bus_send(_sfx_bus_idx, "Master")
 
+	_ambient_bus_idx = AudioServer.get_bus_index("Ambient")
+	if _ambient_bus_idx == -1:
+		_ambient_bus_idx = AudioServer.bus_count
+		AudioServer.add_bus(_ambient_bus_idx)
+		AudioServer.set_bus_name(_ambient_bus_idx, "Ambient")
+		AudioServer.set_bus_send(_ambient_bus_idx, "Master")
+
 	_a120_distant_bus_idx = AudioServer.get_bus_index("A120Distant")
 	if _a120_distant_bus_idx == -1:
 		_a120_distant_bus_idx = AudioServer.bus_count
@@ -115,21 +140,56 @@ func _setup_a120_players() -> void:
 		AudioServer.set_bus_name(_a120_distant_bus_idx, "A120Distant")
 		AudioServer.set_bus_send(_a120_distant_bus_idx, "Entities")
 
+	# Ambient & physiology
+	_room_ambient = _make_stream_player("res://assets/sound/sfx/room_ambient.wav", true, "Ambient")
+	_sfx_heartbeat = _make_stream_player("res://assets/sound/sfx/heartbeat.wav", false, "Ambient", 2)
+
+	# Foley & UI SFX
+	_sfx_door_open = _make_stream_player("res://assets/sound/sfx/door_open.wav", false, "SFX", 3)
+	_sfx_locker_enter = _make_stream_player("res://assets/sound/sfx/locker_enter.wav", false, "SFX", 2)
+	_sfx_locker_exit = _make_stream_player("res://assets/sound/sfx/locker_exit.wav", false, "SFX", 2)
+	_sfx_desk_crawl = _make_stream_player("res://assets/sound/sfx/desk_crawl.wav", false, "SFX", 2)
+	_sfx_flashlight_click = _make_stream_player("res://assets/sound/sfx/flashlight_click.wav", false, "SFX", 4)
+	_sfx_flashlight_low = _make_stream_player("res://assets/sound/sfx/flashlight_low_power.wav", false, "SFX", 2)
+	_sfx_flashlight_flicker = _make_stream_player("res://assets/sound/sfx/flashlight_flicker.wav", false, "SFX", 4)
+	_sfx_gummy_shake = _make_stream_player("res://assets/sound/sfx/gummy_shake.wav", false, "SFX", 4)
+	_sfx_pickup = _make_stream_player("res://assets/sound/sfx/pickup.wav", false, "SFX", 3)
+	_sfx_power_down = _make_stream_player("res://assets/sound/sfx/power_down.wav", false, "SFX", 2)
+	_sfx_pant_in = _make_stream_player("res://assets/sound/sfx/pant_in.wav", false, "SFX", 2)
+	_sfx_pant_out = _make_stream_player("res://assets/sound/sfx/pant_out.wav", false, "SFX", 2)
+	_sfx_arch_appear = _make_stream_player("res://assets/sound/sfx/architect_appear.wav", false, "SFX", 2)
+	_sfx_arch_blip = _make_stream_player("res://assets/sound/sfx/architect_blip.wav", false, "SFX", 4)
+	_death_player = _make_stream_player("res://assets/sound/Dead_sound_effect.mp3", false, "SFX")
+	_foot_iron = _make_stream_player("res://assets/sound/foot/footsteps-iron-record.mp3", false, "SFX")
+	_foot_carpet = _make_stream_player("res://assets/sound/foot/hard-carpet-footwork-shoes-footsteps-walking-ntg3.mp3", false, "SFX")
+
+	# Entities
+	_sfx_a90_warn = _make_stream_player("res://assets/sound/sfx/a90_warn.wav", false, "Entities", 2)
+	_sfx_a90_hit = _make_stream_player("res://assets/sound/sfx/a90_hit.wav", false, "Entities", 2)
+	_sfx_jumpscare = _make_stream_player("res://assets/sound/sfx/jumpscare.wav", false, "Entities", 2)
+
 	_hs_ambience = _make_stream_player("res://assets/sound/a120/AmbienceA120.mp3", true, "Entities")
 	_hs_distant = _make_stream_player("res://assets/sound/a120/DistantA120.mp3", true, "A120Distant")
 	_hs_nearby = _make_stream_player("res://assets/sound/a120/NearbyA120.mp3", true, "Entities")
 	_hs_scream = _make_stream_player("res://assets/sound/a120/Ghost_scream.mp3", false, "Entities")
 
-	_death_player = _make_stream_player("res://assets/sound/Dead_sound_effect.mp3", false, "SFX")
 	_a60_rumble = _make_stream_player("res://assets/sound/a60/A-60_Rumble_Sound.mp3", false, "Entities")
 	_a60_ambience = _make_stream_player("res://assets/sound/a60/ActualA-60IngameAmbience.wav", true, "Entities")
 	_a60_near = _make_stream_player("res://assets/sound/a60/A-60_Near_Sound.mp3", true, "Entities")
 	_a60_door_break = _make_stream_player("res://assets/sound/a60/A60BreakingDoor.ogg", false, "Entities")
 	_a60_jumpscare = _make_stream_player("res://assets/sound/a60/A60_Jumpscare.ogg", false, "Entities")
+
+	_a075_warn = _make_stream_player("res://assets/sound/a075/a075_warning_charge.wav", false, "Entities")
+	_a075_scan = _make_stream_player("res://assets/sound/a075/a075_scan_ambience.wav", true, "Entities")
+	_a075_attack = _make_stream_player("res://assets/sound/a075/a075_flash_attack.wav", false, "Entities")
+	_a075_despawn = _make_stream_player("res://assets/sound/a075/a075_despawn.wav", false, "Entities")
 	_darkness_whisper = _make_stream_player("res://assets/sound/darkness/darkness_whisper.ogg", true, "Entities")
-	_foot_iron = _make_stream_player("res://assets/sound/foot/footsteps-iron-record.mp3", false, "SFX")
-	_foot_carpet = _make_stream_player("res://assets/sound/foot/hard-carpet-footwork-shoes-footsteps-walking-ntg3.mp3", false, "SFX")
+
 	apply_volume_settings()
+
+	if _room_ambient != null and _room_ambient.stream != null:
+		_room_ambient.volume_db = -14.0
+		_room_ambient.play()
 
 
 func apply_volume_settings() -> void:
@@ -144,12 +204,16 @@ func apply_volume_settings() -> void:
 	if _entities_bus_idx >= 0:
 		AudioServer.set_bus_mute(_entities_bus_idx, muted or entity_volume <= 0.001)
 		AudioServer.set_bus_volume_db(_entities_bus_idx, linear_to_db(maxf(entity_volume, 0.001)) if entity_volume > 0.001 else -80.0)
+	if _ambient_bus_idx >= 0:
+		AudioServer.set_bus_mute(_ambient_bus_idx, muted or ambient_volume <= 0.001)
+		AudioServer.set_bus_volume_db(_ambient_bus_idx, linear_to_db(maxf(ambient_volume, 0.001)) if ambient_volume > 0.001 else -80.0)
 
 
-func _make_stream_player(res_path: String, should_loop: bool, bus_name: String) -> AudioStreamPlayer:
+func _make_stream_player(res_path: String, should_loop: bool, bus_name: String, polyphony: int = 1) -> AudioStreamPlayer:
 	var p := AudioStreamPlayer.new()
 	p.bus = bus_name
 	p.volume_db = -40.0
+	p.max_polyphony = maxi(polyphony, 1)
 	if ResourceLoader.exists(res_path):
 		var st := load(res_path) as AudioStream
 		if st != null:
@@ -157,9 +221,54 @@ func _make_stream_player(res_path: String, should_loop: bool, bus_name: String) 
 				(st as AudioStreamMP3).loop = should_loop
 			elif st is AudioStreamOggVorbis:
 				(st as AudioStreamOggVorbis).loop = should_loop
+			elif st is AudioStreamWAV and should_loop:
+				var wav := st as AudioStreamWAV
+				wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+				wav.loop_begin = 0
+				if wav.loop_end <= 0:
+					var total_frames := int(round(wav.get_length() * float(maxi(wav.mix_rate, 1))))
+					if total_frames > 0:
+						wav.loop_end = total_frames
 			p.stream = st
 	add_child(p)
 	return p
+
+
+func _play_sfx(player: AudioStreamPlayer, vol_db: float, pitch_min: float = 1.0, pitch_max: float = 1.0) -> void:
+	if muted or player == null or player.stream == null:
+		return
+	player.volume_db = vol_db
+	player.pitch_scale = _hs_rng.randf_range(pitch_min, pitch_max) if pitch_max > pitch_min else pitch_min
+	player.play()
+
+
+func play_a075_warning() -> void:
+	_play_sfx(_a075_warn, -1.5, 0.98, 1.02)
+
+
+func start_a075_scan() -> void:
+	if _a075_scan != null and _a075_scan.stream != null:
+		_a075_scan.volume_db = 0.5
+		_a075_scan.pitch_scale = 1.0
+		if not _a075_scan.playing:
+			_a075_scan.play()
+
+
+func stop_a075_scan() -> void:
+	if _a075_scan != null and _a075_scan.playing:
+		_a075_scan.stop()
+	if _a075_warn != null and _a075_warn.playing:
+		_a075_warn.stop()
+
+
+func play_a075_attack() -> void:
+	stop_a075_scan()
+	_play_sfx(_a075_attack, 1.5, 0.98, 1.03)
+
+
+func play_a075_despawn() -> void:
+	stop_a075_scan()
+	_play_sfx(_a075_despawn, -2.0, 0.97, 1.03)
 
 
 func start_a60_spawn(is_prime: bool = false, _is_before_100: bool = true) -> void:
@@ -200,7 +309,6 @@ func update_a60_mix(_delta: float, distance: float, phase: int, is_prime: bool =
 
 	var dist_att := clampf(1.0 - (distance - 4.0) / 225.0, 0.0, 1.0)
 	var curve := pow(dist_att, 2.3)
-	# ActualA-60IngameAmbience carries far down the corridors so the player hears it earlier
 	var amb_att := clampf(1.0 - (distance - 6.0) / 360.0, 0.04, 1.0)
 	var amb_curve := pow(amb_att, 1.35)
 	var prox := clampf(1.0 - (distance - 2.0) / 28.0, 0.0, 1.0)
@@ -241,35 +349,22 @@ func stop_a60() -> void:
 
 
 func play_death_sound() -> void:
-	if muted:
-		return
-	if _death_player != null and _death_player.stream != null:
-		_death_player.volume_db = 1.0
-		_death_player.play()
+	_play_sfx(_death_player, 1.0, 1.0, 1.0)
 
 
 func play_pant(inhale: bool = false) -> void:
-	if muted:
-		return
 	if inhale:
-		_add_voice(520.0, 680.0, 0.19, 0.10, "noise_thud")
+		_play_sfx(_sfx_pant_in, -6.5, 0.94, 1.06)
 	else:
-		_add_voice(380.0, 210.0, 0.24, 0.13, "noise_thud")
+		_play_sfx(_sfx_pant_out, -5.5, 0.94, 1.06)
 
 
 func play_desk_crawl(entering: bool) -> void:
-	if muted:
-		return
-	var f0 := 280.0 if entering else 340.0
-	_add_voice(f0, f0 * 0.65, 0.18, 0.14, "noise_thud")
+	_play_sfx(_sfx_desk_crawl, -3.5, 0.92 if entering else 1.02, 1.00 if entering else 1.10)
 
 
 func play_power_down() -> void:
-	if muted:
-		return
-	_add_voice(190.0, 42.0, 0.35, 0.44, "square_thud")
-	_add_voice(120.0, 28.0, 1.15, 0.34, "sine", 0.05)
-	_add_voice(640.0, 90.0, 0.90, 0.16, "triangle", 0.04)
+	_play_sfx(_sfx_power_down, -1.5, 0.97, 1.03)
 
 
 func start_darkness() -> void:
@@ -298,18 +393,11 @@ func stop_darkness() -> void:
 
 
 func play_flashlight_low_power() -> void:
-	if muted:
-		return
-	_add_voice(1100.0, 240.0, 0.16, 0.22, "triangle")
-	_add_voice(520.0, 180.0, 0.18, 0.14, "sine", 0.05)
+	_play_sfx(_sfx_flashlight_low, -3.5, 0.96, 1.04)
 
 
 func play_flashlight_flicker() -> void:
-	if muted:
-		return
-	var base := _hs_rng.randf_range(1650.0, 2550.0)
-	_add_voice(base, base * 0.55, 0.038, 0.11, "noise_thud")
-	_add_voice(base * 1.15, base * 0.72, 0.028, 0.06, "triangle")
+	_play_sfx(_sfx_flashlight_flicker, -6.5, 0.88, 1.16)
 
 
 func start_a120_spawn() -> void:
@@ -343,7 +431,10 @@ func stop_a120() -> void:
 
 
 func play_a120_bang(_intensity: float = 0.9) -> void:
-	# Disabled synthetic stomp sound so only user-supplied A-120 audio files play
+	return
+
+
+func play_a120_thud(_intensity: float) -> void:
 	return
 
 
@@ -411,7 +502,6 @@ func update_a120_mix(delta: float, distance: float, phase: int) -> bool:
 				_hs_drum_cd = 0.22
 			_hs_drum_prev_db = lerpf(_hs_drum_prev_db, source_db, minf(delta * 10.0, 1.0))
 		else:
-			# Dummy headless driver fallback so drum bounce can also be verified without hardware audio
 			_hs_headless_drum_timer += delta
 			if _hs_headless_drum_timer >= 0.42:
 				_hs_headless_drum_timer = 0.0
@@ -440,7 +530,6 @@ func play_step(sprinting: bool, surface: String = "carpet") -> void:
 			start_sec = 0.14 + (float(cursor) / float(step_slots)) * usable
 		player.pitch_scale = _hs_rng.randf_range(1.06, 1.18) if sprinting else _hs_rng.randf_range(0.92, 1.04)
 		if is_metal:
-			# Louder metallic iron footsteps as requested!
 			player.volume_db = -2.0 if sprinting else -4.8
 			_foot_iron_cutoff = slice_dur
 			if _foot_carpet != null:
@@ -451,110 +540,50 @@ func play_step(sprinting: bool, surface: String = "carpet") -> void:
 			if _foot_iron != null:
 				_foot_iron.stop()
 		player.play(start_sec)
-		return
-	# Fallback synthesized step if stream missing
-	var amp := (0.28 if is_metal else 0.16) if not sprinting else (0.38 if is_metal else 0.22)
-	_add_voice(180.0 if is_metal else 95.0, 56.0 if is_metal else 42.0, 0.09, amp, "square_thud" if is_metal else "noise_thud")
 
 
 func play_door_open() -> void:
-	if muted:
-		return
-	_add_voice(180.0, 70.0, 0.28, 0.26, "square_thud")
-	_add_voice(440.0, 560.0, 0.14, 0.10, "sine", 0.03)
+	_play_sfx(_sfx_door_open, -2.5, 0.94, 1.06)
 
 
 func play_locker_toggle(entering: bool) -> void:
-	if muted:
-		return
-	var f0 := 220.0 if entering else 280.0
-	var f1 := 110.0 if entering else 150.0
-	_add_voice(f0, f1, 0.18, 0.26, "square_thud")
+	if entering:
+		_play_sfx(_sfx_locker_enter, -2.5, 0.95, 1.05)
+	else:
+		_play_sfx(_sfx_locker_exit, -2.5, 0.95, 1.05)
 
 
 func play_flashlight_click() -> void:
-	if muted:
-		return
-	_add_voice(1450.0, 900.0, 0.04, 0.14, "sine")
+	_play_sfx(_sfx_flashlight_click, -4.0, 0.96, 1.04)
 
 
 func play_gummy_shake() -> void:
-	if muted:
-		return
-	_add_voice(640.0, 960.0, 0.07, 0.16, "triangle")
-	_add_voice(980.0, 620.0, 0.06, 0.12, "triangle", 0.06)
+	_play_sfx(_sfx_gummy_shake, -3.0, 0.93, 1.09)
 
 
 func play_pickup() -> void:
-	if muted:
-		return
-	_add_voice(587.33, 880.0, 0.22, 0.20, "sine")
+	_play_sfx(_sfx_pickup, -3.5, 0.96, 1.05)
 
 
 func play_a90_warn() -> void:
-	if muted:
-		return
-	_add_voice(1120.0, 1480.0, 0.16, 0.25, "square_thud", 0.0, "entity")
-	_add_voice(260.0, 190.0, 0.28, 0.20, "noise_thud", 0.04, "entity")
+	_play_sfx(_sfx_a90_warn, 0.0, 0.97, 1.03)
 
 
 func play_a90_hit() -> void:
-	if muted:
-		return
-	_add_voice(920.0, 120.0, 0.65, 0.42, "noise_thud", 0.0, "entity")
-	_add_voice(140.0, 48.0, 0.55, 0.36, "square_thud", 0.0, "entity")
-
-
-func play_a120_thud(intensity: float) -> void:
-	if muted:
-		return
-	var amp := clampf(intensity * 0.34, 0.05, 0.38)
-	_add_voice(115.0, 38.0, 0.24, amp, "square_thud", 0.0, "entity")
-	_add_voice(520.0, 310.0, 0.14, amp * 0.45, "sine", 0.0, "entity")
+	_play_sfx(_sfx_a90_hit, 2.0, 0.96, 1.04)
 
 
 func play_jumpscare() -> void:
-	if muted:
-		return
-	_add_voice(780.0, 190.0, 0.85, 0.48, "noise_thud", 0.0, "entity")
-	_add_voice(160.0, 52.0, 0.85, 0.42, "square_thud", 0.0, "entity")
+	_play_sfx(_sfx_jumpscare, 2.5, 0.96, 1.04)
 
 
 func play_architect_appear() -> void:
-	if muted:
-		return
-	# Ethereal Guiding Light chord (D4 - A4 - C5 - E5)
-	_add_voice(293.66, 290.0, 1.35, 0.14, "sine", 0.00)
-	_add_voice(440.00, 438.0, 1.25, 0.11, "triangle", 0.07)
-	_add_voice(523.25, 521.0, 1.15, 0.09, "sine", 0.14)
-	_add_voice(659.25, 654.0, 1.10, 0.07, "sine", 0.22)
+	_play_sfx(_sfx_arch_appear, -4.0, 1.0, 1.0)
 
 
 func play_architect_blip(pitch_mul: float = 1.0) -> void:
-	if muted:
-		return
-	var f0 := 620.0 * pitch_mul
-	_add_voice(f0, f0 * 0.82, 0.045, 0.055, "sine")
-
-
-func _add_voice(f0: float, f1: float, dur: float, amp: float, kind: String, delay: float = 0.0, chan: String = "sfx") -> void:
-	if _voices.size() > 16:
-		_voices.pop_front()
-	_voices.append({
-		"f0": f0,
-		"f1": f1,
-		"dur": maxf(dur, 0.01),
-		"age": -delay,
-		"amp": amp,
-		"kind": kind,
-		"chan": chan,
-		"phase": 0.0,
-	})
-
-
-func _next_noise() -> float:
-	_noise_seed = (_noise_seed * 1103515245 + 12345) & 0x7FFFFFFF
-	return (float(_noise_seed) / 1073741824.0) - 1.0
+	var p := clampf(pitch_mul, 0.5, 2.0)
+	_play_sfx(_sfx_arch_blip, -9.5, p * 0.96, p * 1.04)
 
 
 func _process(delta: float) -> void:
@@ -566,77 +595,11 @@ func _process(delta: float) -> void:
 		_foot_carpet_cutoff -= delta
 		if _foot_carpet_cutoff <= 0.0 and _foot_carpet != null and _foot_carpet.playing:
 			_foot_carpet.stop()
-	if _playback == null:
-		_playback = get_stream_playback() as AudioStreamGeneratorPlayback
-		if _playback == null:
-			return
 
 	if low_hp_mode:
 		_hb_timer -= delta
 		if _hb_timer <= 0.0:
-			_hb_timer = 0.72
-			_add_voice(78.0, 44.0, 0.14, 0.24, "sine", 0.0, "ambient")
-			_add_voice(68.0, 40.0, 0.12, 0.16, "sine", 0.18, "ambient")
-
-	var frames := _playback.get_frames_available()
-	if frames <= 0:
-		return
-
-	var inv_sr := 1.0 / _sample_rate
-	for _i in range(frames):
-		if muted or master_volume <= 0.001:
-			_playback.push_frame(Vector2.ZERO)
-			continue
-
-		_hum_phase = fmod(_hum_phase + 58.0 * inv_sr, 1.0)
-		_growl_phase = fmod(_growl_phase + 44.0 * inv_sr, 1.0)
-
-		var n_raw := _next_noise()
-		var hum := sin(_hum_phase * TAU) * 0.025 + sin(_hum_phase * 2.0 * TAU) * 0.012
-		var a60_sig := 0.0
-		if a60_intensity > 0.01 and (_a60_ambience == null or _a60_ambience.stream == null):
-			var growl := sin(_growl_phase * TAU) * 0.35 + (1.0 if sin(_growl_phase * 3.0 * TAU) > 0.0 else -1.0) * 0.15
-			a60_sig = (n_raw * 0.55 + growl * 0.45) * clampf(a60_intensity, 0.0, 1.0) * 0.42
-
-		var fx := 0.0
-		var write_idx := 0
-		for idx in range(_voices.size()):
-			var v: Dictionary = _voices[idx]
-			var age: float = float(v["age"]) + inv_sr
-			v["age"] = age
-			var dur: float = float(v["dur"])
-			if age < 0.0:
-				_voices[write_idx] = v
-				write_idx += 1
-				continue
-			if age >= dur:
-				continue
-
-			var t := age / dur
-			var env := sin(minf(t * 14.0, 1.0) * PI * 0.5) * pow(1.0 - t, 1.7)
-			var freq := lerpf(float(v["f0"]), float(v["f1"]), t)
-			var phase := fmod(float(v["phase"]) + freq * inv_sr, 1.0)
-			v["phase"] = phase
-
-			var kind := String(v["kind"])
-			var s := 0.0
-			if kind == "noise_thud":
-				s = n_raw * 0.65 + sin(phase * TAU) * 0.35
-			elif kind == "square_thud":
-				s = (1.0 if sin(phase * TAU) >= 0.0 else -1.0) * 0.5 + sin(phase * TAU) * 0.5
-			elif kind == "triangle":
-				s = 1.0 - 4.0 * absf(phase - 0.5)
-			else:
-				s = sin(phase * TAU)
-
-			var chan := String(v.get("chan", "sfx"))
-			var ch_mul := entity_volume if chan == "entity" else (ambient_volume if chan == "ambient" else sfx_volume)
-			fx += s * env * float(v["amp"]) * ch_mul
-			_voices[write_idx] = v
-			write_idx += 1
-
-		if write_idx < _voices.size():
-			_voices.resize(write_idx)
-
-		var out := clampf(hum * ambient_volume + a60_sig * entity_volume + fx, -0.88, 0.88)
-		_playback.push_frame(Vector2(out, out))
+			_hb_timer = 0.78
+			_play_sfx(_sfx_heartbeat, -3.0, 0.96, 1.04)
+	else:
+		_hb_timer = 0.0

@@ -1,0 +1,73 @@
+[gd_scene format=3]
+
+[sub_resource type="BoxMesh" id="BoxMesh_xsvp5"]
+size = Vector3(0.52, 0.06, 0.52)
+
+[sub_resource type="BoxMesh" id="BoxMesh_6gpyt"]
+size = Vector3(0.36, 0.8, 0.22)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_fpr1m"]
+size = Vector3(0.36, 0.8, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lhysd"]
+size = Vector3(0.42, 0.62, 0.24)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ft4d1"]
+size = Vector3(0.42, 0.62, 0.24)
+
+[sub_resource type="BoxMesh" id="BoxMesh_y6lvi"]
+size = Vector3(0.14, 0.56, 0.16)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lpm08"]
+size = Vector3(0.14, 0.56, 0.16)
+
+[sub_resource type="BoxMesh" id="BoxMesh_0ns0j"]
+size = Vector3(0.28, 0.3, 0.28)
+
+[node name="Mannequin" type="Node3D" unique_id=1911640152]
+
+[node name="Base" type="MeshInstance3D" parent="." unique_id=1012117570]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_xsvp5")
+metadata/mat_slot = "mannequin"
+
+[node name="Legs" type="StaticBody3D" parent="." unique_id=876751305]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Legs" unique_id=119541123]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_6gpyt")
+metadata/mat_slot = "mannequin"
+
+[node name="Col" type="CollisionShape3D" parent="Legs" unique_id=1689465574]
+shape = SubResource("BoxShape3D_fpr1m")
+
+[node name="Torso" type="StaticBody3D" parent="." unique_id=221468821]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.15, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Torso" unique_id=1349984478]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_lhysd")
+metadata/mat_slot = "mannequin"
+
+[node name="Col" type="CollisionShape3D" parent="Torso" unique_id=780994792]
+shape = SubResource("BoxShape3D_ft4d1")
+
+[node name="ArmL" type="MeshInstance3D" parent="." unique_id=1651315126]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.3, 1.15, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_y6lvi")
+metadata/mat_slot = "mannequin"
+
+[node name="ArmR" type="MeshInstance3D" parent="." unique_id=6222656]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 1.15, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_lpm08")
+metadata/mat_slot = "mannequin"
+
+[node name="Head" type="MeshInstance3D" parent="." unique_id=1153616609]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.66, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_0ns0j")
+metadata/mat_slot = "mannequin"

@@ -1,0 +1,30 @@
+[gd_scene format=3]
+
+[sub_resource type="BoxMesh" id="BoxMesh_jm0fg"]
+size = Vector3(0.46, 0.06, 0.46)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ryfsa"]
+size = Vector3(0.46, 0.62, 0.06)
+
+[sub_resource type="BoxMesh" id="BoxMesh_kydwf"]
+size = Vector3(0.1, 0.44, 0.1)
+
+[node name="Chair" type="Node3D" unique_id=1534362880]
+
+[node name="Seat" type="MeshInstance3D" parent="." unique_id=1347082209]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_jm0fg")
+metadata/mat_slot = "plank_dark"
+
+[node name="Back" type="MeshInstance3D" parent="." unique_id=1275071838]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.78, -0.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_ryfsa")
+metadata/mat_slot = "plank_dark"
+
+[node name="Ped" type="MeshInstance3D" parent="." unique_id=517413068]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.22, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_kydwf")
+metadata/mat_slot = "metal"

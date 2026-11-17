@@ -1,0 +1,174 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/rooms/room_scene.gd" id="1_2kwo6"]
+[ext_resource type="PackedScene" path="res://scenes/props/exit_door.tscn" id="2_6wwme"]
+[ext_resource type="PackedScene" path="res://scenes/props/locker.tscn" id="3_n34cl"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_oa7xb"]
+size = Vector3(8.4, 0.2, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ay8pg"]
+size = Vector3(8.4, 0.2, 18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_bvqj3"]
+size = Vector3(8.4, 0.2, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_5vnuy"]
+size = Vector3(8.4, 0.2, 18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_8e1no"]
+size = Vector3(0.22, 3.8, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_l3y88"]
+size = Vector3(0.22, 3.8, 18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_opsxi"]
+size = Vector3(0.22, 3.8, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_5vh0t"]
+size = Vector3(0.22, 3.8, 18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_s6ur8"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_x37ab"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_w56a4"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_3l3sc"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_r5t6b"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_edn8t"]
+size = Vector3(1.15, 0.06, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_dm381"]
+size = Vector3(4.2, 0.02, 4.2)
+
+[node name="Room_closet_room" type="Node3D" unique_id=96635114]
+script = ExtResource("1_2kwo6")
+
+[node name="Floor" type="StaticBody3D" parent="." unique_id=593709038]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=1225837334]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_oa7xb")
+metadata/mat_slot = "floor"
+
+[node name="Col" type="CollisionShape3D" parent="Floor" unique_id=659202395]
+shape = SubResource("BoxShape3D_ay8pg")
+
+[node name="Ceiling" type="StaticBody3D" parent="." unique_id=571979283]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.9, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Ceiling" unique_id=938051813]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_bvqj3")
+metadata/mat_slot = "ceiling"
+
+[node name="Col" type="CollisionShape3D" parent="Ceiling" unique_id=457348558]
+shape = SubResource("BoxShape3D_5vnuy")
+
+[node name="WallLeft" type="StaticBody3D" parent="." unique_id=1798199696]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.31, 1.9, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="WallLeft" unique_id=2142851415]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_8e1no")
+metadata/mat_slot = "wall"
+
+[node name="Col" type="CollisionShape3D" parent="WallLeft" unique_id=1509120771]
+shape = SubResource("BoxShape3D_l3y88")
+
+[node name="WallRight" type="StaticBody3D" parent="." unique_id=1369672188]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.31, 1.9, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="WallRight" unique_id=2107378937]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_opsxi")
+metadata/mat_slot = "wall"
+
+[node name="Col" type="CollisionShape3D" parent="WallRight" unique_id=1721355556]
+shape = SubResource("BoxShape3D_5vh0t")
+
+[node name="ExitAnchor" type="Node3D" parent="." unique_id=1210987141 instance=ExtResource("2_6wwme")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -9)
+
+[node name="Troffer_0" type="MeshInstance3D" parent="." unique_id=465490545]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.95, 3.77, -5.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_s6ur8")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_1" type="MeshInstance3D" parent="." unique_id=1319747633]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.95, 3.77, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_x37ab")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_2" type="MeshInstance3D" parent="." unique_id=37238833]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.95, 3.77, 5.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_w56a4")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_3" type="MeshInstance3D" parent="." unique_id=1637393297]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.95, 3.77, -5.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_3l3sc")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_4" type="MeshInstance3D" parent="." unique_id=1182770162]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.95, 3.77, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_r5t6b")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="Troffer_5" type="MeshInstance3D" parent="." unique_id=328348726]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.95, 3.77, 5.2)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edn8t")
+metadata/mat_slot = "lamp_on"
+metadata/is_troffer = true
+
+[node name="CeilingLight_0" type="OmniLight3D" parent="." unique_id=2128709816]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.45, -4.5)
+light_color = Color(0.86, 0.92, 1, 1)
+light_energy = 1.15
+distance_fade_enabled = true
+distance_fade_begin = 26.0
+omni_range = 13.5
+omni_attenuation = 1.25
+
+[node name="CeilingLight_1" type="OmniLight3D" parent="." unique_id=1933329522]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.45, 4.5)
+light_color = Color(0.86, 0.92, 1, 1)
+light_energy = 1.15
+distance_fade_enabled = true
+distance_fade_begin = 26.0
+omni_range = 13.5
+omni_attenuation = 1.25
+
+[node name="Locker_0" type="Node3D" parent="." unique_id=1639668258 instance=ExtResource("3_n34cl")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0, -5.2)
+metadata/hiding_kind = "locker"
+
+[node name="Locker_1" type="Node3D" parent="." unique_id=1059373199 instance=ExtResource("3_n34cl")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 0, -5.2)
+metadata/hiding_kind = "locker"
+
+[node name="CenterMat" type="MeshInstance3D" parent="." unique_id=912593731]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_dm381")
+metadata/mat_slot = "locker"

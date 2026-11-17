@@ -1,0 +1,44 @@
+[gd_scene format=3]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_24gyp"]
+size = Vector3(0.32, 0.28, 0.36)
+
+[sub_resource type="BoxMesh" id="BoxMesh_2h38t"]
+size = Vector3(0.34, 0.13, 0.25)
+
+[sub_resource type="BoxMesh" id="BoxMesh_yfwlq"]
+size = Vector3(0.16, 0.02, 0.05)
+
+[sub_resource type="BoxMesh" id="BoxMesh_7s83e"]
+size = Vector3(0.05, 0.02, 0.16)
+
+[sub_resource type="BoxMesh" id="BoxMesh_g6h5c"]
+size = Vector3(0.14, 0.04, 0.04)
+
+[node name="Pickup_medkit" type="StaticBody3D" unique_id=1364219100]
+
+[node name="Col" type="CollisionShape3D" parent="." unique_id=1952359040]
+shape = SubResource("BoxShape3D_24gyp")
+
+[node name="Case" type="MeshInstance3D" parent="." unique_id=1801220041]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_2h38t")
+metadata/mat_slot = "fridge"
+
+[node name="CrossH" type="MeshInstance3D" parent="." unique_id=1398659442]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.072, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_yfwlq")
+metadata/mat_slot = "medkit"
+
+[node name="CrossV" type="MeshInstance3D" parent="." unique_id=1986735030]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.072, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_7s83e")
+metadata/mat_slot = "medkit"
+
+[node name="Handle" type="MeshInstance3D" parent="." unique_id=376924956]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0.14)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_g6h5c")
+metadata/mat_slot = "locker"
