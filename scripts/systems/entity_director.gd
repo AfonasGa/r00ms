@@ -2528,4 +2528,3 @@ func process_a160(delta: float, is_playing: bool, is_dead: bool, _active_modifie
 			_reset_a160_state()
 			if is_authority() and net != null and net.is_online():
 				net.broadcast_entity_event({"k": "a160_end"}, true)
-

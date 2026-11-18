@@ -35,7 +35,6 @@ var fov := 75.0
 var step_timer := 0.0
 var bob_phase := 0.0
 var shake_amount := 0.0
-var damage_kick := 0.0
 var revive_heartbeat_timer := 0.0
 var revive_beat_accum := 0.0
 var revive_last_beat_idx := -1
