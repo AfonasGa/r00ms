@@ -979,6 +979,27 @@ func _process_spectating(delta: float) -> void:
 	cam.fov = lerpf(cam.fov, 76.0, 1.0 - exp(-10.0 * delta))
 
 
+func _point_hits_mobile_btn(pos: Vector2) -> bool:
+	if ui_mgr == null:
+		return false
+	for b in ui_mgr.mobile_btns:
+		if is_instance_valid(b) and b.visible and b.get_global_rect().grow(10.0).has_point(pos):
+			return true
+	return false
+
+
+func _update_joystick_from_pos(pos: Vector2) -> void:
+	var max_r := 92.0
+	var delta_v := pos - _joy_origin
+	var dist := delta_v.length()
+	var clamped := delta_v.normalized() * minf(dist, max_r) if dist > 0.001 else Vector2.ZERO
+	player_ctrl.joy_vec = clamped / max_r
+	if player_ctrl.joy_vec.length() < 0.14:
+		player_ctrl.joy_vec = Vector2.ZERO
+	if ui_mgr != null and ui_mgr.joy_ring != null and ui_mgr.joy_knob != null:
+		ui_mgr.joy_knob.position = Vector2(110.0, 110.0) - ui_mgr.joy_knob.size * 0.5 + clamped
+
+
 func _reset_touch_state() -> void:
 	_joy_touch_id = -1
 	_look_touch_id = -1
@@ -986,12 +1007,99 @@ func _reset_touch_state() -> void:
 	player_ctrl.joy_vec = Vector2.ZERO
 	player_ctrl.mobile_sprint_held = false
 	player_ctrl.mobile_gummy_held = false
+	if ui_mgr != null and ui_mgr.joy_ring != null and ui_mgr.joy_knob != null:
+		var vp_sz := get_viewport().get_visible_rect().size
+		ui_mgr.joy_ring.position = Vector2(40.0, maxf(vp_sz.y - 270.0, 60.0))
+		ui_mgr.joy_ring.modulate = Color(1.0, 1.0, 1.0, 0.72)
+		ui_mgr.joy_knob.position = Vector2(68.0, 68.0)
 
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and not (event as InputEventKey).pressed and not (event as InputEventKey).echo:
 		if (event as InputEventKey).keycode == KEY_V:
 			net.voice_talking = false
+
+	if event is InputEventScreenTouch:
+		var te := event as InputEventScreenTouch
+		if te.pressed and not settings_mgr.mobile_controls_enabled and settings_mgr.mobile_override == 0:
+			settings_mgr.touch_seen = true
+			refresh_mobile_mode()
+		if ui_mgr.disclaimer_active:
+			return
+		if state == State.DEAD and te.pressed:
+			advance_architect_dialogue()
+			get_viewport().set_input_as_handled()
+			return
+		if state == State.SPECTATING:
+			if te.pressed and _look_touch_id == -1:
+				_look_touch_id = te.index
+			elif not te.pressed and te.index == _look_touch_id:
+				_look_touch_id = -1
+			return
+		if state != State.PLAYING or not settings_mgr.mobile_controls_enabled or ui_mgr.chat_open:
+			return
+		var vp_sz := get_viewport().get_visible_rect().size
+		if te.pressed:
+			if _point_hits_mobile_btn(te.position):
+				return
+			if _tap_touch_id == -1:
+				_tap_touch_id = te.index
+				_tap_start_pos = te.position
+				_tap_start_time_ms = Time.get_ticks_msec()
+			if te.position.x < vp_sz.x * 0.44 and _joy_touch_id == -1:
+				_joy_touch_id = te.index
+				var half := Vector2(110.0, 110.0)
+				_joy_origin = Vector2(
+					clampf(te.position.x, 116.0, vp_sz.x * 0.40),
+					clampf(te.position.y, 140.0, vp_sz.y - 116.0)
+				)
+				if ui_mgr.joy_ring != null:
+					ui_mgr.joy_ring.position = _joy_origin - half
+					ui_mgr.joy_ring.modulate = Color(1.0, 1.0, 1.0, 1.0)
+				_update_joystick_from_pos(te.position)
+			elif _look_touch_id == -1:
+				_look_touch_id = te.index
+		else:
+			if te.index == _tap_touch_id:
+				var dt_ms := Time.get_ticks_msec() - _tap_start_time_ms
+				var dist_px := te.position.distance_to(_tap_start_pos)
+				_tap_touch_id = -1
+				if dt_ms <= 300 and dist_px <= 20.0 and not player_ctrl.is_hiding and not _point_hits_mobile_btn(te.position):
+					interact_ctrl.try_tap_world_interact(te.position, ui_mgr.reticle_screen_pos)
+			if te.index == _joy_touch_id:
+				_joy_touch_id = -1
+				player_ctrl.joy_vec = Vector2.ZERO
+				if ui_mgr.joy_ring != null and ui_mgr.joy_knob != null:
+					ui_mgr.joy_ring.position = Vector2(40.0, maxf(vp_sz.y - 270.0, 60.0))
+					ui_mgr.joy_ring.modulate = Color(1.0, 1.0, 1.0, 0.72)
+					ui_mgr.joy_knob.position = Vector2(68.0, 68.0)
+			elif te.index == _look_touch_id:
+				_look_touch_id = -1
+		return
+
+	elif event is InputEventScreenDrag:
+		var sd := event as InputEventScreenDrag
+		if state == State.SPECTATING and sd.index == _look_touch_id:
+			var sp_sens := 0.0044 * settings_mgr.mouse_sens_mult
+			_spectate_yaw -= sd.relative.x * sp_sens
+			_spectate_pitch = clampf(_spectate_pitch - sd.relative.y * sp_sens, -1.15, 0.85)
+			_spectate_user_orbited = true
+			return
+		if state != State.PLAYING or not settings_mgr.mobile_controls_enabled or ui_mgr.chat_open:
+			return
+		if sd.index == _joy_touch_id:
+			_update_joystick_from_pos(sd.position)
+		elif sd.index == _look_touch_id:
+			if player_ctrl.locker_transition_t < 1.0:
+				return
+			var sens := 0.0044 * settings_mgr.mouse_sens_mult
+			if player_ctrl.is_hiding:
+				player_ctrl.target_hide_yaw = clampf(player_ctrl.target_hide_yaw - sd.relative.x * sens, -0.58, 0.58)
+				player_ctrl.target_hide_pitch = clampf(player_ctrl.target_hide_pitch - sd.relative.y * sens, -0.38, 0.38)
+			else:
+				player_ctrl.target_yaw -= sd.relative.x * sens
+				player_ctrl.target_pitch = clampf(player_ctrl.target_pitch - sd.relative.y * sens, -1.42, 1.42)
+		return
 
 	if event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo:
 		var ke := event as InputEventKey

@@ -26,6 +26,7 @@ var language := "ru"
 
 var mobile_controls_enabled := false
 var mobile_override := 0 # 0=auto, 1=force on, -1=force off
+var touch_seen := false
 
 var max_checkpoint_unlocked: int = 0
 var selected_start_room: int = 0
@@ -273,7 +274,7 @@ func compute_mobile_enabled() -> bool:
 	elif mobile_override == -1:
 		mobile_controls_enabled = false
 	else:
-		mobile_controls_enabled = is_mobile_platform() or DisplayServer.is_touchscreen_available()
+		mobile_controls_enabled = touch_seen or is_mobile_platform() or DisplayServer.is_touchscreen_available()
 	return mobile_controls_enabled
 
 
