@@ -795,8 +795,8 @@ func _build_a120_corridor_path(from_room_idx: int, to_room_idx: int) -> Array[Ve
 
 
 func _get_a120_live_target() -> Vector3:
-	var best_pos := (player_ctrl.locker_eye + player_ctrl.locker_fwd * 0.95) if player_ctrl.is_hiding else player_body.global_position
-	var best_exposed := not player_ctrl.is_hiding
+	var best_pos: Vector3 = (player_ctrl.locker_eye + player_ctrl.locker_fwd * 0.95) if player_ctrl.is_hiding else player_body.global_position
+	var best_exposed: bool = not player_ctrl.is_hiding
 	var best_d := a120_node.global_position.distance_squared_to(best_pos)
 	for pk in avatar_mgr.remote_players.keys():
 		var rp: Dictionary = avatar_mgr.remote_players[pk]
@@ -1670,7 +1670,7 @@ func _check_a075_player_exposed() -> float:
 		if not hit.is_empty():
 			return 0.0 # Protected behind wall/obstacle!
 
-	var light_exp := player_ctrl.is_light_exposed()
+	var light_exp: bool = player_ctrl.is_light_exposed()
 	var cam_fwd := -cam.global_transform.basis.z
 	var look_dot := cam_fwd.dot(to_ent / dist)
 	var gaze_exp := (look_dot > 0.615) # Within ~52 deg cone of staring at A-075
@@ -1763,7 +1763,7 @@ func _make_a085_smoke_emitter(parent_node: Node, pos: Vector3, amount: int, life
 
 
 func _is_locker_occupied_by_anyone(r_idx: int, l_idx: int) -> bool:
-	var local_here := (
+	var local_here: bool = (
 		player_ctrl != null
 		and player_ctrl.is_hiding
 		and player_ctrl.hiding_kind == "locker"
@@ -2008,8 +2008,8 @@ func _a085_throw_caught_players() -> void:
 		var l_idx := int(t.get("locker_idx", -1))
 		if player_ctrl != null and player_ctrl.is_hiding and player_ctrl.hiding_room_idx == r_idx and player_ctrl.hiding_locker_idx == l_idx:
 			# Pick a random destination spot across the room!
-			var exit_origin := player_ctrl.locker_exit
-			var fwd := player_ctrl.locker_fwd.normalized()
+			var exit_origin: Vector3 = player_ctrl.locker_exit
+			var fwd: Vector3 = player_ctrl.locker_fwd.normalized()
 			var rand_target := room_center
 			for _attempt in range(8):
 				var cand := room_center + Vector3(
@@ -2408,7 +2408,7 @@ func process_a160(delta: float, is_playing: bool, is_dead: bool, _active_modifie
 	a160_phase_elapsed += delta
 
 	if is_playing and not is_dead and player_ctrl != null and player_ctrl.has_gummy and player_ctrl.active_tool == 1 and not player_ctrl.is_covering_gummy:
-		var is_shaking := player_ctrl.vm_shake_time > 0.01 or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or player_ctrl.shaking_gummy
+		var is_shaking: bool = (player_ctrl.vm_shake_time > 0.01) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or bool(player_ctrl.shaking_gummy)
 		if is_shaking and a160_phase in [1, 2, 3]:
 			var to_ent := (a160_node.global_position + Vector3.UP * 1.0) - cam.global_position
 			var dist := to_ent.length()

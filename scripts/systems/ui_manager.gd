@@ -2510,7 +2510,7 @@ func update_playing_hud(delta: float, hp: int, haste_timer: float, active_modifi
 		prompt.visible = false
 		prompt.modulate.a = 0.0
 	var vp_center := get_viewport().get_visible_rect().size * 0.5
-	var cam := player_ctrl.cam
+	var cam: Camera3D = player_ctrl.cam
 
 	if player_ctrl.is_hiding:
 		interact_ctrl.smart_reticle_target = {}
@@ -2519,8 +2519,8 @@ func update_playing_hud(delta: float, hp: int, haste_timer: float, active_modifi
 	else:
 		var interact_tgt := {} if player_ctrl.is_action_locked() else interact_ctrl.find_smart_reticle_target()
 		interact_ctrl.smart_reticle_target = interact_tgt
-		var yaw_lag := wrapf(player_ctrl.target_yaw - player_ctrl.yaw, -PI, PI)
-		var pitch_lag := player_ctrl.target_pitch - player_ctrl.pitch
+		var yaw_lag: float = wrapf(player_ctrl.target_yaw - player_ctrl.yaw, -PI, PI)
+		var pitch_lag: float = player_ctrl.target_pitch - player_ctrl.pitch
 		var desired_lag := Vector2(clampf(yaw_lag * 360.0, -48.0, 48.0), clampf(pitch_lag * 300.0, -36.0, 36.0))
 		reticle_lag_offset = reticle_lag_offset.lerp(desired_lag, clampf(1.0 - exp(-12.5 * delta), 0.0, 1.0))
 
