@@ -12,6 +12,7 @@ var gummy_on_mat: Material = null
 
 var remote_players: Dictionary = {} # peer_key -> Dictionary
 var peer_faces: Dictionary = {}     # peer_key -> ImageTexture
+var peer_face_bytes: Dictionary = {} # peer_key -> PackedByteArray
 
 
 func initialize(p_world: Node3D, p_assets: RoomAssets, p_room_mgr: RoomManager, p_bulb_mat: Material, p_gummy_mat: Material) -> void:
@@ -51,6 +52,7 @@ func get_remote_hiding_kind(rp: Dictionary) -> String:
 
 
 func on_remote_face(peer_key: String, png_bytes: PackedByteArray) -> void:
+	peer_face_bytes[peer_key] = png_bytes
 	var img := Image.new()
 	if img.load_png_from_buffer(png_bytes) != OK:
 		return
@@ -66,6 +68,7 @@ func on_remote_face(peer_key: String, png_bytes: PackedByteArray) -> void:
 
 func on_remote_peer_disconnected(peer_key: String) -> void:
 	peer_faces.erase(peer_key)
+	peer_face_bytes.erase(peer_key)
 	if remote_players.has(peer_key):
 		var rp: Dictionary = remote_players[peer_key]
 		var node: Variant = rp.get("node")

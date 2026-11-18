@@ -108,6 +108,24 @@ jobs:
           PY
           "$GODOT_BIN" --headless --export-release "Android" build/android/r00ms.apk
           test -s build/android/r00ms.apk
+
+          # Fix "пакет повреждён" on Android: ensure 4-byte zipalign and full v1 + v2 + v3 signature schemes
+          BUILD_TOOLS_DIR=$(find "$SDK_PATH/build-tools" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -n1)
+          echo "Using Android Build Tools: $BUILD_TOOLS_DIR"
+          if [ -n "$BUILD_TOOLS_DIR" ] && [ -d "$BUILD_TOOLS_DIR" ]; then
+            ZIPALIGN="$BUILD_TOOLS_DIR/zipalign"
+            APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
+            if [ -x "$ZIPALIGN" ] && [ -x "$APKSIGNER" ]; then
+              echo "Aligning APK with zipalign..."
+              "$ZIPALIGN" -f -p 4 build/android/r00ms.apk build/android/r00ms-aligned.apk
+              mv build/android/r00ms-aligned.apk build/android/r00ms.apk
+              echo "Signing APK with apksigner (v1, v2, v3)..."
+              "$APKSIGNER" sign --ks "$KS_PATH" --ks-key-alias "$KS_USER" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KS_PASS" --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true build/android/r00ms.apk
+              echo "Verifying APK signature:"
+              "$APKSIGNER" verify --verbose build/android/r00ms.apk
+            fi
+          fi
+
           ls -lh build/android/r00ms.apk
 
       - name: Upload Android APK Artifact

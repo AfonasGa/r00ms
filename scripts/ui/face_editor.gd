@@ -16,7 +16,7 @@ var _img: Image = null
 var _tex: ImageTexture = null
 var _undo_stack: Array[PackedByteArray] = []
 
-var _brush_color := Color(0.08, 0.08, 0.08, 1.0)
+var _brush_color := Color(0.07, 0.07, 0.08, 1.0)
 var _brush_radius := 2
 var _eraser_mode := false
 var _is_drawing := false
@@ -27,6 +27,7 @@ var _preview_avatar: DummiAvatar = null
 var _preview_pivot: Node3D = null
 var _preview_angle := 0.0
 var _size_btns: Dictionary = {}
+var _color_btns: Array[Dictionary] = []
 var _tool_btn_draw: Button = null
 var _tool_btn_erase: Button = null
 var _lbl_title: Label = null
@@ -36,11 +37,11 @@ var _btn_undo: Button = null
 var _btn_clear: Button = null
 var _btn_cancel: Button = null
 var _btn_save: Button = null
-var _panel: PanelContainer = null
+var _content_root: MarginContainer = null
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	visible = false
 	_load_or_init_image()
@@ -74,38 +75,31 @@ func get_current_png_bytes() -> PackedByteArray:
 
 
 func open_editor() -> void:
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	apply_localization()
 	visible = true
 	if _preview_avatar != null and _tex != null:
 		_preview_avatar.set_face_texture(_tex)
 	modulate.a = 0.0
-	var tw := create_tween().set_parallel(true)
-	tw.tween_property(self, "modulate:a", 1.0, 0.22)
-	if _panel != null:
-		_panel.pivot_offset = _panel.size * 0.5
-		_panel.scale = Vector2(0.94, 0.94)
-		tw.tween_property(_panel, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	create_tween().tween_property(self, "modulate:a", 1.0, 0.20)
 
 
 func apply_localization() -> void:
 	if _lbl_title != null:
-		_lbl_title.text = RoomsI18n.t("fe_title")
+		_lbl_title.text = RoomsI18n.t("fe_title").to_lower()
 	if _lbl_sub != null:
-		_lbl_sub.text = RoomsI18n.t("fe_sub")
+		_lbl_sub.text = RoomsI18n.t("fe_sub").to_lower()
 	if _lbl_pal != null:
-		_lbl_pal.text = RoomsI18n.t("fe_color")
-	if _tool_btn_draw != null:
-		_tool_btn_draw.text = RoomsI18n.t("fe_brush")
-	if _tool_btn_erase != null:
-		_tool_btn_erase.text = RoomsI18n.t("fe_eraser")
+		_lbl_pal.text = RoomsI18n.t("fe_color").to_lower()
 	if _btn_undo != null:
-		_btn_undo.text = RoomsI18n.t("fe_undo")
+		_btn_undo.text = RoomsI18n.t("fe_undo").to_lower()
 	if _btn_clear != null:
-		_btn_clear.text = RoomsI18n.t("fe_clear")
+		_btn_clear.text = RoomsI18n.t("fe_clear").to_lower()
 	if _btn_cancel != null:
-		_btn_cancel.text = RoomsI18n.t("menu_back_arrow")
+		_btn_cancel.text = RoomsI18n.t("menu_back_arrow").to_lower()
 	if _btn_save != null:
-		_btn_save.text = RoomsI18n.t("fe_save")
+		_btn_save.text = RoomsI18n.t("fe_save").to_lower()
+	_sync_tool_buttons()
 
 
 func _load_or_init_image() -> void:
@@ -154,79 +148,88 @@ func _refresh_texture() -> void:
 
 func _build_ui() -> void:
 	var bg := ColorRect.new()
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(0.01, 0.012, 0.017, 0.94)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(0.008, 0.009, 0.013, 0.96)
 	add_child(bg)
 
 	var noise := ColorRect.new()
-	noise.set_anchors_preset(Control.PRESET_FULL_RECT)
-	noise.material = RoomsUI.make_noise_material(0.45, 1.0)
+	noise.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	noise.material = RoomsUI.make_noise_material(0.50, 1.0)
 	noise.color = Color.WHITE
 	noise.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(noise)
 
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
-
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(780, 520)
-	panel.add_theme_stylebox_override("panel", RoomsUI.make_panel_style(Color(0.035, 0.04, 0.052, 0.96), Color(1.0, 1.0, 1.0, 0.16), 6, 1))
-	center.add_child(panel)
-	_panel = panel
-
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 24)
-	margin.add_theme_constant_override("margin_right", 24)
-	margin.add_theme_constant_override("margin_top", 20)
-	margin.add_theme_constant_override("margin_bottom", 20)
-	panel.add_child(margin)
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 52)
+	margin.add_theme_constant_override("margin_right", 52)
+	margin.add_theme_constant_override("margin_top", 32)
+	margin.add_theme_constant_override("margin_bottom", 28)
+	add_child(margin)
+	_content_root = margin
 
 	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", 14)
+	outer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.add_theme_constant_override("separation", 20)
 	margin.add_child(outer)
 
-	# Header
+	# Minimalist typographic header
 	var hdr_row := HBoxContainer.new()
 	outer.add_child(hdr_row)
 	var title := Label.new()
-	title.text = RoomsI18n.t("fe_title")
+	title.text = RoomsI18n.t("fe_title").to_lower()
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Medium.ttf"))
-	title.add_theme_font_size_override("font_size", 26)
-	title.add_theme_color_override("font_color", Color(0.95, 0.96, 0.99))
+	title.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(0.95, 0.96, 0.99, 0.96))
 	hdr_row.add_child(title)
 	_lbl_title = title
 
 	var sub := Label.new()
-	sub.text = RoomsI18n.t("fe_sub")
+	sub.text = RoomsI18n.t("fe_sub").to_lower()
 	sub.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	sub.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
 	sub.add_theme_font_size_override("font_size", 13)
-	sub.add_theme_color_override("font_color", Color(0.66, 0.72, 0.80))
+	sub.add_theme_color_override("font_color", Color(0.70, 0.74, 0.80, 0.50))
 	hdr_row.add_child(sub)
 	_lbl_sub = sub
 
 	var div := ColorRect.new()
 	div.custom_minimum_size = Vector2(0, 1)
-	div.color = Color(1.0, 1.0, 1.0, 0.18)
+	div.color = Color(1.0, 1.0, 1.0, 0.14)
 	outer.add_child(div)
 
-	# Body: Left = Drawing Canvas, Right = Live 3D Dummi Preview + Tools
+	# Body: Left = Full-height Square Canvas, Right = Minimalist 3D Preview + Typographic Tools
 	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 24)
+	body.add_theme_constant_override("separation", 44)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer.add_child(body)
 
-	# Canvas frame (neutral warm background representing dummi head color)
+	var canvas_aspect := AspectRatioContainer.new()
+	canvas_aspect.ratio = 1.0
+	canvas_aspect.stretch_mode = AspectRatioContainer.STRETCH_FIT
+	canvas_aspect.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	canvas_aspect.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	canvas_aspect.size_flags_stretch_ratio = 1.15
+	body.add_child(canvas_aspect)
+
+	var canvas_style := StyleBoxFlat.new()
+	canvas_style.bg_color = Color(0.92, 0.89, 0.82, 1.0)
+	canvas_style.border_color = Color(1.0, 1.0, 1.0, 0.22)
+	canvas_style.set_border_width_all(1)
+	canvas_style.set_corner_radius_all(0)
+
 	var canvas_frame := PanelContainer.new()
-	canvas_frame.custom_minimum_size = Vector2(360, 360)
-	canvas_frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	canvas_frame.add_theme_stylebox_override("panel", RoomsUI.make_panel_style(Color(0.92, 0.89, 0.82, 1.0), Color(1.0, 1.0, 1.0, 0.35), 4, 2))
-	body.add_child(canvas_frame)
+	canvas_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	canvas_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	canvas_frame.add_theme_stylebox_override("panel", canvas_style)
+	canvas_aspect.add_child(canvas_frame)
 
 	_canvas_rect = TextureRect.new()
-	_canvas_rect.custom_minimum_size = Vector2(352, 352)
+	_canvas_rect.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_canvas_rect.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_canvas_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_canvas_rect.stretch_mode = TextureRect.STRETCH_SCALE
 	_canvas_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -239,13 +242,24 @@ func _build_ui() -> void:
 	# Right column
 	var right := VBoxContainer.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right.add_theme_constant_override("separation", 10)
+	right.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right.size_flags_stretch_ratio = 0.90
+	right.custom_minimum_size = Vector2(360, 0)
+	right.add_theme_constant_override("separation", 16)
 	body.add_child(right)
 
-	# Live 3D dummi preview
+	# Frameless-feel 3D preview with razor hairline
+	var vp_style := StyleBoxFlat.new()
+	vp_style.bg_color = Color(0.012, 0.014, 0.020, 1.0)
+	vp_style.border_color = Color(1.0, 1.0, 1.0, 0.12)
+	vp_style.set_border_width_all(1)
+	vp_style.set_corner_radius_all(0)
+
 	var vp_frame := PanelContainer.new()
-	vp_frame.custom_minimum_size = Vector2(0, 172)
-	vp_frame.add_theme_stylebox_override("panel", RoomsUI.make_panel_style(Color(0.02, 0.024, 0.032, 1.0), Color(1.0, 1.0, 1.0, 0.14), 4, 1))
+	vp_frame.custom_minimum_size = Vector2(0, 220)
+	vp_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vp_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vp_frame.add_theme_stylebox_override("panel", vp_style)
 	right.add_child(vp_frame)
 
 	var vp_cont := SubViewportContainer.new()
@@ -257,14 +271,14 @@ func _build_ui() -> void:
 	var sub_vp := SubViewport.new()
 	sub_vp.own_world_3d = true
 	sub_vp.transparent_bg = false
-	sub_vp.size = Vector2i(320, 172)
+	sub_vp.size = Vector2i(480, 280)
 	sub_vp.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	vp_cont.add_child(sub_vp)
 
 	var env_node := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.03, 0.036, 0.05)
+	env.background_color = Color(0.012, 0.014, 0.020)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.92, 0.94, 1.0)
 	env.ambient_light_energy = 0.85
@@ -277,7 +291,7 @@ func _build_ui() -> void:
 	sub_vp.add_child(dl)
 
 	var pcam := Camera3D.new()
-	pcam.position = Vector3(0.0, 1.44, -1.12)
+	pcam.position = Vector3(0.0, 1.44, -1.16)
 	pcam.fov = 38.0
 	sub_vp.add_child(pcam)
 	pcam.look_at(Vector3(0.0, 1.44, 0.0), Vector3.UP)
@@ -289,45 +303,44 @@ func _build_ui() -> void:
 	_preview_avatar.setup(null, null, null, false)
 	_preview_avatar.set_face_texture(_tex)
 
-	# Palette colors
+	# Compact minimalist color strip (10 sharp swatches in a single clean row)
 	var pal_lbl := Label.new()
-	pal_lbl.text = RoomsI18n.t("fe_color")
+	pal_lbl.text = RoomsI18n.t("fe_color").to_lower()
+	pal_lbl.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
 	pal_lbl.add_theme_font_size_override("font_size", 12)
-	pal_lbl.add_theme_color_override("font_color", Color(0.68, 0.72, 0.80))
+	pal_lbl.add_theme_color_override("font_color", Color(0.70, 0.74, 0.80, 0.50))
 	right.add_child(pal_lbl)
 	_lbl_pal = pal_lbl
 
-	var pal_grid := GridContainer.new()
-	pal_grid.columns = 7
-	pal_grid.add_theme_constant_override("h_separation", 6)
-	pal_grid.add_theme_constant_override("v_separation", 6)
-	right.add_child(pal_grid)
+	var pal_row := HBoxContainer.new()
+	pal_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pal_row.add_theme_constant_override("separation", 6)
+	right.add_child(pal_row)
 
 	var colors: Array[Color] = [
 		Color(0.07, 0.07, 0.08),
 		Color(0.98, 0.98, 0.99),
 		Color(0.45, 0.48, 0.54),
-		Color(0.92, 0.16, 0.16),
-		Color(1.0, 0.52, 0.12),
-		Color(0.98, 0.86, 0.18),
-		Color(0.18, 0.84, 0.36),
-		Color(0.16, 0.82, 0.94),
-		Color(0.18, 0.42, 0.96),
-		Color(0.64, 0.24, 0.94),
-		Color(0.96, 0.36, 0.68),
-		Color(0.54, 0.32, 0.16),
-		Color(0.98, 0.76, 0.60),
-		Color(0.14, 0.42, 0.22),
+		Color(0.88, 0.16, 0.16),
+		Color(0.96, 0.52, 0.16),
+		Color(0.95, 0.84, 0.22),
+		Color(0.20, 0.80, 0.40),
+		Color(0.18, 0.76, 0.90),
+		Color(0.22, 0.44, 0.92),
+		Color(0.64, 0.28, 0.90),
 	]
+	_color_btns.clear()
 	for col in colors:
 		var cb := Button.new()
-		cb.custom_minimum_size = Vector2(36, 26)
+		cb.custom_minimum_size = Vector2(24, 24)
+		cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cb.focus_mode = Control.FOCUS_NONE
+		cb.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = col
-		sb.border_color = Color(1.0, 1.0, 1.0, 0.35)
+		sb.border_color = Color(1.0, 1.0, 1.0, 0.18)
 		sb.set_border_width_all(1)
-		sb.set_corner_radius_all(3)
+		sb.set_corner_radius_all(0)
 		cb.add_theme_stylebox_override("normal", sb)
 		cb.add_theme_stylebox_override("hover", sb)
 		cb.add_theme_stylebox_override("pressed", sb)
@@ -336,17 +349,22 @@ func _build_ui() -> void:
 			_eraser_mode = false
 			_sync_tool_buttons()
 		)
-		pal_grid.add_child(cb)
+		pal_row.add_child(cb)
+		_color_btns.append({"btn": cb, "style": sb, "color": col})
 
-	# Tools & Brush Sizes
+	var sep_r1 := ColorRect.new()
+	sep_r1.custom_minimum_size = Vector2(0, 1)
+	sep_r1.color = Color(1.0, 1.0, 1.0, 0.09)
+	right.add_child(sep_r1)
+
+	# Flat typographic tools row (matches r00ms menu style)
 	var tool_row := HBoxContainer.new()
-	tool_row.add_theme_constant_override("separation", 6)
+	tool_row.add_theme_constant_override("separation", 18)
 	right.add_child(tool_row)
 
 	_tool_btn_draw = Button.new()
-	_tool_btn_draw.text = "кисть"
-	_tool_btn_draw.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	RoomsUI.style_button(_tool_btn_draw, Color(0.85, 0.90, 0.98), 12)
+	_tool_btn_draw.custom_minimum_size = Vector2(0, 32)
+	RoomsUI.style_link_button(_tool_btn_draw, 16, HORIZONTAL_ALIGNMENT_LEFT)
 	_tool_btn_draw.pressed.connect(func() -> void:
 		_eraser_mode = false
 		_sync_tool_buttons()
@@ -354,9 +372,8 @@ func _build_ui() -> void:
 	tool_row.add_child(_tool_btn_draw)
 
 	_tool_btn_erase = Button.new()
-	_tool_btn_erase.text = "ластик"
-	_tool_btn_erase.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	RoomsUI.style_button(_tool_btn_erase, Color(0.85, 0.90, 0.98), 12)
+	_tool_btn_erase.custom_minimum_size = Vector2(0, 32)
+	RoomsUI.style_link_button(_tool_btn_erase, 16, HORIZONTAL_ALIGNMENT_LEFT)
 	_tool_btn_erase.pressed.connect(func() -> void:
 		_eraser_mode = true
 		_sync_tool_buttons()
@@ -364,87 +381,100 @@ func _build_ui() -> void:
 	tool_row.add_child(_tool_btn_erase)
 
 	var btn_undo := Button.new()
-	btn_undo.text = RoomsI18n.t("fe_undo")
-	btn_undo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	RoomsUI.style_button(btn_undo, Color(0.85, 0.90, 0.98), 12)
+	btn_undo.custom_minimum_size = Vector2(0, 32)
+	RoomsUI.style_link_button(btn_undo, 16, HORIZONTAL_ALIGNMENT_LEFT)
 	btn_undo.pressed.connect(_do_undo)
 	tool_row.add_child(btn_undo)
 	_btn_undo = btn_undo
 
-	var size_row := HBoxContainer.new()
-	size_row.add_theme_constant_override("separation", 6)
-	right.add_child(size_row)
-	for sz in [1, 2, 4, 6]:
-		var b := Button.new()
-		b.text = "%dpx" % sz
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		RoomsUI.style_button(b, Color(0.80, 0.86, 0.94), 12)
-		b.pressed.connect(func() -> void:
-			_brush_radius = sz
-			_sync_tool_buttons()
-		)
-		size_row.add_child(b)
-		_size_btns[sz] = b
-
-	# Presets row
-	var pre_row := HBoxContainer.new()
-	pre_row.add_theme_constant_override("separation", 6)
-	right.add_child(pre_row)
-
-	var btn_p_classic := Button.new()
-	btn_p_classic.text = ":D"
-	btn_p_classic.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	RoomsUI.style_button(btn_p_classic, Color(0.75, 0.85, 0.95), 12)
-	btn_p_classic.pressed.connect(func() -> void:
-		_push_undo()
-		_apply_preset_classic()
-		_refresh_texture()
-	)
-	pre_row.add_child(btn_p_classic)
-
-	var btn_p_shock := Button.new()
-	btn_p_shock.text = "O_O"
-	btn_p_shock.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	RoomsUI.style_button(btn_p_shock, Color(0.75, 0.85, 0.95), 12)
-	btn_p_shock.pressed.connect(func() -> void:
-		_push_undo()
-		_apply_preset_shocked()
-		_refresh_texture()
-	)
-	pre_row.add_child(btn_p_shock)
-
-	var btn_p_angry := Button.new()
-	btn_p_angry.text = ">:("
-	btn_p_angry.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	RoomsUI.style_button(btn_p_angry, Color(0.75, 0.85, 0.95), 12)
-	btn_p_angry.pressed.connect(func() -> void:
-		_push_undo()
-		_apply_preset_angry()
-		_refresh_texture()
-	)
-	pre_row.add_child(btn_p_angry)
+	var t_sp := Control.new()
+	t_sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tool_row.add_child(t_sp)
 
 	var btn_clear := Button.new()
-	btn_clear.text = RoomsI18n.t("fe_clear")
-	btn_clear.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	RoomsUI.style_button(btn_clear, Color(1.0, 0.55, 0.50), 12)
+	btn_clear.custom_minimum_size = Vector2(0, 32)
+	RoomsUI.style_link_button(btn_clear, 15, HORIZONTAL_ALIGNMENT_RIGHT)
+	btn_clear.add_theme_color_override("font_color", Color(0.92, 0.45, 0.45, 0.72))
+	btn_clear.add_theme_color_override("font_hover_color", Color(1.0, 0.62, 0.62, 1.0))
 	btn_clear.pressed.connect(func() -> void:
 		_push_undo()
 		_img.fill(Color(0.0, 0.0, 0.0, 0.0))
 		_refresh_texture()
 	)
-	pre_row.add_child(btn_clear)
+	tool_row.add_child(btn_clear)
 	_btn_clear = btn_clear
 
-	# Footer save / close
+	# Brush sizes + Presets on one clean minimalist row
+	var sub_row := HBoxContainer.new()
+	sub_row.add_theme_constant_override("separation", 16)
+	right.add_child(sub_row)
+
+	for sz in [1, 2, 4, 6]:
+		var b := Button.new()
+		b.text = "%dpx" % sz
+		b.custom_minimum_size = Vector2(0, 28)
+		RoomsUI.style_link_button(b, 14, HORIZONTAL_ALIGNMENT_LEFT)
+		b.pressed.connect(func() -> void:
+			_brush_radius = sz
+			_sync_tool_buttons()
+		)
+		sub_row.add_child(b)
+		_size_btns[sz] = b
+
+	var sub_sp := Control.new()
+	sub_sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sub_row.add_child(sub_sp)
+
+	var btn_p_classic := Button.new()
+	btn_p_classic.text = ":D"
+	btn_p_classic.custom_minimum_size = Vector2(0, 28)
+	RoomsUI.style_link_button(btn_p_classic, 14, HORIZONTAL_ALIGNMENT_RIGHT)
+	btn_p_classic.add_theme_color_override("font_color", Color(0.75, 0.78, 0.84, 0.58))
+	btn_p_classic.pressed.connect(func() -> void:
+		_push_undo()
+		_apply_preset_classic()
+		_refresh_texture()
+	)
+	sub_row.add_child(btn_p_classic)
+
+	var btn_p_shock := Button.new()
+	btn_p_shock.text = "O_O"
+	btn_p_shock.custom_minimum_size = Vector2(0, 28)
+	RoomsUI.style_link_button(btn_p_shock, 14, HORIZONTAL_ALIGNMENT_RIGHT)
+	btn_p_shock.add_theme_color_override("font_color", Color(0.75, 0.78, 0.84, 0.58))
+	btn_p_shock.pressed.connect(func() -> void:
+		_push_undo()
+		_apply_preset_shocked()
+		_refresh_texture()
+	)
+	sub_row.add_child(btn_p_shock)
+
+	var btn_p_angry := Button.new()
+	btn_p_angry.text = ">:("
+	btn_p_angry.custom_minimum_size = Vector2(0, 28)
+	RoomsUI.style_link_button(btn_p_angry, 14, HORIZONTAL_ALIGNMENT_RIGHT)
+	btn_p_angry.add_theme_color_override("font_color", Color(0.75, 0.78, 0.84, 0.58))
+	btn_p_angry.pressed.connect(func() -> void:
+		_push_undo()
+		_apply_preset_angry()
+		_refresh_texture()
+	)
+	sub_row.add_child(btn_p_angry)
+
+	# Footer save / close (pure flat typographic links, identical to main menu)
+	var div_bot := ColorRect.new()
+	div_bot.custom_minimum_size = Vector2(0, 1)
+	div_bot.color = Color(1.0, 1.0, 1.0, 0.14)
+	outer.add_child(div_bot)
+
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 12)
 	outer.add_child(foot)
 
 	var btn_cancel := Button.new()
-	btn_cancel.text = RoomsI18n.t("menu_back_arrow")
-	btn_cancel.custom_minimum_size = Vector2(140, 40)
-	RoomsUI.style_link_button(btn_cancel, 20, HORIZONTAL_ALIGNMENT_LEFT)
+	btn_cancel.text = RoomsI18n.t("menu_back_arrow").to_lower()
+	btn_cancel.custom_minimum_size = Vector2(140, 42)
+	RoomsUI.style_link_button(btn_cancel, 22, HORIZONTAL_ALIGNMENT_LEFT)
 	btn_cancel.pressed.connect(func() -> void:
 		visible = false
 		emit_signal("closed")
@@ -457,25 +487,37 @@ func _build_ui() -> void:
 	foot.add_child(spacer)
 
 	var btn_save := Button.new()
-	btn_save.text = RoomsI18n.t("fe_save")
-	btn_save.custom_minimum_size = Vector2(180, 40)
-	RoomsUI.style_button(btn_save, Color(0.32, 1.0, 0.56), 15)
+	btn_save.text = RoomsI18n.t("fe_save").to_lower()
+	btn_save.custom_minimum_size = Vector2(160, 42)
+	RoomsUI.style_link_button(btn_save, 22, HORIZONTAL_ALIGNMENT_RIGHT)
+	btn_save.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.94))
 	btn_save.pressed.connect(_save_and_close)
 	foot.add_child(btn_save)
 	_btn_save = btn_save
 
 	apply_localization()
-	_sync_tool_buttons()
 
 
 func _sync_tool_buttons() -> void:
+	var brush_lbl := RoomsI18n.t("fe_brush").to_lower()
+	var erase_lbl := RoomsI18n.t("fe_eraser").to_lower()
 	if _tool_btn_draw != null:
-		_tool_btn_draw.modulate = Color(1.0, 1.0, 1.0) if not _eraser_mode else Color(0.65, 0.68, 0.74)
+		_tool_btn_draw.text = ("[%s]" % brush_lbl) if not _eraser_mode else brush_lbl
+		_tool_btn_draw.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 1.0) if not _eraser_mode else Color(0.70, 0.74, 0.80, 0.45))
 	if _tool_btn_erase != null:
-		_tool_btn_erase.modulate = Color(1.0, 1.0, 1.0) if _eraser_mode else Color(0.65, 0.68, 0.74)
+		_tool_btn_erase.text = ("[%s]" % erase_lbl) if _eraser_mode else erase_lbl
+		_tool_btn_erase.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 1.0) if _eraser_mode else Color(0.70, 0.74, 0.80, 0.45))
 	for sz_k in _size_btns.keys():
 		var b: Button = _size_btns[sz_k]
-		b.modulate = Color(0.45, 1.0, 0.65) if int(sz_k) == _brush_radius else Color(0.75, 0.78, 0.84)
+		var active := (int(sz_k) == _brush_radius)
+		b.text = ("[%dpx]" % int(sz_k)) if active else ("%dpx" % int(sz_k))
+		b.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.98) if active else Color(0.70, 0.74, 0.80, 0.45))
+	for entry in _color_btns:
+		var sb := entry["style"] as StyleBoxFlat
+		var c: Color = entry["color"]
+		var is_sel := (not _eraser_mode) and c.is_equal_approx(_brush_color)
+		sb.border_color = Color(1.0, 1.0, 1.0, 0.95) if is_sel else Color(1.0, 1.0, 1.0, 0.16)
+		sb.set_border_width_all(2 if is_sel else 1)
 
 
 func _on_canvas_gui_input(ev: InputEvent) -> void:

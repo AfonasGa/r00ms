@@ -12,7 +12,7 @@ signal locker_action_received(peer_key: String, room_idx: int, locker_idx: int, 
 signal state_received(peer_key: String, data: Dictionary)
 signal peer_disconnected(peer_key: String)
 signal invite_received(inviter_name: String, lobby_id: int)
-signal session_synced(seed_val: int, room_idx: int)
+signal session_synced(seed_val: int, room_idx: int, start_room_idx: int)
 signal entity_event_received(msg: Dictionary)
 signal chat_received(peer_name: String, text: String)
 signal members_changed
@@ -35,6 +35,7 @@ var is_host := false
 var mode := "offline" # "offline" | "steam" | "enet"
 var run_seed := 0
 var run_room_idx := 0
+var run_start_room := 0
 
 var _steam: Object = null
 var _peer_steam_ids: Array[int] = []
@@ -246,14 +247,17 @@ func host_steam_lobby(seed_val: int, room_idx: int = 0) -> bool:
 	return true
 
 
-func update_lobby_progress(seed_val: int, room_idx: int) -> void:
+func update_lobby_progress(seed_val: int, room_idx: int, start_room_idx: int = -1) -> void:
 	run_seed = seed_val
 	run_room_idx = room_idx
+	if start_room_idx >= 0:
+		run_start_room = start_room_idx
 	if mode != "steam" or _steam == null or not steam_ready or current_lobby_id <= 0:
 		return
 	if is_host:
 		_steam.call("setLobbyData", current_lobby_id, "seed", str(run_seed))
 		_steam.call("setLobbyData", current_lobby_id, "room", str(run_room_idx))
+		_steam.call("setLobbyData", current_lobby_id, "start_room", str(run_start_room))
 	_update_rich_presence()
 
 
@@ -706,12 +710,14 @@ func broadcast_locker_action(room_index: int, locker_index: int, entering: bool,
 		multiplayer.send_bytes(bytes, 0, MultiplayerPeer.TRANSFER_MODE_RELIABLE)
 
 
-func broadcast_session_sync(seed_val: int, room_idx: int) -> void:
+func broadcast_session_sync(seed_val: int, room_idx: int, start_room_idx: int = -1) -> void:
 	run_seed = seed_val
 	run_room_idx = room_idx
+	if start_room_idx >= 0:
+		run_start_room = start_room_idx
 	if mode == "offline":
 		return
-	var msg := {"t": "sync", "seed": seed_val, "r": room_idx}
+	var msg := {"t": "sync", "seed": seed_val, "r": room_idx, "sr": run_start_room}
 	if mode == "steam":
 		_steam_send_all(msg, 2)
 	elif mode == "enet" and multiplayer.has_multiplayer_peer():
@@ -770,6 +776,7 @@ func _process(delta: float) -> void:
 					"tool": int(_local_state.get("tool", 0)),
 					"gum": bool(_local_state.get("gum", false)),
 					"sd": run_seed if is_host else 0,
+					"sr": run_start_room if is_host else 0,
 					"r": int(_local_state.get("room", 0)),
 					"hp": int(_local_state.get("hp", 100)),
 					"insp": bool(_local_state.get("insp", false)),
@@ -948,6 +955,15 @@ func _process_voice(delta: float) -> void:
 		_voice_flush_accum = 0.0
 
 
+func is_peer_host(peer_key: String) -> bool:
+	if mode == "enet":
+		return peer_key == "enet_1"
+	if mode == "steam" and _steam != null and current_lobby_id > 0:
+		var owner_id := int(_steam.call("getLobbyOwner", current_lobby_id))
+		return owner_id > 0 and peer_key == ("steam_%d" % owner_id)
+	return false
+
+
 func _handle_packet(peer_key: String, msg: Dictionary) -> void:
 	var mtype := String(msg.get("t", ""))
 	if mtype == "st":
@@ -956,12 +972,13 @@ func _handle_packet(peer_key: String, msg: Dictionary) -> void:
 			remote_names[peer_key] = who
 			emit_signal("members_changed")
 		remote_dead[peer_key] = bool(msg.get("d", false))
-		if not is_host:
+		if not is_host and is_peer_host(peer_key):
 			var host_seed := int(msg.get("sd", 0))
 			var host_room := int(msg.get("r", 0))
+			var host_sr := int(msg.get("sr", 0))
 			if host_seed > 0 and host_seed != _last_synced_seed:
 				_last_synced_seed = host_seed
-				emit_signal("session_synced", host_seed, host_room)
+				emit_signal("session_synced", host_seed, host_room, host_sr)
 		emit_signal("state_received", peer_key, msg)
 	elif mtype == "chat":
 		emit_signal("chat_received", String(msg.get("n", "?")), String(msg.get("m", "")))
@@ -975,12 +992,13 @@ func _handle_packet(peer_key: String, msg: Dictionary) -> void:
 	elif mtype == "lock":
 		emit_signal("locker_action_received", peer_key, int(msg.get("r", -1)), int(msg.get("l", -1)), bool(msg.get("e", false)), bool(msg.get("f", false)))
 	elif mtype == "sync":
-		if not is_host:
+		if not is_host and is_peer_host(peer_key):
 			var s_val := int(msg.get("seed", 0))
 			var r_val := int(msg.get("r", 0))
+			var sr_val := int(msg.get("sr", 0))
 			if s_val > 0:
 				_last_synced_seed = s_val
-				emit_signal("session_synced", s_val, r_val)
+				emit_signal("session_synced", s_val, r_val, sr_val)
 	elif mtype == "hi":
 		var hi_name := String(msg.get("n", ""))
 		if not hi_name.is_empty() and String(remote_names.get(peer_key, "")) != hi_name:
@@ -997,7 +1015,10 @@ func _handle_packet(peer_key: String, msg: Dictionary) -> void:
 			if fb.size() > 0 and fb.size() <= 65536:
 				emit_signal("face_received", peer_key, fb)
 	elif mtype == "ent":
-		emit_signal("entity_event_received", msg)
+		var safe_msg := msg.duplicate()
+		safe_msg["_from_host"] = is_peer_host(peer_key)
+		safe_msg["_sender"] = peer_key
+		emit_signal("entity_event_received", safe_msg)
 
 
 func send_chat(text: String) -> void:

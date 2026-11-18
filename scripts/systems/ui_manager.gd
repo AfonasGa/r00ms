@@ -135,6 +135,11 @@ func clear_all_vignettes() -> void:
 			(ui[vk] as Control).visible = false
 
 
+func set_cinema_fx_enabled(en: bool) -> void:
+	if ui.has("cinema_fx"):
+		(ui["cinema_fx"] as Control).visible = en
+
+
 func _build_all_ui() -> void:
 	var root := Control.new()
 	root.name = "UIRoot"
@@ -152,6 +157,7 @@ func _build_all_ui() -> void:
 	# In-game dummi Face Editor overlay
 	face_editor = FaceEditor.new()
 	face_editor.name = "DummiFaceEditor"
+	face_editor.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	face_editor.face_saved.connect(func(_img: Image, png_bytes: PackedByteArray) -> void:
 		if net != null:
 			net.set_local_face_bytes(png_bytes)
@@ -170,6 +176,36 @@ func _build_all_ui() -> void:
 
 
 func _build_overlays_and_hud(root: Control) -> void:
+	var cinema_sh := Shader.new()
+	cinema_sh.code = """shader_type canvas_item;
+float hash12(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+void fragment() {
+	vec2 uv = UV;
+	float r = length((uv - 0.5) * vec2(1.22, 1.0));
+	float vig = smoothstep(0.50, 1.26, r) * 0.24;
+	float g = hash12(floor(FRAGCOORD.xy) + fract(TIME * 24.0) * 113.0) - 0.5;
+	float g_bright = max(g, 0.0) * 0.022;
+	float g_dark = max(-g, 0.0) * 0.028;
+	float total_a = clamp(vig + g_dark + g_bright, 0.0, 0.34);
+	vec3 vig_col = vec3(0.008, 0.012, 0.020);
+	vec3 col = mix(vig_col, vec3(0.75, 0.80, 0.88), g_bright / max(total_a, 0.0001));
+	COLOR = vec4(col, total_a);
+}"""
+	var cinema_mat := ShaderMaterial.new()
+	cinema_mat.shader = cinema_sh
+	var cinema_fx := ColorRect.new()
+	cinema_fx.name = "CinemaFX"
+	cinema_fx.set_anchors_preset(Control.PRESET_FULL_RECT)
+	cinema_fx.material = cinema_mat
+	cinema_fx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cinema_fx.visible = true
+	root.add_child(cinema_fx)
+	ui["cinema_fx"] = cinema_fx
+
 	var locker_mask := ColorRect.new()
 	locker_mask.set_anchors_preset(Control.PRESET_FULL_RECT)
 	locker_mask.color = Color(0.0, 0.0, 0.0, 0.0)
@@ -665,40 +701,39 @@ func _build_main_menu(root: Control) -> void:
 
 	make_item.call(v_play, "solo", func() -> void: game.call("menu_begin_game", false, ""), 34, "m_btn_solo")
 
+	# Minimalist typographic Checkpoint Selector (matches r00ms flat-link aesthetic)
+	var cp_wrap := VBoxContainer.new()
+	cp_wrap.add_theme_constant_override("separation", 4)
+	cp_wrap.alignment = BoxContainer.ALIGNMENT_CENTER
+	v_play.add_child(cp_wrap)
+	ui["cp_panel"] = cp_wrap
+
+	var cp_hdr := Label.new()
+	cp_hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cp_hdr.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
+	cp_hdr.add_theme_font_size_override("font_size", 12)
+	cp_hdr.add_theme_color_override("font_color", Color(0.72, 0.76, 0.84, 0.55))
+	cp_wrap.add_child(cp_hdr)
+	ui["cp_hdr"] = cp_hdr
+
 	var cp_row := HBoxContainer.new()
 	cp_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	cp_row.add_theme_constant_override("separation", 8)
-	v_play.add_child(cp_row)
-	ui["cp_row"] = cp_row
+	cp_row.add_theme_constant_override("separation", 12)
+	cp_wrap.add_child(cp_row)
+	ui["cp_grid"] = cp_row
 
-	var btn_cp_prev := Button.new()
-	btn_cp_prev.text = " < "
-	btn_cp_prev.flat = true
-	btn_cp_prev.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
-	btn_cp_prev.add_theme_font_size_override("font_size", 22)
-	btn_cp_prev.add_theme_color_override("font_color", Color(0.85, 0.88, 0.95))
-	btn_cp_prev.pressed.connect(func() -> void: _cycle_checkpoint(-1))
-	cp_row.add_child(btn_cp_prev)
-	ui["btn_cp_prev"] = btn_cp_prev
-
-	var btn_cp_val := Button.new()
-	btn_cp_val.flat = true
-	btn_cp_val.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Medium.ttf"))
-	btn_cp_val.add_theme_font_size_override("font_size", 22)
-	btn_cp_val.add_theme_color_override("font_color", Color(0.40, 0.95, 0.65))
-	btn_cp_val.pressed.connect(func() -> void: _cycle_checkpoint(1))
-	cp_row.add_child(btn_cp_val)
-	ui["btn_cp_val"] = btn_cp_val
-
-	var btn_cp_next := Button.new()
-	btn_cp_next.text = " > "
-	btn_cp_next.flat = true
-	btn_cp_next.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
-	btn_cp_next.add_theme_font_size_override("font_size", 22)
-	btn_cp_next.add_theme_color_override("font_color", Color(0.85, 0.88, 0.95))
-	btn_cp_next.pressed.connect(func() -> void: _cycle_checkpoint(1))
-	cp_row.add_child(btn_cp_next)
-	ui["btn_cp_next"] = btn_cp_next
+	for cp_room: int in [0, 50, 100, 150, 200, 250]:
+		var cb := Button.new()
+		cb.custom_minimum_size = Vector2(68, 28)
+		RoomsUI.style_link_button(cb, 15, HORIZONTAL_ALIGNMENT_CENTER)
+		var r_num: int = cp_room
+		cb.pressed.connect(func() -> void:
+			if settings != null and r_num <= settings.max_checkpoint_unlocked:
+				game.call("set_selected_checkpoint", r_num)
+				update_checkpoint_ui()
+		)
+		cp_row.add_child(cb)
+		ui["cp_slot_%d" % cp_room] = cb
 
 	make_item.call(v_play, "multiplayer", func() -> void: set_menu_view("multi"), 30, "m_btn_multi")
 	make_item.call(v_play, "back", func() -> void: set_menu_view("main"), 22, "m_btn_play_back")
@@ -1005,7 +1040,10 @@ func _build_pause_and_panels(root: Control) -> void:
 	btn_pause_admin.text = "admin panel"
 	btn_pause_admin.custom_minimum_size = Vector2(0, 46)
 	RoomsUI.style_link_button(btn_pause_admin, 26)
-	btn_pause_admin.pressed.connect(func() -> void: open_admin_panel(true))
+	btn_pause_admin.pressed.connect(func() -> void:
+		if bool(game.call("can_use_admin")):
+			open_admin_panel(true)
+	)
 	btn_pause_admin.visible = false
 	m_main_box.add_child(btn_pause_admin)
 	ui["btn_pause_admin"] = btn_pause_admin
@@ -1307,9 +1345,11 @@ func _build_admin_scroll(modal: Control) -> void:
 			ui["adm_cmd_" + loc_key] = b
 		b.pressed.connect(func() -> void:
 			if not bool(game.call("can_use_admin")):
+				open_admin_panel(false)
 				show_toast(RoomsI18n.t("adm_host_only"), 2.0)
 				return
 			admin.cheats_used = true
+			game.set("run_used_admin", true)
 			if cb.get_argument_count() > 0:
 				cb.call(b)
 			else:
@@ -1365,8 +1405,7 @@ func _build_admin_scroll(modal: Control) -> void:
 	ui["adm_btn_battery"] = b_bat
 
 	add_cmd.call("give gummy flashlight", func() -> void:
-		player_ctrl.has_gummy = true
-		player_ctrl.gummy_battery = 100.0
+		player_ctrl.equip_gummy()
 		show_toast(RoomsI18n.t("toast_gummy_got"), 2.0)
 	, Color(0.85, 0.88, 0.94), "adm_gummy")
 	add_cmd.call("+5 batteries", func() -> void:
@@ -1386,6 +1425,8 @@ func _build_admin_scroll(modal: Control) -> void:
 		else:
 			room_mgr.restore_power()
 			show_toast(RoomsI18n.t("toast_blackout_off"), 2.0)
+		if net != null and net.is_online() and net.is_host:
+			net.broadcast_entity_event({"k": "power_state", "out": room_mgr.power_out}, true)
 	, Color(0.85, 0.88, 0.94), "adm_blackout")
 
 	var b_ts: Button = add_cmd.call("game speed: 1.0x", func(_b: Button) -> void:
@@ -1409,6 +1450,18 @@ func _build_admin_scroll(modal: Control) -> void:
 		game.call("set_state", 0)
 		show_toast(RoomsI18n.t("toast_a075_spawn"), 3.5)
 	, Color(1.0, 0.80, 0.35), "adm_spawn_a075")
+	add_cmd.call("spawn a-085 (breacher)", func() -> void:
+		entities.spawn_a085()
+		open_admin_panel(false)
+		game.call("set_state", 0)
+		show_toast(RoomsI18n.t("toast_a085_spawn"), 3.5)
+	, Color(0.65, 0.70, 0.78), "adm_spawn_a085")
+	add_cmd.call("spawn a-160 (mimic)", func() -> void:
+		entities.spawn_a160()
+		open_admin_panel(false)
+		game.call("set_state", 0)
+		show_toast(RoomsI18n.t("toast_a160_spawn"), 3.5)
+	, Color(0.75, 0.82, 0.95), "adm_spawn_a160")
 	add_cmd.call("spawn a-90", func() -> void: entities.start_a90_local(), Color(0.85, 0.88, 0.94), "adm_spawn_a90")
 	add_cmd.call("spawn a-120", func() -> void: entities.spawn_a120(), Color(0.85, 0.88, 0.94), "adm_spawn_a120")
 	add_cmd.call("tp to next door", func() -> void:
@@ -1426,6 +1479,9 @@ func _build_admin_scroll(modal: Control) -> void:
 	, Color(0.85, 0.88, 0.94), "adm_refill")
 	add_cmd.call("grant admin to all", func() -> void:
 		if net != null and net.is_online():
+			if not net.is_host:
+				show_toast(RoomsI18n.t("adm_host_only"), 2.0)
+				return
 			net.broadcast_entity_event({"k": "admin_grant"}, true)
 			show_toast(RoomsI18n.t("toast_admin_granted"), 2.5)
 	, Color(0.85, 0.88, 0.94), "adm_grant_all")
@@ -1716,6 +1772,9 @@ func _build_mobile_ui(hud_group: Control) -> void:
 	btn_light.button_down.connect(func() -> void:
 		if player_ctrl.active_tool == 1:
 			player_ctrl.mobile_gummy_held = true
+			var a075_threat := entities.a075_active and (entities.a075_phase == 1 or entities.a075_phase == 2)
+			if not a075_threat:
+				player_ctrl.try_shake_gummy(3.5)
 		else:
 			player_ctrl.toggle_flashlight(entities, self)
 	)
@@ -1980,7 +2039,7 @@ func apply_localization() -> void:
 	set_txt.call("adm_title", "adm_title")
 	set_txt.call("adm_sub", "adm_sub")
 	set_txt.call("btn_adm_back", "menu_back_arrow")
-	for lk in ["adm_revive", "adm_kill", "adm_heal", "adm_gummy", "adm_bats5", "adm_skip5", "adm_skip10", "adm_despawn", "adm_blackout", "adm_revive_all", "adm_spawn_a60", "adm_spawn_a60p", "adm_spawn_a075", "adm_spawn_a90", "adm_spawn_a120", "adm_tp_door", "adm_refill", "adm_grant_all"]:
+	for lk in ["adm_revive", "adm_kill", "adm_heal", "adm_gummy", "adm_bats5", "adm_skip5", "adm_skip10", "adm_despawn", "adm_blackout", "adm_revive_all", "adm_spawn_a60", "adm_spawn_a60p", "adm_spawn_a075", "adm_spawn_a085", "adm_spawn_a160", "adm_spawn_a90", "adm_spawn_a120", "adm_tp_door", "adm_refill", "adm_grant_all"]:
 		set_txt.call("adm_cmd_" + lk, lk)
 
 	# Architect & Spectate & Chat
@@ -2066,6 +2125,8 @@ func open_settings_panel(open: bool) -> void:
 
 
 func open_admin_panel(open: bool) -> void:
+	if open and not bool(game.call("can_use_admin")):
+		open = false
 	if ui.has("m_main_box"):
 		(ui["m_main_box"] as Control).visible = not open
 	if ui.has("m_mods_box"):
@@ -2130,35 +2191,30 @@ func set_menu_view(view: String, fade: bool = true) -> void:
 			net.stop_lan_discovery()
 
 
-func _cycle_checkpoint(dir: int) -> void:
-	if settings == null:
-		return
-	var list: Array[int] = settings.get_unlocked_checkpoints()
-	if list.is_empty():
-		return
-	var cur_idx := list.find(settings.selected_start_room)
-	if cur_idx < 0:
-		cur_idx = 0
-	var next_idx := (cur_idx + dir) % list.size()
-	if next_idx < 0:
-		next_idx = list.size() - 1
-	var new_room := list[next_idx]
-	game.call("set_selected_checkpoint", new_room)
-	update_checkpoint_ui()
-
-
 func update_checkpoint_ui() -> void:
-	if not ui.has("btn_cp_val"):
-		return
-	var btn := ui["btn_cp_val"] as Button
 	var cur_room: int = settings.selected_start_room if settings != null else 0
-	btn.text = RoomsI18n.t("menu_checkpoint", [cur_room])
-	var list: Array[int] = settings.get_unlocked_checkpoints() if settings != null else [0]
-	var can_cycle := (list.size() > 1)
-	if ui.has("btn_cp_prev"):
-		(ui["btn_cp_prev"] as Button).disabled = not can_cycle
-	if ui.has("btn_cp_next"):
-		(ui["btn_cp_next"] as Button).disabled = not can_cycle
+	var max_unlocked: int = settings.max_checkpoint_unlocked if settings != null else 0
+	if ui.has("cp_hdr"):
+		(ui["cp_hdr"] as Label).text = RoomsI18n.t("menu_checkpoint", [cur_room]).to_lower()
+	for cp_room: int in [0, 50, 100, 150, 200, 250]:
+		var key := "cp_slot_%d" % cp_room
+		if not ui.has(key):
+			continue
+		var cb := ui[key] as Button
+		var unlocked := (cp_room <= max_unlocked)
+		var selected := (cp_room == cur_room)
+		cb.disabled = not unlocked
+		if selected:
+			cb.text = "[A-%03d]" % cp_room
+			cb.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 1.0))
+			cb.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
+		elif unlocked:
+			cb.text = "A-%03d" % cp_room
+			cb.add_theme_color_override("font_color", Color(0.76, 0.79, 0.85, 0.72))
+			cb.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
+		else:
+			cb.text = "A-%03d" % cp_room
+			cb.add_theme_color_override("font_disabled_color", Color(0.55, 0.58, 0.65, 0.24))
 
 
 func show_main_menu(fresh: bool = false) -> void:
@@ -2389,9 +2445,11 @@ func update_playing_hud(delta: float, hp: int, haste_timer: float, active_modifi
 	elif haste_lbl.visible:
 		haste_lbl.visible = false
 
-	# Reticle & interaction prompt
+	# Reticle (no text prompts)
 	var prompt := ui["prompt_lbl"] as Label
-	var want_prompt := false
+	if prompt != null:
+		prompt.visible = false
+		prompt.modulate.a = 0.0
 	var vp_center := get_viewport().get_visible_rect().size * 0.5
 	var cam := player_ctrl.cam
 
@@ -2399,14 +2457,6 @@ func update_playing_hud(delta: float, hp: int, haste_timer: float, active_modifi
 		interact_ctrl.smart_reticle_target = {}
 		if reticle_ring != null:
 			reticle_ring.visible = false
-		if not player_ctrl.is_action_locked():
-			if player_ctrl.hiding_kind == "under_desk":
-				prompt.text = RoomsI18n.t("prompt_exit_desk")
-			elif player_ctrl.hiding_kind == "fridge":
-				prompt.text = RoomsI18n.t("prompt_exit_fridge")
-			else:
-				prompt.text = RoomsI18n.t("prompt_exit_locker")
-			want_prompt = true
 	else:
 		var interact_tgt := {} if player_ctrl.is_action_locked() else interact_ctrl.find_smart_reticle_target()
 		interact_ctrl.smart_reticle_target = interact_tgt
@@ -2425,8 +2475,6 @@ func update_playing_hud(delta: float, hp: int, haste_timer: float, active_modifi
 				var wp: Vector3 = interact_tgt["world_pos"]
 				if not cam.is_position_behind(wp):
 					tgt_pos = cam.unproject_position(wp)
-			prompt.text = String(interact_tgt["label"])
-			want_prompt = (not settings.mobile_controls_enabled) and not String(interact_tgt["label"]).is_empty()
 
 		if reticle_ring != null:
 			reticle_ring.visible = true
@@ -2440,11 +2488,6 @@ func update_playing_hud(delta: float, hp: int, haste_timer: float, active_modifi
 			reticle_ring.position = reticle_screen_pos - reticle_ring.size * 0.5
 			if absf(reticle_radius - prev_r) > 0.02:
 				reticle_ring.queue_redraw()
-
-	var pr_rate := 12.0 if want_prompt else 8.5
-	if want_prompt or prompt_alpha > 0.005:
-		prompt_alpha = lerpf(prompt_alpha, 1.0 if want_prompt else 0.0, clampf(1.0 - exp(-pr_rate * delta), 0.0, 1.0))
-		prompt.modulate.a = prompt_alpha
 
 	_update_mobile_ui()
 
@@ -2470,5 +2513,5 @@ func _update_mobile_ui() -> void:
 		b_back.visible = false
 		b_light.visible = true
 		b_sprint.visible = true
-		b_gummy.visible = player_ctrl.has_gummy
-		b_reload.visible = (player_ctrl.batteries >= 2 and player_ctrl.std_battery < 149.9)
+		b_gummy.visible = false
+		b_reload.visible = (player_ctrl.active_tool == 0 and player_ctrl.batteries >= 2 and player_ctrl.std_battery < 149.9)

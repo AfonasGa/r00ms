@@ -166,34 +166,47 @@ func backend_label(b: String = "") -> String:
 func setup_environment(world_env: WorldEnvironment, flashlight: SpotLight3D) -> void:
 	var vp := get_viewport()
 	if vp != null:
-		vp.msaa_3d = Viewport.MSAA_DISABLED if render_quality != RenderQuality.HIGH else Viewport.MSAA_2X
+		if render_quality == RenderQuality.HIGH:
+			vp.msaa_3d = Viewport.MSAA_4X
+		elif render_quality == RenderQuality.MEDIUM:
+			vp.msaa_3d = Viewport.MSAA_2X
+		else:
+			vp.msaa_3d = Viewport.MSAA_DISABLED
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.005, 0.007, 0.011)
+	env.background_color = Color(0.005, 0.008, 0.013)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.06, 0.075, 0.10)
-	env.ambient_light_energy = 0.14
+	env.ambient_light_color = Color(0.08, 0.10, 0.14)
+	env.ambient_light_energy = 0.20
 	env.fog_enabled = (render_quality != RenderQuality.MOBILE_OPT)
-	env.fog_light_color = Color(0.008, 0.011, 0.018)
-	env.fog_density = 0.024
+	env.fog_light_color = Color(0.012, 0.016, 0.026)
+	env.fog_density = 0.022
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.05
+	env.tonemap_exposure = 1.14
 	env.tonemap_white = 6.0
+	env.adjustment_enabled = (render_quality != RenderQuality.MOBILE_OPT)
+	env.adjustment_brightness = 1.03
+	env.adjustment_contrast = 1.07
+	env.adjustment_saturation = 1.06
 	env.ssao_enabled = (render_quality == RenderQuality.HIGH)
 	env.ssao_radius = 0.85
 	env.ssao_intensity = 1.65
 	env.ssao_power = 1.6
 	env.glow_enabled = (render_quality != RenderQuality.MOBILE_OPT)
-	env.glow_intensity = 0.82
-	env.glow_bloom = 0.35
-	env.glow_hdr_threshold = 0.85
-	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	env.glow_intensity = 0.62
+	env.glow_bloom = 0.22
+	env.glow_hdr_threshold = 0.92
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
 	world_env.environment = env
 
 	if flashlight != null:
-		flashlight.shadow_enabled = false
-		flashlight.spot_angle_attenuation = 1.4
-		flashlight.spot_attenuation = 1.2
+		flashlight.shadow_enabled = (render_quality != RenderQuality.MOBILE_OPT)
+		flashlight.shadow_bias = 0.05
+		flashlight.shadow_normal_bias = 1.4
+		flashlight.shadow_blur = 1.6
+		flashlight.shadow_reverse_cull_face = true
+		flashlight.spot_angle_attenuation = 1.35
+		flashlight.spot_attenuation = 1.05
 
 
 func apply_render_quality(q: int, world_env: WorldEnvironment, flashlight: SpotLight3D, cam: Camera3D, save_cfg: bool = true) -> void:
@@ -214,34 +227,45 @@ func apply_render_quality(q: int, world_env: WorldEnvironment, flashlight: SpotL
 			env.ssao_enabled = false
 			env.glow_enabled = false
 			env.fog_enabled = false
+			env.adjustment_enabled = false
 	elif render_quality == RenderQuality.MEDIUM:
 		room_vis_radius = 5
 		if vp != null:
-			vp.msaa_3d = Viewport.MSAA_DISABLED
+			vp.msaa_3d = Viewport.MSAA_2X
 			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-			vp.scaling_3d_scale = 0.88
+			vp.scaling_3d_scale = 0.92
 		if flashlight != null:
-			flashlight.shadow_enabled = false
+			flashlight.shadow_enabled = true
+			flashlight.shadow_bias = 0.05
+			flashlight.shadow_normal_bias = 1.4
+			flashlight.shadow_blur = 1.4
+			flashlight.shadow_reverse_cull_face = true
 		if cam != null:
-			cam.far = 65.0
+			cam.far = 68.0
 		if env != null:
 			env.ssao_enabled = false
 			env.glow_enabled = true
 			env.fog_enabled = true
+			env.adjustment_enabled = true
 	else:
 		room_vis_radius = 7
 		if vp != null:
-			vp.msaa_3d = Viewport.MSAA_2X
+			vp.msaa_3d = Viewport.MSAA_4X
 			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 			vp.scaling_3d_scale = 1.0
 		if flashlight != null:
-			flashlight.shadow_enabled = false
+			flashlight.shadow_enabled = true
+			flashlight.shadow_bias = 0.05
+			flashlight.shadow_normal_bias = 1.4
+			flashlight.shadow_blur = 1.8
+			flashlight.shadow_reverse_cull_face = true
 		if cam != null:
 			cam.far = 85.0
 		if env != null:
 			env.ssao_enabled = true
 			env.glow_enabled = true
 			env.fog_enabled = true
+			env.adjustment_enabled = true
 
 	if save_cfg:
 		save_settings()

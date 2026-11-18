@@ -104,6 +104,49 @@ var a075_omni: OmniLight3D = null
 var a075_spot: SpotLight3D = null
 var a075_scan_phase := 0.0
 
+# A-085 (The Breacher / Выселитель) — Smoke Locker Breaker
+var a085_active := false
+var a085_phase := 0 # 0=idle, 1=warning, 2=fly_in, 3=envelop(1.5s), 4=lift_door(2.0s), 5=door_thrown_wait(1.0s), 6=post_throw, 7=evaporate
+var a085_timer := 0.0
+var a085_phase_elapsed := 0.0
+var a085_cooldown := 48.0
+var a085_node: Node3D = null
+var a085_particles: CPUParticles3D = null
+var a085_particles_core: CPUParticles3D = null
+var a085_light: OmniLight3D = null
+var a085_smoke_mat: StandardMaterial3D = null
+var a085_smoke_quad: QuadMesh = null
+var a085_smoke_ramp: Gradient = null
+var a085_tendril_ramp: Gradient = null
+var a085_path: Array[Vector3] = []
+var a085_path_idx := 0
+var a085_passed_player := false
+var a085_target_room_idx := -1
+var a085_center_pos := Vector3.ZERO
+var a085_targets: Array[Dictionary] = []
+var a085_tendril_nodes: Array[Node] = []
+var a085_flying_doors: Array[Dictionary] = []
+var a085_smoke_tex: Texture2D = null
+
+# A-160 (The Mimic / Двойник) — Player Doppelganger
+var a160_active := false
+var a160_phase := 0 # 0=idle, 1=mimic_stand, 2=alert_unmasked, 3=lunge_attack, 4=despawn
+var a160_timer := 0.0
+var a160_phase_elapsed := 0.0
+var a160_cooldown := 55.0
+var a160_node: Node3D = null
+var a160_avatar: DummiAvatar = null
+var a160_room_idx := -1
+var a160_target_name := "Player"
+var a160_stare_timer := 0.0
+var a160_neck_tilt := 0.0
+var a160_orig_pos := Vector3.ZERO
+var a160_lunge_target := Vector3.ZERO
+var a160_lunge_speed := 18.5
+var a160_hit_done := false
+var a160_particles: CPUParticles3D = null
+var a160_banished := false
+
 
 func initialize(
 	p_game: Node3D,
@@ -253,6 +296,136 @@ func _build_world_nodes() -> void:
 	a075_spot.visible = false
 	a075_node.add_child(a075_spot)
 
+	# A-085 (The Breacher) World Node & Volumetric Smoke Particles
+	a085_node = Node3D.new()
+	a085_node.name = "Entity_A085"
+	a085_node.visible = false
+	world_parent.add_child(a085_node)
+
+	a085_smoke_tex = _try_load_tex("res://assets/sprites/a085/regular_smoke_black.png")
+	if a085_smoke_tex == null:
+		a085_smoke_tex = _try_load_tex("res://assets/sprites/a085/regular_smoke_puff.png")
+
+	a085_smoke_mat = StandardMaterial3D.new()
+	a085_smoke_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	a085_smoke_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	a085_smoke_mat.vertex_color_use_as_albedo = true
+	a085_smoke_mat.albedo_texture = a085_smoke_tex
+	a085_smoke_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+
+	a085_smoke_quad = QuadMesh.new()
+	a085_smoke_quad.size = Vector2(1.75, 1.75)
+
+	a085_smoke_ramp = Gradient.new()
+	a085_smoke_ramp.offsets = PackedFloat32Array([0.0, 0.16, 0.72, 1.0])
+	a085_smoke_ramp.colors = PackedColorArray([
+		Color(0.09, 0.09, 0.11, 0.0),
+		Color(0.06, 0.06, 0.08, 0.78),
+		Color(0.11, 0.11, 0.13, 0.50),
+		Color(0.14, 0.14, 0.16, 0.0),
+	])
+
+	a085_tendril_ramp = Gradient.new()
+	a085_tendril_ramp.offsets = PackedFloat32Array([0.0, 0.18, 0.70, 1.0])
+	a085_tendril_ramp.colors = PackedColorArray([
+		Color(0.11, 0.11, 0.13, 0.0),
+		Color(0.08, 0.08, 0.10, 0.38),
+		Color(0.12, 0.12, 0.14, 0.24),
+		Color(0.15, 0.15, 0.17, 0.0),
+	])
+
+	a085_particles = CPUParticles3D.new()
+	a085_particles.mesh = a085_smoke_quad
+	a085_particles.material_override = a085_smoke_mat
+	a085_particles.local_coords = false
+	a085_particles.amount = 54
+	a085_particles.lifetime = 1.25
+	a085_particles.explosiveness = 0.04
+	a085_particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	a085_particles.emission_sphere_radius = 0.85
+	a085_particles.gravity = Vector3(0.0, 0.65, 0.0)
+	a085_particles.direction = Vector3(0.0, 1.0, 0.0)
+	a085_particles.spread = 180.0
+	a085_particles.initial_velocity_min = 0.35
+	a085_particles.initial_velocity_max = 1.15
+	a085_particles.angle_min = -180.0
+	a085_particles.angle_max = 180.0
+	a085_particles.angular_velocity_min = -32.0
+	a085_particles.angular_velocity_max = 32.0
+	a085_particles.scale_amount_min = 1.0
+	a085_particles.scale_amount_max = 1.95
+	a085_particles.color_ramp = a085_smoke_ramp
+	a085_particles.emitting = false
+	a085_node.add_child(a085_particles)
+
+	a085_particles_core = CPUParticles3D.new()
+	a085_particles_core.mesh = a085_smoke_quad
+	a085_particles_core.material_override = a085_smoke_mat
+	a085_particles_core.local_coords = false
+	a085_particles_core.amount = 28
+	a085_particles_core.lifetime = 0.85
+	a085_particles_core.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	a085_particles_core.emission_sphere_radius = 0.45
+	a085_particles_core.gravity = Vector3(0.0, 0.30, 0.0)
+	a085_particles_core.scale_amount_min = 0.85
+	a085_particles_core.scale_amount_max = 1.5
+	a085_particles_core.color_ramp = a085_smoke_ramp
+	a085_particles_core.emitting = false
+	a085_node.add_child(a085_particles_core)
+
+	a085_light = OmniLight3D.new()
+	a085_light.light_color = Color(0.68, 0.74, 0.84)
+	a085_light.light_energy = 1.9
+	a085_light.omni_range = 11.5
+	a085_light.shadow_enabled = false
+	a085_node.add_child(a085_light)
+
+	# A-160 (The Mimic / Двойник)
+	a160_node = Node3D.new()
+	a160_node.name = "Entity_A160"
+	a160_node.visible = false
+	world_parent.add_child(a160_node)
+
+	a160_avatar = DummiAvatar.new()
+	a160_avatar.name = "MimicAvatar"
+	a160_node.add_child(a160_avatar)
+	a160_avatar.setup(
+		room_mgr.assets if room_mgr != null else null,
+		player_ctrl.vm_bulb_on_mat if player_ctrl != null else null,
+		player_ctrl.vm_gummy_on_mat if player_ctrl != null else null,
+		true
+	)
+
+	var a160_quad := QuadMesh.new()
+	a160_quad.size = Vector2(0.32, 0.32)
+	var a160_pmat := StandardMaterial3D.new()
+	a160_pmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	a160_pmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	a160_pmat.albedo_color = Color(0.12, 0.12, 0.16, 0.82)
+	a160_pmat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+
+	var a160_ramp := Gradient.new()
+	a160_ramp.offsets = PackedFloat32Array([0.0, 0.25, 0.75, 1.0])
+	a160_ramp.colors = PackedColorArray([
+		Color(0.2, 0.2, 0.25, 0.0),
+		Color(0.12, 0.12, 0.16, 0.8),
+		Color(0.08, 0.08, 0.11, 0.45),
+		Color(0.04, 0.04, 0.06, 0.0)
+	])
+
+	a160_particles = CPUParticles3D.new()
+	a160_particles.mesh = a160_quad
+	a160_particles.material_override = a160_pmat
+	a160_particles.local_coords = false
+	a160_particles.amount = 32
+	a160_particles.lifetime = 0.85
+	a160_particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	a160_particles.emission_sphere_radius = 0.5
+	a160_particles.gravity = Vector3(0.0, 0.75, 0.0)
+	a160_particles.color_ramp = a160_ramp
+	a160_particles.emitting = false
+	a160_node.add_child(a160_particles)
+
 
 func is_authority() -> bool:
 	return net == null or not net.is_online() or net.is_host
@@ -301,6 +474,9 @@ func reset_for_run() -> void:
 	a90_hits = 0
 	audio.a60_intensity = 0.0
 	_reset_a075_state()
+	a085_flying_doors.clear()
+	_reset_a085_state()
+	_reset_a160_state()
 
 
 func _reset_a075_state() -> void:
@@ -322,6 +498,38 @@ func _reset_a075_state() -> void:
 		fl.visible = false
 
 
+func _clear_a085_tendrils() -> void:
+	for n in a085_tendril_nodes:
+		if is_instance_valid(n):
+			n.queue_free()
+	a085_tendril_nodes.clear()
+
+
+func _reset_a085_state() -> void:
+	a085_active = false
+	a085_phase = 0
+	a085_timer = 0.0
+	a085_phase_elapsed = 0.0
+	a085_cooldown = rng.randf_range(45.0, 80.0) if rng != null else 48.0
+	a085_path.clear()
+	a085_path_idx = 0
+	a085_passed_player = false
+	a085_target_room_idx = -1
+	a085_center_pos = Vector3.ZERO
+	a085_targets.clear()
+	_clear_a085_tendrils()
+	if player_ctrl != null:
+		player_ctrl.hiding_door_lifted = false
+		player_ctrl.a085_grab_locked = false
+	if is_instance_valid(a085_node):
+		a085_node.visible = false
+	if is_instance_valid(a085_particles):
+		a085_particles.emitting = false
+	if is_instance_valid(a085_particles_core):
+		a085_particles_core.emitting = false
+	audio.stop_a085_all()
+
+
 func despawn_all(broadcast: bool = true) -> void:
 	a60_active = false
 	a60_phase = 0
@@ -341,11 +549,16 @@ func despawn_all(broadcast: bool = true) -> void:
 
 	end_a90()
 	_reset_a075_state()
+	a085_flying_doors.clear()
+	_reset_a085_state()
+	_reset_a160_state()
 	if broadcast and net != null and net.is_online():
 		net.broadcast_entity_event({"k": "a60_end"}, true)
 		net.broadcast_entity_event({"k": "a120_end"}, true)
 		net.broadcast_entity_event({"k": "a90_end"}, true)
 		net.broadcast_entity_event({"k": "a075_end"}, true)
+		net.broadcast_entity_event({"k": "a085_end"}, true)
+		net.broadcast_entity_event({"k": "a160_end"}, true)
 
 
 func on_local_death(keep_auth_ent: bool) -> void:
@@ -363,6 +576,7 @@ func on_local_death(keep_auth_ent: bool) -> void:
 		a120_active = false
 		a120_phase = 0
 		a120_substage = 0
+		_reset_a160_state()
 	a60_prime_flicker_active = false
 	if is_instance_valid(a60_node):
 		a60_node.visible = false
@@ -373,6 +587,7 @@ func on_local_death(keep_auth_ent: bool) -> void:
 	a075_active = false
 	a075_phase = 0
 	audio.stop_a075_scan()
+	audio.stop_a160_all()
 	a90_phase = 0
 
 
@@ -399,7 +614,7 @@ func repel_darkness_with_flashlight() -> void:
 
 
 func maybe_spawn_door_entities(room_num: int) -> void:
-	if not is_authority() or a60_active or a120_active:
+	if not is_authority() or a60_active or a120_active or a160_active:
 		return
 	if room_num == 120:
 		spawn_a120()
@@ -407,6 +622,14 @@ func maybe_spawn_door_entities(room_num: int) -> void:
 		var chance_120 := clampf(0.07 + float(room_num - 120) * 0.0006, 0.07, 0.14)
 		if rng.randf() < chance_120:
 			spawn_a120()
+			return
+
+	if room_num == 160:
+		spawn_a160()
+	elif room_num >= 65 and not a085_active:
+		var chance_160 := clampf(0.06 + float(room_num - 65) * 0.0007, 0.06, 0.13)
+		if rng.randf() < chance_160:
+			spawn_a160()
 
 
 func process_spawners(delta: float, active_modifiers: Dictionary) -> void:
@@ -419,7 +642,6 @@ func process_spawners(delta: float, active_modifiers: Dictionary) -> void:
 		if a60_door20_trigger_timer > 0.0:
 			a60_door20_trigger_timer -= delta
 			if a60_door20_trigger_timer <= 0.0:
-				ui_mgr.show_toast("Дверь A-020 заблокирована! Сзади нарастает свирепый рёв A-60... Прячьтесь в шкаф!", 4.0)
 				spawn_a60(false)
 	elif a60_prime_pending_timer > 0.0 and not a60_active and not a120_active:
 		a60_prime_pending_timer -= delta
@@ -582,8 +804,6 @@ func process_darkness_in_hiding(delta: float) -> void:
 			dk_rect.visible = false
 		if not a60_active and not a120_active:
 			player_ctrl.hide_time += delta
-			if player_ctrl.hide_time > 24.0:
-				ui_mgr.show_toast("Пора выходить из укрытия!", 1.2)
 		return
 
 	player_ctrl.hide_time += delta
@@ -761,7 +981,6 @@ func process_entities(delta: float, is_playing: bool, is_dead: bool) -> void:
 				a60_prime_table_burned = true
 				if rng.randf() < 0.90:
 					player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.06)
-					ui_mgr.show_toast("Ожог от A-60' под столом (-20 HP!)", 2.2)
 					game.call("damage_player", 20, "A-60'", Color(0.95, 0.32, 0.14, 0.62), {"distance": d_player, "table_burn": true})
 					return
 
@@ -775,7 +994,6 @@ func process_entities(delta: float, is_playing: bool, is_dead: bool) -> void:
 						if a60_prime_hit_cd <= 0.0:
 							a60_prime_hit_cd = 1.2
 							player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.08)
-							ui_mgr.show_toast("A-60' (Prime) нанёс 35 урона!", 2.4)
 							game.call("damage_player", 35, "A-60'", Color(0.35, 0.90, 1.0, 0.65), {"distance": d_player})
 							return
 					else:
@@ -1076,7 +1294,6 @@ func process_a90(delta: float, active_modifiers: Dictionary) -> void:
 				scare_rect.texture = a90_textures.get("rage")
 				scare_rect.modulate = Color(1.0, 1.0, 1.0, 1.0)
 				scare_rect.visible = true
-			ui_mgr.show_toast("A-90 (Paralysis) нанёс 90 урона! Не двигайтесь вообще!", 2.6)
 			game.call("damage_player", 90, "A-90", Color(0.95, 0.04, 0.04, 0.85), {"a90_moved": moved, "a90_turned": turned, "key": key_press})
 			return
 		elif a90_timer <= 0.0:
@@ -1173,6 +1390,66 @@ func handle_remote_event(msg: Dictionary, is_playing: bool, is_dead: bool) -> bo
 		if pa is Array and (pa as Array).size() >= 3:
 			var arr: Array = pa
 			start_a075_local(Vector3(float(arr[0]), float(arr[1]), float(arr[2])))
+		return true
+	if kind == "a085_spawn":
+		if is_authority():
+			return true
+		var t_room := int(msg.get("room", room_mgr.highest_opened))
+		start_a085_local(t_room)
+		return true
+	if kind == "a085_break":
+		var br_r := int(msg.get("r", -1))
+		var br_l := int(msg.get("l", -1))
+		var r_inst: RoomScene = room_mgr.room_by_idx.get(br_r) as RoomScene
+		if r_inst != null and br_l >= 0 and br_l < r_inst.lockers.size():
+			var ld: Dictionary = r_inst.lockers[br_l]
+			if not bool(ld.get("broken", false)):
+				ld["broken"] = true
+				var dp := ld.get("door_pivot") as Node3D
+				if is_instance_valid(dp):
+					for ch in dp.get_children():
+						if ch is StaticBody3D:
+							(ch as StaticBody3D).collision_layer = 0
+							(ch as StaticBody3D).collision_mask = 0
+					dp.visible = false
+		return true
+	if kind == "a085_end":
+		if not is_authority():
+			_reset_a085_state()
+		return true
+	if kind == "a160_end":
+		_reset_a160_state()
+		return true
+	if kind == "a160_spawn":
+		if is_authority():
+			return true
+		var r_i := int(msg.get("room", room_mgr.highest_opened))
+		var pa: Variant = msg.get("pos")
+		var s_pos := Vector3.ZERO
+		if pa is Array and (pa as Array).size() >= 3:
+			s_pos = Vector3(float(pa[0]), float(pa[1]), float(pa[2]))
+		var s_rot := float(msg.get("rot", 0.0))
+		var t_nm := String(msg.get("name", "Player"))
+		var f_bts: PackedByteArray = msg.get("face", PackedByteArray())
+		var u_gum := bool(msg.get("gummy", false))
+		start_a160_local(r_i, s_pos, s_rot, t_nm, f_bts, u_gum)
+		return true
+	if kind == "a160_alert":
+		if not is_authority():
+			_a160_trigger_alert_local()
+		return true
+	if kind == "a160_lunge":
+		if not is_authority():
+			var l_target := Vector3.ZERO
+			var la: Variant = msg.get("tgt")
+			if la is Array and (la as Array).size() >= 3:
+				l_target = Vector3(float(la[0]), float(la[1]), float(la[2]))
+			_a160_trigger_lunge_local(l_target)
+		return true
+	if kind == "a160_banish":
+		_a160_trigger_banish_local()
+		if is_authority() and net != null and net.is_online():
+			net.broadcast_entity_event({"k": "a160_banish"}, true)
 		return true
 	if is_authority():
 		return false
@@ -1415,11 +1692,9 @@ func _finish_a075_attack() -> void:
 	# Drain 25% of standard flashlight battery (37.5 out of 150s)
 	player_ctrl.std_battery = maxf(player_ctrl.std_battery - 37.5, 0.0)
 	player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.22)
-	ui_mgr.show_toast(RoomsI18n.t("toast_a075_blind"), 3.0)
 	# A-075 one-shots the player with a blinding flash death animation!
+	# Do not broadcast a075_end here so alive teammates finish their scan cleanly.
 	game.call("damage_player", 999, "A-075", Color(1.0, 0.98, 0.90, 0.96), {})
-	if is_authority() and net != null and net.is_online():
-		net.broadcast_entity_event({"k": "a075_end"}, true)
 
 
 func update_a075_flash_fx(delta: float) -> void:
@@ -1437,3 +1712,801 @@ func update_a075_flash_fx(delta: float) -> void:
 		mat.set_shader_parameter("warn_amt", warn_p)
 	elif rect.visible:
 		rect.visible = false
+
+
+# ==============================================================================
+# A-085 (The Breacher / Выселитель) — Smoke Locker Breaker
+# ==============================================================================
+
+func _make_a085_smoke_emitter(parent_node: Node, pos: Vector3, amount: int, lifetime: float, radius: float, scale_min: float, scale_max: float, dir: Vector3 = Vector3.UP, spread: float = 180.0, spd_min: float = 0.4, spd_max: float = 1.2, use_soft_ramp: bool = true) -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.mesh = a085_smoke_quad
+	p.material_override = a085_smoke_mat
+	p.local_coords = false
+	p.amount = amount
+	p.lifetime = lifetime
+	p.explosiveness = 0.04
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = radius
+	p.gravity = Vector3(0.0, 0.45, 0.0)
+	p.direction = dir
+	p.spread = spread
+	p.initial_velocity_min = spd_min
+	p.initial_velocity_max = spd_max
+	p.angle_min = -180.0
+	p.angle_max = 180.0
+	p.angular_velocity_min = -35.0
+	p.angular_velocity_max = 35.0
+	p.scale_amount_min = scale_min
+	p.scale_amount_max = scale_max
+	p.color_ramp = a085_tendril_ramp if use_soft_ramp else a085_smoke_ramp
+	p.position = pos
+	p.emitting = true
+	parent_node.add_child(p)
+	a085_tendril_nodes.append(p)
+	return p
+
+
+func _is_locker_occupied_by_anyone(r_idx: int, l_idx: int) -> bool:
+	var local_here := (
+		player_ctrl != null
+		and player_ctrl.is_hiding
+		and player_ctrl.hiding_kind == "locker"
+		and player_ctrl.hiding_room_idx == r_idx
+		and player_ctrl.hiding_locker_idx == l_idx
+	)
+	var remote_here := (avatar_mgr != null and avatar_mgr.is_locker_occupied(r_idx, l_idx))
+	return local_here or remote_here
+
+
+func spawn_a085() -> void:
+	if a085_active or room_mgr.rooms.is_empty():
+		return
+	var last_idx := room_mgr.highest_opened
+	start_a085_local(last_idx)
+	if is_authority() and net != null and net.is_online():
+		net.broadcast_entity_event({"k": "a085_spawn", "room": a085_target_room_idx}, true)
+
+
+func start_a085_local(target_idx: int) -> void:
+	if a085_active or room_mgr.rooms.is_empty():
+		return
+
+	# Always targets the LAST opened room (counterplay: hide in the second-to-last room!)
+	var last_idx := target_idx
+	var target_r: RoomScene = room_mgr.room_by_idx.get(last_idx) as RoomScene
+	if target_r == null:
+		target_r = room_mgr.rooms[-1]
+		last_idx = target_r.index
+
+	var min_room_idx := room_mgr.rooms[0].index
+	var start_idx := maxi(min_room_idx, last_idx - 4)
+	var start_r: RoomScene = room_mgr.room_by_idx.get(start_idx) as RoomScene
+	if start_r == null:
+		start_r = room_mgr.rooms[0]
+		start_idx = start_r.index
+
+	a085_target_room_idx = last_idx
+	a085_center_pos = target_r.center_pos + Vector3(0.0, 1.35, 0.0)
+
+	a085_path.clear()
+	a085_path.append(start_r.center_pos - start_r.in_dir * 16.0 + Vector3(0.0, 1.35, 0.0))
+	for r in room_mgr.rooms:
+		if r.index >= start_idx and r.index <= last_idx:
+			a085_path.append(r.center_pos + Vector3(0.0, 1.35, 0.0))
+			if r.index < last_idx:
+				a085_path.append(r.exit_pos + Vector3(0.0, 1.35, 0.0))
+
+	if a085_path.size() < 2:
+		return
+
+	a085_active = true
+	a085_phase = 1 # warning rumble before flying in
+	a085_timer = 2.0
+	a085_phase_elapsed = 0.0
+	a085_path_idx = 0
+	a085_passed_player = false
+	a085_targets.clear()
+	_clear_a085_tendrils()
+
+	a085_node.position = a085_path[0]
+	a085_node.visible = true
+	if is_instance_valid(a085_particles):
+		a085_particles.emitting = true
+	if is_instance_valid(a085_particles_core):
+		a085_particles_core.emitting = true
+	if is_instance_valid(a085_light):
+		a085_light.light_energy = 1.9
+
+	audio.play_a085_warning()
+
+
+func _a085_begin_envelop_last_room() -> void:
+	a085_phase = 3
+	a085_phase_elapsed = 0.0
+	a085_targets.clear()
+	_clear_a085_tendrils()
+
+	var target_r: RoomScene = room_mgr.room_by_idx.get(a085_target_room_idx) as RoomScene
+	if target_r == null:
+		_a085_begin_evaporate()
+		return
+
+	# Scan ONLY occupied lockers in the LAST room
+	for li in range(target_r.lockers.size()):
+		var ld: Dictionary = target_r.lockers[li]
+		if String(ld.get("kind", "")) != "locker":
+			continue
+		if bool(ld.get("broken", false)):
+			continue
+		if not _is_locker_occupied_by_anyone(target_r.index, li):
+			continue
+		var lnode := ld.get("node") as Node3D
+		var dp := ld.get("door_pivot") as Node3D
+		if not is_instance_valid(lnode):
+			continue
+		var locker_world_center := lnode.global_transform * Vector3(0.0, 1.05, 0.95)
+		var to_locker := (locker_world_center - a085_center_pos)
+		var stream_dir := to_locker.normalized() if to_locker.length() > 0.05 else Vector3.FORWARD
+
+		# 1. Smoke stream stretching from center of room toward this occupied locker
+		var mid_pos := a085_center_pos.lerp(locker_world_center, 0.42)
+		var stream_em := _make_a085_smoke_emitter(world_parent, mid_pos, 26, 0.85, 0.40, 0.65, 1.25, stream_dir, 20.0, 2.2, 4.2, true)
+		# 2. Wispy enveloping smoke coiling around the locker edges (without blinding the player camera!)
+		var wrap_left := _make_a085_smoke_emitter(world_parent, lnode.global_transform * Vector3(-0.55, 0.95, 0.62), 18, 0.95, 0.32, 0.48, 0.92, Vector3.UP, 140.0, 0.18, 0.65, true)
+		var wrap_right := _make_a085_smoke_emitter(world_parent, lnode.global_transform * Vector3(0.55, 0.95, 0.62), 18, 0.95, 0.32, 0.48, 0.92, Vector3.UP, 140.0, 0.18, 0.65, true)
+
+		# Trap local player inside once A-085 envelops their occupied locker so they can't freely walk out and dodge damage!
+		if player_ctrl != null and player_ctrl.is_hiding and player_ctrl.hiding_room_idx == target_r.index and player_ctrl.hiding_locker_idx == li:
+			player_ctrl.a085_grab_locked = true
+
+		a085_targets.append({
+			"room_idx": target_r.index,
+			"locker_idx": li,
+			"node": lnode,
+			"door_pivot": dp,
+			"locker_dict": ld,
+			"door_orig_pos": ld.get("door_orig_pos", dp.position if is_instance_valid(dp) else Vector3.ZERO),
+			"lift_pos": (ld.get("door_orig_pos", dp.position) + Vector3(0.18, 0.92, 1.55)) if is_instance_valid(dp) else Vector3.ZERO,
+			"door_smoke": null,
+			"wrap_emitters": [stream_em, wrap_left, wrap_right],
+		})
+
+	if a085_targets.is_empty():
+		# Nobody hiding in a locker in the last room -> swirl briefly then evaporate!
+		a085_timer = 1.25
+	else:
+		# Envelop occupied locker(s) for 1.5 seconds before grabbing & lifting the door
+		a085_timer = 1.5
+
+
+func _a085_begin_lift_doors() -> void:
+	a085_phase = 4
+	a085_phase_elapsed = 0.0
+	a085_timer = 2.0 # Holds door lifted for 2.0 seconds before checking if player is still inside
+	audio.play_door_open()
+
+	for t in a085_targets:
+		var dp := t.get("door_pivot") as Node3D
+		var r_idx := int(t.get("room_idx", -1))
+		var l_idx := int(t.get("locker_idx", -1))
+		if is_instance_valid(dp):
+			# Disable door StaticBody colliders cleanly before moving/lifting
+			for ch in dp.get_children():
+				if ch is StaticBody3D:
+					var sb := ch as StaticBody3D
+					sb.collision_layer = 0
+					sb.collision_mask = 0
+			var lift_pos: Vector3 = t["lift_pos"]
+			var tw := dp.create_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			tw.tween_property(dp, "position", lift_pos, 0.65)
+			tw.tween_property(dp, "rotation", Vector3(-0.34, 0.45, 0.14), 0.65)
+			# Attach wispy smoke coiling around the levitating door's edges so the door remains clearly visible!
+			var door_smoke := _make_a085_smoke_emitter(dp, Vector3(0.42, 1.15, 0.15), 14, 0.70, 0.38, 0.35, 0.68, Vector3.UP, 160.0, 0.15, 0.50, true)
+			t["door_smoke"] = door_smoke
+
+		# Fade away dark locker mask so the player inside clearly sees the door lift up & A-085 hovering in front!
+		if player_ctrl != null and player_ctrl.is_hiding and player_ctrl.hiding_room_idx == r_idx and player_ctrl.hiding_locker_idx == l_idx:
+			player_ctrl.hiding_door_lifted = true
+			player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.05)
+
+
+func _a085_check_and_throw_doors() -> void:
+	var any_player_caught := false
+	var target_r: RoomScene = room_mgr.room_by_idx.get(a085_target_room_idx) as RoomScene
+	var room_center := target_r.center_pos if target_r != null else a085_center_pos
+
+	for t in a085_targets:
+		var r_idx := int(t.get("room_idx", -1))
+		var l_idx := int(t.get("locker_idx", -1))
+		var ld: Dictionary = t["locker_dict"]
+		var dp := t.get("door_pivot") as Node3D
+		var lnode := t.get("node") as Node3D
+		var still_here := _is_locker_occupied_by_anyone(r_idx, l_idx)
+		t["caught"] = still_here
+
+		var door_smoke := t.get("door_smoke") as CPUParticles3D
+		if is_instance_valid(door_smoke):
+			door_smoke.emitting = false
+
+		if still_here:
+			any_player_caught = true
+			ld["broken"] = true
+			if is_authority() and net != null and net.is_online():
+				net.broadcast_entity_event({"k": "a085_break", "r": r_idx, "l": l_idx}, true)
+			if is_instance_valid(dp) and is_instance_valid(lnode):
+				# Throw the door violently sideways & across the room!
+				var fwd := lnode.global_transform.basis.z.normalized()
+				var side := lnode.global_transform.basis.x.normalized() * (1.0 if (rng != null and rng.randf() < 0.5) else -1.0)
+				var throw_dir := (fwd * 0.72 + side * 0.78).normalized()
+				var vel := throw_dir * (rng.randf_range(9.0, 12.5) if rng != null else 10.5) + Vector3(0.0, 3.2, 0.0)
+				var ang_vel := Vector3(
+					rng.randf_range(5.0, 8.5) if rng != null else 6.5,
+					rng.randf_range(-7.5, 7.5) if rng != null else 5.0,
+					rng.randf_range(-6.0, 6.0) if rng != null else -4.5
+				)
+				a085_flying_doors.append({
+					"door_pivot": dp,
+					"vel": vel,
+					"ang_vel": ang_vel,
+					"room_center": room_center,
+					"bounces": 0,
+					"active": true,
+				})
+			# Lock local player during the 1.0s pause before launching them
+			if player_ctrl != null and player_ctrl.is_hiding and player_ctrl.hiding_room_idx == r_idx and player_ctrl.hiding_locker_idx == l_idx:
+				player_ctrl.a085_grab_locked = true
+				player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.14)
+		else:
+			# Player escaped in time -> drop the lifted door down to the floor
+			ld["broken"] = true
+			if is_instance_valid(dp) and is_instance_valid(lnode):
+				var fwd := lnode.global_transform.basis.z.normalized()
+				a085_flying_doors.append({
+					"door_pivot": dp,
+					"vel": fwd * 1.4 + Vector3(0.0, -0.5, 0.0),
+					"ang_vel": Vector3(2.8, 0.6, 0.4),
+					"room_center": room_center,
+					"bounces": 1,
+					"active": true,
+				})
+
+	if any_player_caught:
+		audio.play_a085_door_slam()
+		a085_phase = 5
+		a085_phase_elapsed = 0.0
+		a085_timer = 1.0 # 1.0 second after throwing the door -> throw the player!
+		if net != null and net.is_online():
+			net.broadcast_entity_event({"k": "a085_door_throw"}, true)
+	else:
+		_a085_begin_evaporate()
+
+
+func _a085_throw_caught_players() -> void:
+	var target_r: RoomScene = room_mgr.room_by_idx.get(a085_target_room_idx) as RoomScene
+	var room_center := target_r.center_pos if target_r != null else a085_center_pos
+
+	for t in a085_targets:
+		if not bool(t.get("caught", false)):
+			continue
+		var r_idx := int(t.get("room_idx", -1))
+		var l_idx := int(t.get("locker_idx", -1))
+		if player_ctrl != null and player_ctrl.is_hiding and player_ctrl.hiding_room_idx == r_idx and player_ctrl.hiding_locker_idx == l_idx:
+			# Pick a random destination spot across the room!
+			var exit_origin := player_ctrl.locker_exit
+			var fwd := player_ctrl.locker_fwd.normalized()
+			var rand_target := room_center
+			for _attempt in range(8):
+				var cand := room_center + Vector3(
+					rng.randf_range(-2.8, 2.8) if rng != null else 1.8,
+					0.0,
+					rng.randf_range(-2.8, 2.8) if rng != null else -1.8
+				)
+				var to_cand := Vector3(cand.x - exit_origin.x, 0.0, cand.z - exit_origin.z)
+				if to_cand.length() > 2.4 and to_cand.normalized().dot(fwd) > 0.35:
+					rand_target = cand
+					break
+			var horiz := Vector3(rand_target.x - exit_origin.x, 0.0, rand_target.z - exit_origin.z)
+			if horiz.length() < 1.5 or horiz.normalized().dot(fwd) < 0.35:
+				horiz = (fwd + Vector3(rng.randf_range(-0.55, 0.55) if rng != null else 0.35, 0.0, rng.randf_range(-0.55, 0.55) if rng != null else -0.35)).normalized() * 4.5
+			var launch_spd := clampf(horiz.length() * 2.55, 10.5, 14.5)
+			var launch_vel := horiz.normalized() * launch_spd + Vector3(0.0, 5.2, 0.0)
+
+			audio.play_a085_pass()
+			player_ctrl.force_eject_from_locker_breach(launch_vel, ui_mgr, self)
+			game.call("damage_player", 90, "A-085", Color(0.92, 0.12, 0.12, 0.88), {"a85_locker_breach": true})
+			if net != null and net.is_online():
+				net.broadcast_entity_event({"k": "a085_slam"}, true)
+
+	a085_phase = 6
+	a085_phase_elapsed = 0.0
+	a085_timer = 0.55
+
+
+func _a085_begin_evaporate() -> void:
+	a085_phase = 7
+	a085_phase_elapsed = 0.0
+	a085_timer = 1.85
+	if is_instance_valid(a085_particles):
+		a085_particles.emitting = false
+	if is_instance_valid(a085_particles_core):
+		a085_particles_core.emitting = false
+	for n in a085_tendril_nodes:
+		if is_instance_valid(n) and n is CPUParticles3D:
+			(n as CPUParticles3D).emitting = false
+	if player_ctrl != null:
+		player_ctrl.hiding_door_lifted = false
+		player_ctrl.a085_grab_locked = false
+
+
+func _update_a085_flying_doors(delta: float) -> void:
+	if a085_flying_doors.is_empty():
+		return
+	var keep: Array[Dictionary] = []
+	for d in a085_flying_doors:
+		var dp := d.get("door_pivot") as Node3D
+		if not is_instance_valid(dp) or not bool(d.get("active", false)):
+			continue
+		var vel: Vector3 = d["vel"]
+		var ang_vel: Vector3 = d["ang_vel"]
+		var r_center: Vector3 = d["room_center"]
+
+		vel.y -= 17.5 * delta
+		var next_pos := dp.global_position + vel * delta
+
+		# Bounce gently off room walls so the door stays inside the room
+		var dx := next_pos.x - r_center.x
+		var dz := next_pos.z - r_center.z
+		if absf(dx) > 3.25:
+			next_pos.x = r_center.x + signf(dx) * 3.25
+			vel.x = -vel.x * 0.42
+			vel.z *= 0.72
+		if absf(dz) > 3.25:
+			next_pos.z = r_center.z + signf(dz) * 3.25
+			vel.z = -vel.z * 0.42
+			vel.x *= 0.72
+
+		if next_pos.y <= 0.08:
+			next_pos.y = 0.08
+			var bounces := int(d["bounces"])
+			if bounces < 1 and absf(vel.y) > 2.2:
+				vel.y = absf(vel.y) * 0.34
+				vel.x *= 0.55
+				vel.z *= 0.55
+				ang_vel *= 0.45
+				d["bounces"] = bounces + 1
+			else:
+				# Settle flat onto the room floor
+				dp.global_position = next_pos
+				dp.rotation = Vector3(PI * 0.5, dp.rotation.y, 0.0)
+				d["active"] = false
+				continue
+
+		dp.global_position = next_pos
+		dp.rotation += ang_vel * delta
+		d["vel"] = vel
+		d["ang_vel"] = ang_vel
+		keep.append(d)
+	a085_flying_doors = keep
+
+
+func process_a085(delta: float, is_playing: bool, is_dead: bool, active_modifiers: Dictionary) -> void:
+	_update_a085_flying_doors(delta)
+
+	if not a085_active:
+		# Only host/authority triggers random A-085 spawns so all peers stay 100% synced!
+		if not is_authority():
+			return
+		# Allow A-085 to coexist with A-60 / A-120 so second-to-last room counterplay applies!
+		if room_mgr.highest_opened < 85 or a90_phase != 0 or a075_active:
+			return
+		a085_cooldown -= delta
+		if a085_cooldown <= 0.0:
+			a085_cooldown = rng.randf_range(45.0, 80.0) if rng != null else 55.0
+			spawn_a085()
+		return
+
+	a085_node.visible = not is_dead
+	a085_phase_elapsed += delta
+
+	if a085_phase == 1:
+		# Phase 1: Sub-bass warning rumble approaching from behind
+		a085_timer -= delta
+		var rumble_shake := clampf(1.0 - a085_timer / 2.0, 0.0, 1.0) * 0.032
+		player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, rumble_shake)
+		if a085_timer <= 0.0:
+			a085_phase = 2
+			a085_phase_elapsed = 0.0
+			a085_path_idx = 1
+
+	elif a085_phase == 2:
+		# Phase 2: Flies down the hallway & stops in the center of the LAST room
+		var dist_to_final := a085_node.position.distance_to(a085_center_pos)
+		var speed := clampf(dist_to_final * 4.5, 6.5, 34.0)
+		if a085_path_idx < a085_path.size():
+			var tgt := a085_path[a085_path_idx]
+			var to_tgt := tgt - a085_node.position
+			var dist := to_tgt.length()
+			var step := speed * delta
+			if dist <= step or dist < 0.2:
+				a085_node.position = tgt
+				a085_path_idx += 1
+				if a085_path_idx >= a085_path.size():
+					a085_node.position = a085_center_pos
+					_a085_begin_envelop_last_room()
+			else:
+				a085_node.position += to_tgt.normalized() * step
+
+		var dist_to_player := a085_node.global_position.distance_to(cam.global_position)
+		if dist_to_player < 6.5 and not a085_passed_player:
+			a085_passed_player = true
+			audio.play_a085_pass()
+			player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.08)
+
+	elif a085_phase == 3:
+		# Phase 3: Hovering at center of last room, enveloping occupied lockers (1.5s)
+		a085_node.position = a085_center_pos + Vector3(0.0, sin(a085_phase_elapsed * 2.8) * 0.14, 0.0)
+		if not a085_targets.is_empty() and player_ctrl.is_hiding and player_ctrl.hiding_room_idx == a085_target_room_idx:
+			player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.024)
+		a085_timer -= delta
+		if a085_timer <= 0.0:
+			if a085_targets.is_empty():
+				_a085_begin_evaporate()
+			else:
+				_a085_begin_lift_doors()
+
+	elif a085_phase == 4:
+		# Phase 4: Holds the locker door(s) lifted in mid-air (2.0s)
+		a085_node.position = a085_center_pos + Vector3(0.0, sin(a085_phase_elapsed * 3.5) * 0.16, 0.0)
+		if a085_phase_elapsed > 0.65:
+			for t in a085_targets:
+				var dp := t.get("door_pivot") as Node3D
+				if is_instance_valid(dp):
+					var base_lift: Vector3 = t["lift_pos"]
+					dp.position.y = base_lift.y + sin(a085_phase_elapsed * 7.5) * 0.045
+					dp.rotation.z = 0.08 + cos(a085_phase_elapsed * 6.0) * 0.035
+		if player_ctrl.is_hiding and player_ctrl.hiding_room_idx == a085_target_room_idx:
+			player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.032)
+		a085_timer -= delta
+		if a085_timer <= 0.0:
+			_a085_check_and_throw_doors()
+
+	elif a085_phase == 5:
+		# Phase 5: Door thrown! Smoke surges toward the exposed player for 1.0s before throwing them
+		if not a085_targets.is_empty():
+			var first_lnode := a085_targets[0].get("node") as Node3D
+			if is_instance_valid(first_lnode):
+				var surge_tgt := a085_center_pos.lerp(first_lnode.global_transform * Vector3(0.0, 1.35, 1.25), clampf(a085_phase_elapsed / 0.85, 0.0, 1.0))
+				a085_node.position = a085_node.position.lerp(surge_tgt, minf(delta * 5.5, 1.0))
+		if player_ctrl.is_hiding and player_ctrl.hiding_room_idx == a085_target_room_idx:
+			player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.085)
+		a085_timer -= delta
+		if a085_timer <= 0.0:
+			_a085_throw_caught_players()
+
+	elif a085_phase == 6:
+		# Phase 6: Brief recoil back to center after throwing player, then evaporate
+		a085_node.position = a085_node.position.lerp(a085_center_pos + Vector3(0.0, 0.35, 0.0), minf(delta * 3.0, 1.0))
+		a085_timer -= delta
+		if a085_timer <= 0.0:
+			_a085_begin_evaporate()
+
+	elif a085_phase == 7:
+		# Phase 7: Simply evaporates cleanly into thin air
+		a085_timer -= delta
+		var fade := clampf(a085_timer / 1.85, 0.0, 1.0)
+		if is_instance_valid(a085_light):
+			a085_light.light_energy = 1.15 * fade * fade
+		if a085_timer <= 0.0:
+			_reset_a085_state()
+			if is_authority() and net != null and net.is_online():
+				net.broadcast_entity_event({"k": "a085_end"}, true)
+
+
+# ==============================================================================
+# A-160 (The Mimic / Двойник) Implementation
+# ==============================================================================
+
+func _reset_a160_state() -> void:
+	a160_active = false
+	a160_phase = 0
+	a160_timer = 0.0
+	a160_phase_elapsed = 0.0
+	a160_cooldown = rng.randf_range(50.0, 95.0) if rng != null else 55.0
+	a160_room_idx = -1
+	a160_stare_timer = 0.0
+	a160_neck_tilt = 0.0
+	a160_orig_pos = Vector3.ZERO
+	a160_lunge_target = Vector3.ZERO
+	a160_hit_done = false
+	a160_banished = false
+	if is_instance_valid(a160_node):
+		a160_node.visible = false
+	if is_instance_valid(a160_avatar):
+		if is_instance_valid(a160_avatar.body_mesh):
+			a160_avatar.body_mesh.transparency = 0.0
+		if is_instance_valid(a160_avatar.spot_light):
+			a160_avatar.spot_light.visible = false
+	if is_instance_valid(a160_particles):
+		a160_particles.emitting = false
+	audio.stop_a160_all()
+
+
+func spawn_a160(target_room: int = -1) -> void:
+	if a160_active or room_mgr.rooms.is_empty():
+		return
+	var r_idx := target_room if target_room >= 0 else room_mgr.highest_opened
+	var r: RoomScene = room_mgr.room_by_idx.get(r_idx) as RoomScene
+	if r == null:
+		return
+
+	var t_name := "Player"
+	var face_bytes := PackedByteArray()
+	var uses_gummy := false
+
+	var remote_ids: Array = avatar_mgr.remote_players.keys() if avatar_mgr != null else []
+	if not remote_ids.is_empty() and (rng == null or rng.randf() < 0.75):
+		var pick_id: Variant = remote_ids[(rng.randi() if rng != null else 0) % remote_ids.size()]
+		var rp: Dictionary = avatar_mgr.remote_players.get(pick_id, {})
+		var lbl: Label3D = rp.get("lbl") as Label3D
+		if lbl != null and not lbl.text.is_empty():
+			t_name = lbl.text
+		face_bytes = avatar_mgr.peer_face_bytes.get(pick_id, PackedByteArray())
+	else:
+		t_name = net.persona_name if (net != null and not net.persona_name.is_empty()) else "Player"
+		if ui_mgr != null and ui_mgr.face_editor != null:
+			face_bytes = ui_mgr.face_editor.get_current_png_bytes()
+		uses_gummy = (player_ctrl != null and player_ctrl.has_gummy)
+
+	var spawn_pos: Vector3
+	if is_instance_valid(r.exit_anchor):
+		spawn_pos = r.exit_anchor.global_position - r.out_dir * 1.85 + Vector3.UP * 0.02
+	else:
+		spawn_pos = r.center_pos + r.out_dir * 3.6 + Vector3.UP * 0.02
+	var rot_y := atan2(r.out_dir.x, r.out_dir.z)
+
+	start_a160_local(r_idx, spawn_pos, rot_y, t_name, face_bytes, uses_gummy)
+
+	if is_authority() and net != null and net.is_online():
+		net.broadcast_entity_event({
+			"k": "a160_spawn",
+			"room": r_idx,
+			"pos": [spawn_pos.x, spawn_pos.y, spawn_pos.z],
+			"rot": rot_y,
+			"name": t_name,
+			"face": face_bytes,
+			"gummy": uses_gummy
+		}, true)
+
+
+func start_a160_local(r_idx: int, spawn_pos: Vector3, rot_y: float, t_name: String, face_bytes: PackedByteArray, uses_gummy: bool) -> void:
+	a160_active = true
+	a160_room_idx = r_idx
+	a160_phase = 1
+	a160_timer = 0.0
+	a160_phase_elapsed = 0.0
+	a160_stare_timer = 0.0
+	a160_neck_tilt = 0.0
+	a160_orig_pos = spawn_pos
+	a160_target_name = t_name
+	a160_hit_done = false
+	a160_banished = false
+
+	if is_instance_valid(a160_node):
+		a160_node.global_position = spawn_pos
+		a160_node.rotation.y = rot_y
+		a160_node.visible = true
+
+	if is_instance_valid(a160_avatar):
+		if is_instance_valid(a160_avatar.body_mesh):
+			a160_avatar.body_mesh.transparency = 0.0
+		if is_instance_valid(a160_avatar.name_label):
+			a160_avatar.name_label.text = t_name
+			a160_avatar.name_label.visible = true
+			a160_avatar.name_label.modulate = Color(0.88, 0.94, 1.0)
+
+		if face_bytes.size() > 0:
+			var img := Image.new()
+			if img.load_png_from_buffer(face_bytes) == OK:
+				var tex := ImageTexture.create_from_image(img)
+				a160_avatar.set_face_texture(tex)
+		elif ui_mgr != null and ui_mgr.face_editor != null:
+			var tex := ui_mgr.face_editor.get_current_texture()
+			a160_avatar.set_face_texture(tex)
+
+		if is_instance_valid(a160_avatar.spot_light):
+			a160_avatar.spot_light.visible = true
+			if uses_gummy:
+				a160_avatar.spot_light.light_color = Color(0.35, 1.0, 0.52)
+			else:
+				a160_avatar.spot_light.light_color = Color(1.0, 0.96, 0.88)
+			a160_avatar.spot_light.light_energy = 2.4
+
+		a160_avatar.update_pose(0.016, 0.0, 0.0, 0.0, 0.0, 0.0, false, false, true, false, false, 0.0, uses_gummy)
+
+	if is_instance_valid(a160_particles):
+		a160_particles.emitting = false
+
+
+func _a160_trigger_alert_local() -> void:
+	if not a160_active or a160_phase != 1:
+		return
+	a160_phase = 2
+	a160_timer = 0.65
+	a160_phase_elapsed = 0.0
+	audio.play_a160_alert()
+	player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.045)
+	if is_instance_valid(a160_particles):
+		a160_particles.emitting = true
+	if is_instance_valid(a160_avatar) and is_instance_valid(a160_avatar.name_label):
+		a160_avatar.name_label.modulate = Color(0.9, 0.2, 0.2)
+
+
+func _a160_trigger_lunge_local(target_pos: Vector3) -> void:
+	if not a160_active or (a160_phase != 1 and a160_phase != 2):
+		return
+	a160_phase = 3
+	a160_lunge_target = target_pos
+	a160_timer = 1.35
+	a160_phase_elapsed = 0.0
+	audio.play_a160_lunge()
+
+
+func _a160_trigger_banish_local() -> void:
+	if not a160_active or a160_banished or a160_phase == 4:
+		return
+	a160_banished = true
+	a160_phase = 4
+	a160_timer = 0.95
+	audio.play_a160_banish()
+	if is_instance_valid(a160_particles):
+		a160_particles.emitting = true
+	if is_instance_valid(a160_avatar) and is_instance_valid(a160_avatar.spot_light):
+		a160_avatar.spot_light.visible = false
+	player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.035)
+
+
+func _a160_dissolve() -> void:
+	if not a160_active or a160_phase == 4:
+		return
+	a160_phase = 4
+	a160_timer = 0.75
+	if is_instance_valid(a160_particles):
+		a160_particles.emitting = true
+
+
+func process_a160(delta: float, is_playing: bool, is_dead: bool, _active_modifiers: Dictionary) -> void:
+	if not a160_active:
+		if not is_authority():
+			return
+		if room_mgr.highest_opened < 65 or a60_active or a120_active or a085_active or a90_phase != 0 or a075_active:
+			return
+		a160_cooldown -= delta
+		if a160_cooldown <= 0.0:
+			a160_cooldown = rng.randf_range(50.0, 95.0) if rng != null else 60.0
+			spawn_a160()
+		return
+
+	a160_node.visible = not is_dead and a160_phase > 0
+	a160_phase_elapsed += delta
+
+	if is_playing and not is_dead and player_ctrl != null and player_ctrl.has_gummy and player_ctrl.active_tool == 1 and not player_ctrl.is_covering_gummy:
+		if player_ctrl.vm_shake_time > 0.05 and a160_phase in [1, 2, 3]:
+			var to_ent := (a160_node.global_position + Vector3.UP * 1.0) - cam.global_position
+			var dist := to_ent.length()
+			if dist < 11.5:
+				var fwd := -cam.global_transform.basis.z
+				if fwd.dot(to_ent.normalized()) > 0.50:
+					_a160_trigger_banish_local()
+					if is_authority() and net != null and net.is_online():
+						net.broadcast_entity_event({"k": "a160_banish"}, true)
+					elif not is_authority() and net != null and net.is_online():
+						net.send_entity_event({"k": "a160_banish"}, true)
+					return
+
+	if a160_phase == 1:
+		if is_instance_valid(a160_avatar):
+			a160_avatar.update_pose(delta, a160_phase_elapsed, 0.0, 0.0, 0.0, 0.0, false, false, true, false, false, 0.0, false)
+			if a160_avatar.skeleton != null and a160_avatar._b_head >= 0:
+				var local_to_cam := a160_node.to_local(cam.global_position)
+				var target_yaw := clampf(atan2(-local_to_cam.x, -local_to_cam.z), -1.35, 1.35)
+				var dist_xz := Vector2(local_to_cam.x, local_to_cam.z).length()
+				var target_pitch := clampf(atan2(local_to_cam.y - 1.48, maxf(dist_xz, 0.1)), -0.6, 0.6)
+				var q_track := Quaternion.from_euler(Vector3(target_pitch, target_yaw, 0.0))
+				a160_avatar.skeleton.set_bone_pose_rotation(a160_avatar._b_head, q_track)
+
+		if room_mgr.current_room_idx > a160_room_idx:
+			_a160_dissolve()
+			return
+
+		if is_authority():
+			var p_pos := player_body.global_position
+			var ent_pos := a160_node.global_position
+			var dist := p_pos.distance_to(ent_pos)
+
+			if dist < 3.0:
+				_a160_trigger_alert_local()
+				if net != null and net.is_online():
+					net.broadcast_entity_event({"k": "a160_alert"}, true)
+				return
+
+			var to_ent := (ent_pos + Vector3.UP * 1.0) - cam.global_position
+			var fwd := -cam.global_transform.basis.z
+			if player_ctrl.light_on and dist < 16.0 and fwd.dot(to_ent.normalized()) > 0.82:
+				a160_stare_timer += delta
+				if a160_stare_timer >= 1.6:
+					_a160_trigger_alert_local()
+					if net != null and net.is_online():
+						net.broadcast_entity_event({"k": "a160_alert"}, true)
+					return
+			else:
+				a160_stare_timer = maxf(a160_stare_timer - delta * 0.8, 0.0)
+
+	elif a160_phase == 2:
+		a160_timer -= delta
+		a160_neck_tilt = lerpf(a160_neck_tilt, 0.85, minf(delta * 20.0, 1.0))
+		if is_instance_valid(a160_avatar) and a160_avatar.skeleton != null and a160_avatar._b_head >= 0:
+			var head_q := Quaternion.from_euler(Vector3(0.0, 0.0, a160_neck_tilt))
+			a160_avatar.skeleton.set_bone_pose_rotation(a160_avatar._b_head, head_q)
+
+		if is_instance_valid(a160_avatar) and is_instance_valid(a160_avatar.spot_light):
+			a160_avatar.spot_light.light_energy = 3.2 if randf() < 0.6 else 0.0
+			a160_avatar.spot_light.light_color = Color(0.95, 0.15, 0.15)
+
+		player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.04)
+
+		if a160_timer <= 0.0:
+			if is_authority():
+				var l_target := player_body.global_position
+				_a160_trigger_lunge_local(l_target)
+				if net != null and net.is_online():
+					net.broadcast_entity_event({"k": "a160_lunge", "tgt": [l_target.x, l_target.y, l_target.z]}, true)
+
+	elif a160_phase == 3:
+		a160_timer -= delta
+		var to_tgt := (a160_lunge_target - a160_node.global_position)
+		to_tgt.y = 0.0
+		var dist := to_tgt.length()
+		if dist > 0.12:
+			var move_step := to_tgt.normalized() * a160_lunge_speed * delta
+			if move_step.length() > dist:
+				move_step = to_tgt
+			a160_node.global_position += move_step
+			a160_node.rotation.y = atan2(-to_tgt.x, -to_tgt.z)
+
+		if is_instance_valid(a160_avatar):
+			a160_avatar.update_pose(delta, a160_phase_elapsed * 4.0, a160_phase_elapsed * 16.0, 1.0, 1.0, 0.0, false, false, false, false, false, 0.0, false)
+			if a160_avatar.skeleton != null:
+				if a160_avatar._b_arm_l >= 0:
+					a160_avatar.skeleton.set_bone_pose_rotation(a160_avatar._b_arm_l, Quaternion.from_euler(Vector3(-1.75, -0.3, 0.1)))
+				if a160_avatar._b_arm_r >= 0:
+					a160_avatar.skeleton.set_bone_pose_rotation(a160_avatar._b_arm_r, Quaternion.from_euler(Vector3(-1.75, 0.3, -0.1)))
+
+		var p_dist := a160_node.global_position.distance_to(player_body.global_position)
+		if p_dist < 1.35 and not a160_hit_done:
+			a160_hit_done = true
+			if player_ctrl.is_hiding:
+				audio.play_a085_door_slam()
+				player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.075)
+				_a160_dissolve()
+			else:
+				game.damage_player(65, "A-160", Color(0.85, 0.1, 0.1, 0.8), {"a160_mimic": true})
+				player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.12)
+				_a160_dissolve()
+			return
+
+		if a160_timer <= 0.0:
+			_a160_dissolve()
+
+	elif a160_phase == 4:
+		a160_timer -= delta
+		var alpha := clampf(a160_timer / 0.75, 0.0, 1.0)
+		if is_instance_valid(a160_avatar) and is_instance_valid(a160_avatar.body_mesh):
+			a160_avatar.body_mesh.transparency = 1.0 - alpha
+		if is_instance_valid(a160_avatar) and is_instance_valid(a160_avatar.spot_light):
+			a160_avatar.spot_light.light_energy = alpha * 1.5
+		if a160_timer <= 0.0:
+			_reset_a160_state()
+			if is_authority() and net != null and net.is_online():
+				net.broadcast_entity_event({"k": "a160_end"}, true)
+

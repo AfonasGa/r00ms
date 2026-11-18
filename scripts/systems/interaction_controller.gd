@@ -90,17 +90,12 @@ func execute_interact_target(target: Dictionary) -> bool:
 		if pkind == "battery":
 			player_ctrl.batteries += 1
 			player_ctrl.battery_inspect_timer = 2.0
-			ui_mgr.show_toast(RoomsI18n.t("toast_battery_got", [player_ctrl.batteries]), 2.8)
 		elif pkind == "gummy":
-			player_ctrl.has_gummy = true
-			player_ctrl.set_active_tool(1)
-			player_ctrl.gummy_battery = 100.0
+			player_ctrl.equip_gummy()
 			player_ctrl.trigger_pickup_anim()
-			ui_mgr.show_toast(RoomsI18n.t("toast_gummy_got"), 3.2)
 		elif pkind == "medkit":
 			game.call("heal_player", 45)
 			player_ctrl.trigger_pickup_anim()
-			ui_mgr.show_toast(RoomsI18n.t("toast_medkit_got"))
 		audio.play_pickup()
 		# Smooth pickup swoop-toward-hand animation before freeing
 		if node is CollisionObject3D:
@@ -115,16 +110,16 @@ func execute_interact_target(target: Dictionary) -> bool:
 	return false
 
 
-func pull_wall_lever(r_idx: int, l_idx: int) -> void:
+func pull_wall_lever(r_idx: int, l_idx: int, from_remote: bool = false) -> void:
 	var r_inst: RoomScene = room_mgr.room_by_idx.get(r_idx) as RoomScene
 	if r_inst == null or l_idx < 0 or l_idx >= r_inst.levers.size():
 		return
 	var ld: Dictionary = r_inst.levers[l_idx]
 	if bool(ld.get("used", false)):
-		ui_mgr.show_toast(RoomsI18n.t("toast_lever_done"), 1.5)
 		return
 	ld["used"] = true
-	player_ctrl.trigger_pickup_anim()
+	if not from_remote:
+		player_ctrl.trigger_pickup_anim()
 
 	var pivot: Node3D = ld.get("pivot") as Node3D
 	if is_instance_valid(pivot):
@@ -132,8 +127,11 @@ func pull_wall_lever(r_idx: int, l_idx: int) -> void:
 		tw.tween_property(pivot, "rotation:x", 0.55, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 	audio.play_door_open()
-	var bonus: float = float(game.call("add_haste_lever_time"))
-	ui_mgr.show_toast(RoomsI18n.t("toast_lever_bonus", [int(bonus)]), 2.8)
+	game.call("add_haste_lever_time")
+	if not from_remote:
+		var net_node = game.get("net")
+		if net_node != null and bool(net_node.call("is_online")):
+			net_node.call("broadcast_entity_event", {"k": "lever_pull", "r": r_idx, "l": l_idx}, true)
 
 
 func try_tap_world_interact(screen_pos: Vector2, reticle_screen_pos: Vector2) -> void:
@@ -199,6 +197,8 @@ func collider_to_interact_dict(col: Object) -> Dictionary:
 		var r_inst: RoomScene = room_mgr.room_by_idx.get(r_idx) as RoomScene
 		var lkind := "locker"
 		if r_inst != null and l_idx >= 0 and l_idx < r_inst.lockers.size():
+			if r_inst.lockers[l_idx].get("broken", false):
+				return {}
 			var ln: Node3D = r_inst.lockers[l_idx].get("node")
 			lkind = String(r_inst.lockers[l_idx].get("kind", "locker"))
 			if is_instance_valid(ln) and cam_pos.distance_to(ln.global_position) > LOCKER_INTERACT_DIST:
@@ -295,6 +295,8 @@ func find_smart_reticle_target() -> Dictionary:
 			continue
 		for li in range(r.lockers.size()):
 			var ld: Dictionary = r.lockers[li]
+			if ld.get("broken", false):
+				continue
 			var ln: Node3D = ld["node"]
 			if not is_instance_valid(ln):
 				continue

@@ -50,17 +50,29 @@ static func create_shared() -> RoomAssets:
 	var floor_tex := RoomsTextures.make_floor_texture()
 	var tile_tex := RoomsTextures.make_tile_floor_texture()
 	var grate_tex := RoomsTextures.make_metal_grate_texture()
-	var wall_nrm := RoomsTextures.make_surface_normal(40401, 1.8, 0)
-	var carpet_nrm := RoomsTextures.make_surface_normal(80802, 2.8, 0)
-	var tile_nrm := RoomsTextures.make_surface_normal(50505, 2.4, 32)
+	var ceil_tex := RoomsTextures.make_ceiling_texture()
+	var wood_tex := RoomsTextures.make_wood_texture()
+	var metal_tex := RoomsTextures.make_metal_texture()
+	var card_tex := RoomsTextures.make_cardboard_texture()
+	var lamp_tex := RoomsTextures.make_lamp_texture()
+
+	var wall_nrm := RoomsTextures.make_surface_normal(40401, 2.2, 64)
+	var carpet_nrm := RoomsTextures.make_surface_normal(80802, 3.0, 64)
+	var tile_nrm := RoomsTextures.make_surface_normal(50505, 2.6, 32)
+	var ceil_nrm := RoomsTextures.make_surface_normal(31337, 2.2, 64)
+	var wood_nrm := RoomsTextures.make_wood_normal(77123)
+	var metal_nrm := RoomsTextures.make_metal_normal(91919)
+
+	var filt := BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 
 	a.wall_mat = StandardMaterial3D.new()
 	a.wall_mat.albedo_texture = wall_tex
 	a.wall_mat.albedo_color = Color(0.92, 0.94, 0.98)
 	a.wall_mat.normal_enabled = true
 	a.wall_mat.normal_texture = wall_nrm
-	a.wall_mat.normal_scale = 0.15
-	a.wall_mat.roughness = 0.84
+	a.wall_mat.normal_scale = 0.28
+	a.wall_mat.roughness = 0.80
+	a.wall_mat.texture_filter = filt
 	a.wall_mat.uv1_triplanar = true
 	a.wall_mat.uv1_world_triplanar = true
 	a.wall_mat.uv1_scale = Vector3(0.35, 0.35, 0.35)
@@ -69,8 +81,9 @@ static func create_shared() -> RoomAssets:
 	a.floor_mat.albedo_texture = floor_tex
 	a.floor_mat.normal_enabled = true
 	a.floor_mat.normal_texture = carpet_nrm
-	a.floor_mat.normal_scale = 0.70
-	a.floor_mat.roughness = 0.90
+	a.floor_mat.normal_scale = 0.85
+	a.floor_mat.roughness = 0.88
+	a.floor_mat.texture_filter = filt
 	a.floor_mat.uv1_triplanar = true
 	a.floor_mat.uv1_world_triplanar = true
 	a.floor_mat.uv1_scale = Vector3(0.45, 0.45, 0.45)
@@ -79,97 +92,185 @@ static func create_shared() -> RoomAssets:
 	a.tile_floor_mat.albedo_texture = tile_tex
 	a.tile_floor_mat.normal_enabled = true
 	a.tile_floor_mat.normal_texture = tile_nrm
-	a.tile_floor_mat.normal_scale = 0.60
-	a.tile_floor_mat.roughness = 0.42
+	a.tile_floor_mat.normal_scale = 0.70
+	a.tile_floor_mat.roughness = 0.30
+	a.tile_floor_mat.metallic = 0.08
+	a.tile_floor_mat.clearcoat_enabled = true
+	a.tile_floor_mat.clearcoat = 0.28
+	a.tile_floor_mat.clearcoat_roughness = 0.25
+	a.tile_floor_mat.texture_filter = filt
 	a.tile_floor_mat.uv1_triplanar = true
 	a.tile_floor_mat.uv1_world_triplanar = true
 	a.tile_floor_mat.uv1_scale = Vector3(0.45, 0.45, 0.45)
 
 	a.grate_mat = StandardMaterial3D.new()
 	a.grate_mat.albedo_texture = grate_tex
-	a.grate_mat.metallic = 0.70
-	a.grate_mat.roughness = 0.36
+	a.grate_mat.normal_enabled = true
+	a.grate_mat.normal_texture = metal_nrm
+	a.grate_mat.normal_scale = 0.55
+	a.grate_mat.metallic = 0.78
+	a.grate_mat.roughness = 0.32
+	a.grate_mat.texture_filter = filt
 	a.grate_mat.uv1_scale = Vector3(3.0, 6.0, 3.0)
 
 	a.ceiling_mat = StandardMaterial3D.new()
-	a.ceiling_mat.albedo_color = Color(0.08, 0.09, 0.11)
-	a.ceiling_mat.roughness = 0.88
+	a.ceiling_mat.albedo_texture = ceil_tex
+	a.ceiling_mat.albedo_color = Color(0.86, 0.90, 0.96)
+	a.ceiling_mat.normal_enabled = true
+	a.ceiling_mat.normal_texture = ceil_nrm
+	a.ceiling_mat.normal_scale = 0.45
+	a.ceiling_mat.roughness = 0.86
+	a.ceiling_mat.texture_filter = filt
+	a.ceiling_mat.uv1_triplanar = true
+	a.ceiling_mat.uv1_world_triplanar = true
+	a.ceiling_mat.uv1_scale = Vector3(0.42, 0.42, 0.42)
 
 	a.metal_mat = StandardMaterial3D.new()
-	a.metal_mat.albedo_color = Color(0.24, 0.27, 0.32)
-	a.metal_mat.metallic = 0.58
-	a.metal_mat.roughness = 0.46
+	a.metal_mat.albedo_texture = metal_tex
+	a.metal_mat.albedo_color = Color(0.32, 0.36, 0.42)
+	a.metal_mat.normal_enabled = true
+	a.metal_mat.normal_texture = metal_nrm
+	a.metal_mat.normal_scale = 0.35
+	a.metal_mat.metallic = 0.72
+	a.metal_mat.roughness = 0.36
+	a.metal_mat.texture_filter = filt
+	a.metal_mat.uv1_triplanar = true
+	a.metal_mat.uv1_scale = Vector3(0.8, 0.8, 0.8)
 
 	a.locker_mat = StandardMaterial3D.new()
-	a.locker_mat.albedo_color = Color(0.18, 0.21, 0.25)
-	a.locker_mat.metallic = 0.48
-	a.locker_mat.roughness = 0.52
+	a.locker_mat.albedo_texture = metal_tex
+	a.locker_mat.albedo_color = Color(0.24, 0.28, 0.34)
+	a.locker_mat.normal_enabled = true
+	a.locker_mat.normal_texture = metal_nrm
+	a.locker_mat.normal_scale = 0.32
+	a.locker_mat.metallic = 0.62
+	a.locker_mat.roughness = 0.42
+	a.locker_mat.texture_filter = filt
+	a.locker_mat.uv1_triplanar = true
+	a.locker_mat.uv1_scale = Vector3(0.75, 0.75, 0.75)
 
 	a.locker_door_mat = StandardMaterial3D.new()
-	a.locker_door_mat.albedo_color = Color(0.24, 0.27, 0.32)
-	a.locker_door_mat.metallic = 0.50
-	a.locker_door_mat.roughness = 0.48
+	a.locker_door_mat.albedo_texture = metal_tex
+	a.locker_door_mat.albedo_color = Color(0.31, 0.35, 0.41)
+	a.locker_door_mat.normal_enabled = true
+	a.locker_door_mat.normal_texture = metal_nrm
+	a.locker_door_mat.normal_scale = 0.38
+	a.locker_door_mat.metallic = 0.64
+	a.locker_door_mat.roughness = 0.38
+	a.locker_door_mat.texture_filter = filt
+	a.locker_door_mat.uv1_triplanar = true
+	a.locker_door_mat.uv1_scale = Vector3(0.75, 0.75, 0.75)
 
 	a.door_mat = StandardMaterial3D.new()
-	a.door_mat.albedo_color = Color(0.30, 0.24, 0.19)
-	a.door_mat.roughness = 0.72
+	a.door_mat.albedo_texture = wood_tex
+	a.door_mat.albedo_color = Color(0.42, 0.33, 0.25)
+	a.door_mat.normal_enabled = true
+	a.door_mat.normal_texture = wood_nrm
+	a.door_mat.normal_scale = 0.50
+	a.door_mat.roughness = 0.62
+	a.door_mat.texture_filter = filt
+	a.door_mat.uv1_triplanar = true
+	a.door_mat.uv1_scale = Vector3(0.6, 0.6, 0.6)
 
 	a.wood_mat = StandardMaterial3D.new()
-	a.wood_mat.albedo_color = Color(0.42, 0.29, 0.18)
-	a.wood_mat.roughness = 0.74
+	a.wood_mat.albedo_texture = wood_tex
+	a.wood_mat.albedo_color = Color(0.56, 0.39, 0.24)
+	a.wood_mat.normal_enabled = true
+	a.wood_mat.normal_texture = wood_nrm
+	a.wood_mat.normal_scale = 0.45
+	a.wood_mat.roughness = 0.64
+	a.wood_mat.texture_filter = filt
+	a.wood_mat.uv1_triplanar = true
+	a.wood_mat.uv1_scale = Vector3(0.65, 0.65, 0.65)
 
 	a.plank_dark_mat = StandardMaterial3D.new()
-	a.plank_dark_mat.albedo_color = Color(0.26, 0.18, 0.12)
-	a.plank_dark_mat.roughness = 0.80
+	a.plank_dark_mat.albedo_texture = wood_tex
+	a.plank_dark_mat.albedo_color = Color(0.34, 0.24, 0.16)
+	a.plank_dark_mat.normal_enabled = true
+	a.plank_dark_mat.normal_texture = wood_nrm
+	a.plank_dark_mat.normal_scale = 0.55
+	a.plank_dark_mat.roughness = 0.72
+	a.plank_dark_mat.texture_filter = filt
+	a.plank_dark_mat.uv1_triplanar = true
+	a.plank_dark_mat.uv1_scale = Vector3(0.65, 0.65, 0.65)
 
 	a.plaque_yellow_mat = StandardMaterial3D.new()
-	a.plaque_yellow_mat.albedo_color = Color(0.84, 0.70, 0.22)
+	a.plaque_yellow_mat.albedo_color = Color(0.90, 0.74, 0.24)
+	a.plaque_yellow_mat.metallic = 0.25
 	a.plaque_yellow_mat.emission_enabled = true
-	a.plaque_yellow_mat.emission = Color(0.55, 0.45, 0.12)
-	a.plaque_yellow_mat.emission_energy_multiplier = 0.45
-	a.plaque_yellow_mat.roughness = 0.4
+	a.plaque_yellow_mat.emission = Color(0.65, 0.52, 0.14)
+	a.plaque_yellow_mat.emission_energy_multiplier = 0.55
+	a.plaque_yellow_mat.roughness = 0.32
 
 	a.lamp_on_mat = StandardMaterial3D.new()
-	a.lamp_on_mat.albedo_color = Color(0.92, 0.96, 1.0)
+	a.lamp_on_mat.albedo_texture = lamp_tex
+	a.lamp_on_mat.albedo_color = Color(0.94, 0.97, 1.0)
 	a.lamp_on_mat.emission_enabled = true
-	a.lamp_on_mat.emission = Color(0.84, 0.92, 1.0)
-	a.lamp_on_mat.emission_energy_multiplier = 2.4
+	a.lamp_on_mat.emission_texture = lamp_tex
+	a.lamp_on_mat.emission = Color(0.86, 0.94, 1.0)
+	a.lamp_on_mat.emission_energy_multiplier = 2.6
+	a.lamp_on_mat.texture_filter = filt
 
 	a.lamp_off_mat = StandardMaterial3D.new()
-	a.lamp_off_mat.albedo_color = Color(0.11, 0.12, 0.14)
+	a.lamp_off_mat.albedo_texture = lamp_tex
+	a.lamp_off_mat.albedo_color = Color(0.14, 0.16, 0.19)
+	a.lamp_off_mat.roughness = 0.35
+	a.lamp_off_mat.texture_filter = filt
 
 	a.plant_pot_mat = StandardMaterial3D.new()
 	a.plant_pot_mat.albedo_color = Color(0.56, 0.58, 0.62)
-	a.plant_pot_mat.roughness = 0.78
+	a.plant_pot_mat.normal_enabled = true
+	a.plant_pot_mat.normal_texture = wall_nrm
+	a.plant_pot_mat.normal_scale = 0.25
+	a.plant_pot_mat.roughness = 0.72
 
 	a.plant_leaf_mat = StandardMaterial3D.new()
-	a.plant_leaf_mat.albedo_color = Color(0.12, 0.36, 0.14)
-	a.plant_leaf_mat.roughness = 0.68
+	a.plant_leaf_mat.albedo_color = Color(0.14, 0.40, 0.16)
+	a.plant_leaf_mat.roughness = 0.52
 
 	a.cardboard_mat = StandardMaterial3D.new()
-	a.cardboard_mat.albedo_color = Color(0.54, 0.40, 0.26)
-	a.cardboard_mat.roughness = 0.88
+	a.cardboard_mat.albedo_texture = card_tex
+	a.cardboard_mat.albedo_color = Color(0.64, 0.48, 0.32)
+	a.cardboard_mat.normal_enabled = true
+	a.cardboard_mat.normal_texture = wall_nrm
+	a.cardboard_mat.normal_scale = 0.22
+	a.cardboard_mat.roughness = 0.86
+	a.cardboard_mat.texture_filter = filt
+	a.cardboard_mat.uv1_triplanar = true
+	a.cardboard_mat.uv1_scale = Vector3(0.8, 0.8, 0.8)
 
 	a.glass_mat = StandardMaterial3D.new()
-	a.glass_mat.albedo_color = Color(0.42, 0.58, 0.72, 0.28)
+	a.glass_mat.albedo_color = Color(0.46, 0.64, 0.78, 0.26)
 	a.glass_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	a.glass_mat.roughness = 0.15
+	a.glass_mat.roughness = 0.08
+	a.glass_mat.metallic = 0.15
 
 	a.rug_mat = StandardMaterial3D.new()
 	a.rug_mat.albedo_color = Color(0.58, 0.60, 0.64)
+	a.rug_mat.normal_enabled = true
+	a.rug_mat.normal_texture = carpet_nrm
+	a.rug_mat.normal_scale = 0.55
 	a.rug_mat.roughness = 0.95
 
 	a.mannequin_mat = StandardMaterial3D.new()
-	a.mannequin_mat.albedo_color = Color(0.52, 0.54, 0.57)
-	a.mannequin_mat.roughness = 0.75
+	a.mannequin_mat.albedo_color = Color(0.56, 0.58, 0.62)
+	a.mannequin_mat.roughness = 0.55
 
 	a.counter_top_mat = StandardMaterial3D.new()
-	a.counter_top_mat.albedo_color = Color(0.28, 0.31, 0.36)
-	a.counter_top_mat.roughness = 0.45
+	a.counter_top_mat.albedo_texture = metal_tex
+	a.counter_top_mat.albedo_color = Color(0.34, 0.38, 0.44)
+	a.counter_top_mat.roughness = 0.32
+	a.counter_top_mat.metallic = 0.25
+	a.counter_top_mat.texture_filter = filt
 
 	a.fridge_mat = StandardMaterial3D.new()
-	a.fridge_mat.albedo_color = Color(0.76, 0.79, 0.82)
-	a.fridge_mat.roughness = 0.38
+	a.fridge_mat.albedo_texture = metal_tex
+	a.fridge_mat.albedo_color = Color(0.82, 0.86, 0.90)
+	a.fridge_mat.metallic = 0.30
+	a.fridge_mat.roughness = 0.24
+	a.fridge_mat.clearcoat_enabled = true
+	a.fridge_mat.clearcoat = 0.35
+	a.fridge_mat.texture_filter = filt
 
 	a.fabric_red_mat = StandardMaterial3D.new()
 	a.fabric_red_mat.albedo_color = Color(0.48, 0.12, 0.12)
@@ -264,6 +365,19 @@ func get_cyl_mesh(radius: float, height: float, segs: int = 12) -> CylinderMesh:
 	return cm
 
 
+const _NO_SHADOW_SLOTS := {
+	"wall": true,
+	"door": true,
+	"floor": true,
+	"tile_floor": true,
+	"ceiling": true,
+	"lamp_on": true,
+	"lamp_off": true,
+	"glass": true,
+	"rug": true,
+	"plaque_yellow": true,
+}
+
 func apply_materials_recursive(root: Node) -> void:
 	var stack: Array[Node] = [root]
 	while not stack.is_empty():
@@ -272,12 +386,14 @@ func apply_materials_recursive(root: Node) -> void:
 			stack.append(ch)
 		if cur is MeshInstance3D:
 			var mi := cur as MeshInstance3D
-			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			if mi.has_meta("mat_slot"):
 				var slot := String(mi.get_meta("mat_slot"))
 				var mat := get_material(slot)
 				if mat != null:
 					mi.material_override = mat
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _NO_SHADOW_SLOTS.has(slot) else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			else:
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func add_cached_box(parent: Node3D, box_name: String, pos: Vector3, box_size: Vector3, mat: Material, with_collision: bool = false) -> Node3D:

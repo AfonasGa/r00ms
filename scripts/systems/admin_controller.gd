@@ -24,13 +24,19 @@ func is_active(active_modifiers: Dictionary, net: RoomsNet) -> bool:
 	return can_use_admin(active_modifiers, net)
 
 
-func reset_all(player_col: CollisionShape3D = null) -> void:
+func reset_all(player_col: CollisionShape3D = null, revoke_grant: bool = false) -> void:
 	god_mode = false
 	inf_stamina = false
 	noclip = false
 	speed_mult = 1.0
 	inf_battery = false
 	cheats_used = false
+	if revoke_grant:
+		granted_by_host = false
 	Engine.time_scale = 1.0
 	if is_instance_valid(player_col):
 		player_col.disabled = false
+
+
+func revoke_host_grant() -> void:
+	granted_by_host = false

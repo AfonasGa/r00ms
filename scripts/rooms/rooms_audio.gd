@@ -69,6 +69,12 @@ var _a075_warn: AudioStreamPlayer
 var _a075_scan: AudioStreamPlayer
 var _a075_attack: AudioStreamPlayer
 var _a075_despawn: AudioStreamPlayer
+var _a085_warn: AudioStreamPlayer
+var _a085_door_slam: AudioStreamPlayer
+var _a085_pass: AudioStreamPlayer
+var _a160_alert: AudioStreamPlayer
+var _a160_lunge: AudioStreamPlayer
+var _a160_banish: AudioStreamPlayer
 var _death_player: AudioStreamPlayer
 var _darkness_whisper: AudioStreamPlayer
 var _foot_iron: AudioStreamPlayer
@@ -183,6 +189,12 @@ func _setup_audio_players() -> void:
 	_a075_scan = _make_stream_player("res://assets/sound/a075/a075_scan_ambience.wav", true, "Entities")
 	_a075_attack = _make_stream_player("res://assets/sound/a075/a075_flash_attack.wav", false, "Entities")
 	_a075_despawn = _make_stream_player("res://assets/sound/a075/a075_despawn.wav", false, "Entities")
+	_a085_warn = _make_stream_player("res://assets/sound/a085/a085_warning_rumble.wav", false, "Entities")
+	_a085_door_slam = _make_stream_player("res://assets/sound/a085/a085_door_slam_throw.wav", false, "Entities")
+	_a085_pass = _make_stream_player("res://assets/sound/a085/a085_corridor_pass.wav", false, "Entities")
+	_a160_alert = _make_stream_player("res://assets/sound/a160/a160_alert.wav", false, "Entities")
+	_a160_lunge = _make_stream_player("res://assets/sound/a160/a160_lunge.wav", false, "Entities")
+	_a160_banish = _make_stream_player("res://assets/sound/a160/a160_banish.wav", false, "Entities")
 	_darkness_whisper = _make_stream_player("res://assets/sound/darkness/darkness_whisper.ogg", true, "Entities")
 
 	apply_volume_settings()
@@ -269,6 +281,45 @@ func play_a075_attack() -> void:
 func play_a075_despawn() -> void:
 	stop_a075_scan()
 	_play_sfx(_a075_despawn, -2.0, 0.97, 1.03)
+
+
+func play_a085_warning() -> void:
+	_play_sfx(_a085_warn, 2.0, 0.98, 1.02)
+
+
+func play_a085_door_slam() -> void:
+	stop_a085_all()
+	_play_sfx(_a085_door_slam, 3.5, 0.98, 1.02)
+
+
+func play_a085_pass() -> void:
+	_play_sfx(_a085_pass, 1.5, 0.98, 1.02)
+
+
+func stop_a085_all() -> void:
+	if _a085_warn != null and _a085_warn.playing:
+		_a085_warn.stop()
+
+
+func play_a160_alert() -> void:
+	_play_sfx(_a160_alert, 1.5, 0.98, 1.02)
+
+
+func play_a160_lunge() -> void:
+	_play_sfx(_a160_lunge, 2.5, 0.98, 1.02)
+
+
+func play_a160_banish() -> void:
+	_play_sfx(_a160_banish, 0.5, 0.98, 1.03)
+
+
+func stop_a160_all() -> void:
+	if _a160_alert != null and _a160_alert.playing:
+		_a160_alert.stop()
+	if _a160_lunge != null and _a160_lunge.playing:
+		_a160_lunge.stop()
+	if _a160_banish != null and _a160_banish.playing:
+		_a160_banish.stop()
 
 
 func start_a60_spawn(is_prime: bool = false, _is_before_100: bool = true) -> void:

@@ -77,11 +77,14 @@ func bind_scene_nodes(assets: RoomAssets) -> void:
 		if cur is OmniLight3D:
 			var om := cur as OmniLight3D
 			om.shadow_enabled = false
+			om.light_color = Color(0.91, 0.95, 1.0)
+			om.omni_attenuation = 1.08
 			om.distance_fade_enabled = true
 			om.distance_fade_begin = 26.0
 			om.distance_fade_length = 10.0
 			ceiling_lights.append(om)
-			light_base_energies.append(om.light_energy if om.light_energy > 0.01 else 1.15)
+			var base_e := om.light_energy if om.light_energy > 0.01 else 1.15
+			light_base_energies.append(base_e * 1.25)
 		elif cur is MeshInstance3D and cur.has_meta("is_troffer"):
 			lamp_meshes.append(cur as MeshInstance3D)
 		elif cur is Marker3D and cur.has_meta("loot_spawn"):
@@ -120,10 +123,12 @@ func _register_hiding_node(hnode: Node3D) -> void:
 		"kind": hkind,
 		"node": hnode,
 		"door_pivot": dp,
+		"door_orig_pos": dp.position if dp != null else Vector3.ZERO,
 		"eye_local": eye_loc,
 		"exit_local": exit_loc,
 		"label": lbl,
 		"colliders": colliders,
+		"broken": false,
 	})
 
 
@@ -168,9 +173,18 @@ func configure_room(
 
 	for li in range(lockers.size()):
 		var ld: Dictionary = lockers[li]
+		ld["broken"] = false
 		var dp: Node3D = ld.get("door_pivot") as Node3D
 		if is_instance_valid(dp):
+			dp.position = ld.get("door_orig_pos", dp.position)
 			dp.rotation = Vector3.ZERO
+			dp.scale = Vector3.ONE
+			dp.visible = true
+			for ch in dp.get_children():
+				if ch is StaticBody3D:
+					var dsb := ch as StaticBody3D
+					dsb.collision_layer = 1
+					dsb.collision_mask = 1
 		var cols: Array = ld.get("colliders", [])
 		for c_raw in cols:
 			if c_raw is StaticBody3D and is_instance_valid(c_raw):
@@ -185,7 +199,7 @@ func configure_room(
 	# Spawn dynamic pickups from scene markers
 	if room_type == "lobby":
 		_spawn_pickup_at(assets, Vector3(-2.55, 0.78, 0.45), "battery", "Батарейка (+1)")
-		_spawn_pickup_at(assets, Vector3(-2.75, 0.78, 1.10), "gummy", "Трясосвет [2]")
+		_spawn_pickup_at(assets, Vector3(-2.75, 0.78, 1.10), "gummy", "Трясосвет")
 	else:
 		for m in _loot_spawns:
 			_maybe_spawn_loot(assets, m.position, index, rng)

@@ -72,6 +72,10 @@ var hiding_kind := "locker"
 var hiding_door_pivot: Node3D = null
 var hiding_eye_local_y := 1.48
 var locker_enter_from_yaw := 0.0
+var hiding_door_lifted := false
+var a085_grab_locked := false
+var breach_knockback_t := 0.0
+var breach_land_dip := 0.0
 
 # Flashlights & Batteries
 var light_on := true
@@ -104,6 +108,7 @@ var vm_gummy_on_mat: StandardMaterial3D
 var anim_hand: Node3D = null
 var cover_hand: Node3D = null
 var held_battery: Node3D = null
+var ambient_dust: CPUParticles3D = null
 
 # Mobile input inputs fed from UI/Input
 var joy_vec := Vector2.ZERO
@@ -138,6 +143,71 @@ func initialize(
 	avatar_mgr = p_avatar_mgr
 	net = p_net
 	build_viewmodel()
+	_build_ambient_dust()
+
+
+func _build_ambient_dust() -> void:
+	if cam == null:
+		return
+	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
+	for y in range(16):
+		for x in range(16):
+			var dx := (float(x) + 0.5) / 16.0 - 0.5
+			var dy := (float(y) + 0.5) / 16.0 - 0.5
+			var d := sqrt(dx * dx + dy * dy) * 2.0
+			var a := clampf(1.0 - d, 0.0, 1.0)
+			a = a * a
+			img.set_pixel(x, y, Color(0.92, 0.95, 1.0, a))
+	var dot_tex := ImageTexture.create_from_image(img)
+
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	mat.albedo_texture = dot_tex
+	mat.albedo_color = Color(0.85, 0.90, 0.98, 0.24)
+	mat.emission_enabled = true
+	mat.emission = Color(0.42, 0.48, 0.58)
+	mat.emission_energy_multiplier = 0.22
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	mat.no_depth_test = false
+
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.024, 0.024)
+	quad.material = mat
+
+	var curve := Curve.new()
+	curve.add_point(Vector2(0.0, 0.0))
+	curve.add_point(Vector2(0.22, 1.0))
+	curve.add_point(Vector2(0.78, 1.0))
+	curve.add_point(Vector2(1.0, 0.0))
+
+	ambient_dust = CPUParticles3D.new()
+	ambient_dust.name = "AmbientDust"
+	ambient_dust.position = Vector3(0.0, 0.0, -2.6)
+	ambient_dust.mesh = quad
+	ambient_dust.amount = 44
+	ambient_dust.lifetime = 5.5
+	ambient_dust.preprocess = 3.0
+	ambient_dust.local_coords = false
+	ambient_dust.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	ambient_dust.emission_box_extents = Vector3(3.2, 1.7, 3.2)
+	ambient_dust.direction = Vector3(0.0, -0.35, 0.0)
+	ambient_dust.spread = 180.0
+	ambient_dust.gravity = Vector3(0.0, -0.018, 0.0)
+	ambient_dust.initial_velocity_min = 0.02
+	ambient_dust.initial_velocity_max = 0.08
+	ambient_dust.scale_amount_min = 0.65
+	ambient_dust.scale_amount_max = 1.45
+	ambient_dust.scale_amount_curve = curve
+	ambient_dust.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	cam.add_child(ambient_dust)
+
+
+func set_dust_enabled(en: bool) -> void:
+	if ambient_dust != null:
+		ambient_dust.visible = en
+		ambient_dust.emitting = en
 
 
 func is_action_locked() -> bool:
@@ -279,7 +349,7 @@ func reset_for_run(start_room: int = 0) -> void:
 
 	light_on = true
 	active_tool = 0
-	has_gummy = (start_room >= 100)
+	has_gummy = false
 	std_battery = 150.0
 	gummy_battery = 100.0
 	batteries = 0
@@ -314,6 +384,10 @@ func reset_for_run(start_room: int = 0) -> void:
 	yaw = 0.0
 	pitch = 0.0
 	cam_roll = 0.0
+	hiding_door_lifted = false
+	a085_grab_locked = false
+	breach_knockback_t = 0.0
+	breach_land_dip = 0.0
 	fov = settings.base_fov if settings != null else 75.0
 	if cam != null:
 		cam.fov = fov
@@ -324,14 +398,20 @@ func reset_for_run(start_room: int = 0) -> void:
 		flashlight.visible = true
 
 
-func set_active_tool(tool_idx: int) -> void:
-	if active_tool != tool_idx:
-		active_tool = tool_idx
+func equip_gummy() -> void:
+	has_gummy = true
+	gummy_battery = 100.0
+	if active_tool != 1:
+		active_tool = 1
 		vm_equip_t = 0.0
 		rmb_held = false
-		if tool_idx == 1:
-			light_on = true
+		light_on = true
 		audio.play_flashlight_click()
+
+
+func set_active_tool(tool_idx: int) -> void:
+	if tool_idx == 1 and has_gummy:
+		equip_gummy()
 
 
 func trigger_pickup_anim() -> void:
@@ -404,7 +484,6 @@ func toggle_flashlight(entities: EntityDirector, ui_mgr: UIManager) -> void:
 	if std_battery <= 0.0 and not light_on:
 		audio.play_flashlight_click()
 		vm_click_jolt = 1.0
-		ui_mgr.show_toast(RoomsI18n.t("toast_flash_empty"), 2.2)
 		return
 	light_on = not light_on
 	vm_click_jolt = 1.0
@@ -417,17 +496,14 @@ func toggle_flashlight(entities: EntityDirector, ui_mgr: UIManager) -> void:
 			std_battery = minf(std_battery, 30.0)
 			std_low_power_regen = 0.0
 			audio.play_flashlight_low_power()
-			ui_mgr.show_toast(RoomsI18n.t("toast_darkness_repel"), 2.2)
 
 
 func try_reload_flashlight(ui_mgr: UIManager) -> void:
-	if is_action_locked():
+	if is_action_locked() or active_tool != 0:
 		return
 	if std_battery >= 149.9 and not std_low_power:
-		ui_mgr.show_toast(RoomsI18n.t("toast_flash_full"), 1.8)
 		return
 	if batteries < 2:
-		ui_mgr.show_toast(RoomsI18n.t("toast_flash_need2", [batteries]), 2.2)
 		return
 	batteries -= 2
 	std_battery = 150.0
@@ -436,7 +512,6 @@ func try_reload_flashlight(ui_mgr: UIManager) -> void:
 	std_low_flicker_t = 0.0
 	vm_equip_t = 0.0
 	audio.play_pickup()
-	ui_mgr.show_toast(RoomsI18n.t("toast_flash_reloaded", [batteries]), 2.4)
 
 
 func try_shake_gummy(amount: float = 10.0) -> void:
@@ -452,13 +527,16 @@ func try_shake_gummy(amount: float = 10.0) -> void:
 func enter_locker(r_idx: int, l_idx: int, entities: EntityDirector, ui_mgr: UIManager) -> void:
 	if is_action_locked() or is_hiding:
 		return
+	if entities != null and entities.a075_active and entities.a075_phase == 3:
+		return
 	var r: RoomScene = room_mgr.room_by_idx.get(r_idx) as RoomScene
 	if r == null or l_idx < 0 or l_idx >= r.lockers.size():
 		return
 	if avatar_mgr.is_locker_occupied(r_idx, l_idx):
-		ui_mgr.show_toast(RoomsI18n.t("toast_spot_occupied"), 1.8)
 		return
 	var locker_data: Dictionary = r.lockers[l_idx]
+	if locker_data.get("broken", false):
+		return
 	var lnode: Node3D = locker_data["node"]
 
 	is_hiding = true
@@ -466,6 +544,8 @@ func enter_locker(r_idx: int, l_idx: int, entities: EntityDirector, ui_mgr: UIMa
 	hiding_locker_idx = l_idx
 	hiding_kind = String(locker_data.get("kind", "locker"))
 	hiding_door_pivot = locker_data.get("door_pivot") as Node3D
+	hiding_door_lifted = false
+	a085_grab_locked = false
 	hide_time = 0.0
 	entities.reset_darkness_state()
 	target_hide_yaw = 0.0
@@ -512,10 +592,13 @@ func enter_locker(r_idx: int, l_idx: int, entities: EntityDirector, ui_mgr: UIMa
 
 
 func exit_locker(face_locker: bool, entities: EntityDirector) -> void:
-	if is_action_locked() or not is_hiding:
+	if is_action_locked() or not is_hiding or a085_grab_locked:
+		return
+	if entities != null and entities.a075_active and entities.a075_phase == 3:
 		return
 	var prev_kind := hiding_kind
 	var prev_door_pivot := hiding_door_pivot
+	var was_door_lifted := hiding_door_lifted
 	var prev_room_idx := hiding_room_idx
 	var prev_locker_idx := hiding_locker_idx
 	locker_cam_from = cam.global_position
@@ -529,6 +612,8 @@ func exit_locker(face_locker: bool, entities: EntityDirector) -> void:
 	hiding_locker_idx = -1
 	hiding_kind = "locker"
 	hiding_door_pivot = null
+	hiding_door_lifted = false
+	a085_grab_locked = false
 	hiding_eye_local_y = 1.48
 	entities.reset_darkness_state()
 
@@ -551,7 +636,7 @@ func exit_locker(face_locker: bool, entities: EntityDirector) -> void:
 	if vm_holder != null:
 		vm_holder.visible = true
 
-	if is_instance_valid(prev_door_pivot):
+	if is_instance_valid(prev_door_pivot) and not was_door_lifted:
 		var tw := create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 		if face_locker:
 			tw.tween_property(prev_door_pivot, "rotation:y", -PI * 0.62, 0.21)
@@ -599,6 +684,60 @@ func force_leave_hiding_for_warp(entities: EntityDirector, ui_mgr: UIManager) ->
 	light_on = true if active_tool == 1 else was_light_before_hide
 
 
+func force_eject_from_locker_breach(launch_vel: Vector3, ui_mgr: UIManager, entities: EntityDirector) -> void:
+	locker_transition_t = 1.0
+	locker_transition_entering = false
+
+	var exit_pos := locker_exit + Vector3(0.0, 0.25, 0.0)
+	if player_body != null:
+		player_body.global_position = exit_pos
+	if cam != null:
+		cam.global_position = exit_pos + Vector3(0.0, 1.48, 0.0)
+
+	var horiz_launch := Vector3(launch_vel.x, 0.0, launch_vel.z)
+	var away_dir := horiz_launch.normalized() if horiz_launch.length() > 0.1 else locker_fwd
+	var away_yaw := atan2(-away_dir.x, -away_dir.z)
+	yaw = away_yaw
+	target_yaw = away_yaw
+	pitch = -0.08
+	target_pitch = -0.08
+	cam_roll = 0.28 if (randi() % 2 == 0) else -0.28
+	if player_body != null:
+		player_body.rotation.y = away_yaw
+		player_body.velocity = launch_vel
+
+	breach_knockback_t = 0.85
+	breach_land_dip = 0.0
+	trigger_damage_kick(0.45)
+	shake_amount = 0.42
+
+	if is_hiding and hiding_room_idx >= 0 and hiding_locker_idx >= 0 and net != null and net.is_online():
+		net.broadcast_locker_action(hiding_room_idx, hiding_locker_idx, false, false)
+
+	is_hiding = false
+	hiding_room_idx = -1
+	hiding_locker_idx = -1
+	hiding_kind = "locker"
+	hiding_door_pivot = null
+	hiding_door_lifted = false
+	a085_grab_locked = false
+	hiding_eye_local_y = 1.48
+	hide_time = 0.0
+	entities.reset_darkness_state()
+	hide_yaw_offset = 0.0
+	hide_pitch_offset = 0.0
+	target_hide_yaw = 0.0
+	target_hide_pitch = 0.0
+	ui_mgr.hide_locker_mask()
+	if player_col != null:
+		player_col.disabled = false
+	if vm_holder != null:
+		vm_holder.visible = true
+	if anim_hand != null:
+		anim_hand.visible = false
+	light_on = true if active_tool == 1 else was_light_before_hide
+
+
 func process_flashlight(delta: float, active_modifiers: Dictionary, entities: EntityDirector, ui_mgr: UIManager, rng: RandomNumberGenerator) -> void:
 	if admin.inf_battery and admin.is_active(active_modifiers, net):
 		std_battery = 150.0
@@ -625,11 +764,9 @@ func process_flashlight(delta: float, active_modifiers: Dictionary, entities: En
 					std_low_power = true
 					std_low_flicker_t = 0.85
 					audio.play_flashlight_low_power()
-					ui_mgr.show_toast(RoomsI18n.t("toast_flash_low"), 2.6)
 				if std_battery <= 0.0:
 					light_on = false
 					audio.play_flashlight_click()
-					ui_mgr.show_toast(RoomsI18n.t("toast_flash_empty"), 2.8)
 			if std_low_power:
 				flashlight.light_color = Color(1.0, 0.78, 0.56)
 				flashlight.spot_range = 14.0
@@ -768,14 +905,28 @@ func process_movement(delta: float, active_modifiers: Dictionary, chat_open: boo
 		speed *= admin.speed_mult
 	var dir := (player_body.transform.basis * Vector3(inp.x, 0.0, inp.y)).normalized()
 
-	var accel_factor := 1.65 if bool(active_modifiers.get("wet_floor", false)) else 11.0
-	player_body.velocity.x = lerpf(player_body.velocity.x, dir.x * speed, minf(delta * accel_factor, 1.0))
-	player_body.velocity.z = lerpf(player_body.velocity.z, dir.z * speed, minf(delta * accel_factor, 1.0))
-	if not player_body.is_on_floor():
-		player_body.velocity.y -= 18.0 * delta
+	if breach_knockback_t > 0.0:
+		breach_knockback_t = maxf(breach_knockback_t - delta, 0.0)
+		var kb_drag := 1.15 if not player_body.is_on_floor() else 4.2
+		player_body.velocity.x = lerpf(player_body.velocity.x, 0.0, minf(delta * kb_drag, 1.0))
+		player_body.velocity.z = lerpf(player_body.velocity.z, 0.0, minf(delta * kb_drag, 1.0))
+		if not player_body.is_on_floor() or player_body.velocity.y > 0.0:
+			player_body.velocity.y -= 18.0 * delta
+		else:
+			if breach_land_dip < 0.05 and breach_knockback_t > 0.15:
+				breach_land_dip = 0.58
+				shake_amount = maxf(shake_amount, 0.24)
+			player_body.velocity.y = 0.0
 	else:
-		player_body.velocity.y = 0.0
+		var accel_factor := 1.65 if bool(active_modifiers.get("wet_floor", false)) else 11.0
+		player_body.velocity.x = lerpf(player_body.velocity.x, dir.x * speed, minf(delta * accel_factor, 1.0))
+		player_body.velocity.z = lerpf(player_body.velocity.z, dir.z * speed, minf(delta * accel_factor, 1.0))
+		if not player_body.is_on_floor():
+			player_body.velocity.y -= 18.0 * delta
+		else:
+			player_body.velocity.y = 0.0
 
+	breach_land_dip = lerpf(breach_land_dip, 0.0, clampf(1.0 - exp(-5.5 * delta), 0.0, 1.0))
 	player_body.move_and_slide()
 
 	var horiz_spd := Vector2(player_body.velocity.x, player_body.velocity.z).length()
@@ -797,7 +948,7 @@ func process_movement(delta: float, active_modifiers: Dictionary, chat_open: boo
 	var bob_y := (sin(bob_phase) * 0.032) if settings.head_bob_enabled else 0.0
 	var breath_bob := sin(float(Time.get_ticks_msec()) * 0.0055) * (0.022 if exhausted else 0.0)
 	if locker_transition_t >= 1.0:
-		cam.position = Vector3(0.0, 1.48 + bob_y + breath_bob, 0.0) + shake_off
+		cam.position = Vector3(0.0, 1.48 - breach_land_dip + bob_y + breath_bob, 0.0) + shake_off
 
 	room_mgr.update_player_current_room(player_body.position, settings.room_vis_radius)
 
@@ -914,7 +1065,13 @@ func process_camera_and_viewmodel(delta: float, lock_mask: ColorRect, a075_threa
 		cam.rotation.x = lerpf(cam.rotation.x, hide_pitch_offset, 1.0 - exp(-16.0 * delta))
 		var crawl_roll := sin(locker_transition_t * PI) * (0.07 if hiding_kind == "under_desk" else 0.03) if locker_transition_t < 1.0 else 0.0
 		cam.rotation.z = lerpf(cam.rotation.z, crawl_roll, 1.0 - exp(-12.0 * delta))
-		var max_mask := 0.20 if hiding_kind == "under_desk" else 0.36
+		var max_mask := 0.0 if hiding_door_lifted else (0.20 if hiding_kind == "under_desk" else 0.36)
+		shake_amount = maxf(shake_amount - delta * 0.14, 0.0)
+		var hide_shake := Vector3(
+			randf_range(-shake_amount, shake_amount),
+			randf_range(-shake_amount, shake_amount),
+			0.0
+		) if shake_amount > 0.001 else Vector3.ZERO
 		if locker_transition_t < 1.0:
 			if hiding_kind == "under_desk":
 				var t_xz := ease(locker_transition_t, 0.32)
@@ -923,16 +1080,17 @@ func process_camera_and_viewmodel(delta: float, lock_mask: ColorRect, a075_threa
 					lerpf(locker_cam_from.x, locker_eye.x, t_xz),
 					lerpf(locker_cam_from.y, locker_eye.y, t_y),
 					lerpf(locker_cam_from.z, locker_eye.z, t_xz)
-				)
+				) + hide_shake
 			else:
 				var move_p := clampf((locker_transition_t - 0.14) / 0.72, 0.0, 1.0)
-				cam.global_position = locker_cam_from.lerp(locker_eye, ease(move_p, 0.28))
+				cam.global_position = locker_cam_from.lerp(locker_eye, ease(move_p, 0.28)) + hide_shake
 			lock_mask.color = Color(0.0, 0.0, 0.0, lerpf(0.0, max_mask, t_ease))
 			lock_mask.visible = (lock_mask.color.a > 0.004)
 		else:
-			cam.global_position = locker_eye
-			lock_mask.color = Color(0.0, 0.0, 0.0, max_mask)
-			lock_mask.visible = (max_mask > 0.004)
+			cam.global_position = locker_eye + hide_shake
+			var cur_a := lerpf(lock_mask.color.a, max_mask, clampf(1.0 - exp(-9.0 * delta), 0.0, 1.0))
+			lock_mask.color = Color(0.0, 0.0, 0.0, cur_a)
+			lock_mask.visible = (cur_a > 0.004)
 	else:
 		if locker_transition_t < 1.0 and not locker_transition_entering:
 			var exit_turn_p := ease(clampf(locker_transition_t, 0.0, 1.0), -1.8)

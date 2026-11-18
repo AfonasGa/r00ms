@@ -192,6 +192,76 @@ func build_death_sequence(cause: String, room_num: int, username: String = "Play
 					"No light, no eye contact — or hold [RMB] to cover your Shakerlight.",
 				]
 
+	elif cause == "A-085":
+		if is_ru:
+			summary = "A-085 проверяет занятые шкафы в ПОСЛЕДНЕЙ комнате! Если летит другой монстр — прячься в предпоследней комнате."
+			if cause_count == 1:
+				lines = [
+					"Здравствуй, %s." % u_name,
+					"Тебя настиг Выселитель (A-085).",
+					"Этот дым прилетает в центр последней открытой комнаты и окутывает занятые шкафы.",
+					"Он поднимает дверцу, а если ты всё ещё внутри — швыряет и дверь, и тебя через всю комнату (-90 HP).",
+					"Если рядом летит ещё один монстр — не прячься в последней комнате, уходи в шкаф в предпоследней.",
+				]
+			else:
+				lines = [
+					"Снова засел в шкафу в последней комнате, %s?" % u_name,
+					"A-085 проверяет шкафы только в самой последней комнате.",
+					"Если нужно спрятаться от другого монстра — используй предпоследнюю комнату.",
+				]
+		else:
+			summary = "A-085 checks occupied lockers in the LAST room! If another monster is coming, hide in the second-to-last room."
+			if cause_count == 1:
+				lines = [
+					"Greetings, %s." % u_name,
+					"You were thrown out by The Breacher (A-085).",
+					"The dark smoke stops at the center of the last opened room and envelops occupied lockers.",
+					"It lifts the door, and if you are still inside, it flings both the door and you across the room (-90 HP).",
+					"If another monster is approaching too, don't hide in the last room — hide in the second-to-last room instead.",
+				]
+			else:
+				lines = [
+					"Hid in the last room again, %s?" % u_name,
+					"A-085 only checks lockers inside the very last room.",
+					"When comboed with another entity, retreat and hide in the second-to-last room.",
+				]
+
+	elif cause == "A-160":
+		if is_ru:
+			summary = "A-160 (Двойник) притворяется игроком! Не подходи ближе 3 метров и не свети ему прямо в лицо. Обойди его по дальней стене или изгони вспышкой трясосвета."
+			if cause_count == 1:
+				lines = [
+					"Здравствуй, %s." % u_name,
+					"Тебя убил Двойник (A-160).",
+					"Он принимает облик одного из игроков и стоит у дальней двери комнаты.",
+					"Его выдаёт неестественно поворачивающаяся голова, холодный луч света и полная тишина.",
+					"Если подойти ближе 3 метров или долго светить ему в лицо — он нападёт.",
+					"Обходи его по дальней стене или изгони вспышкой заряженного трясосвета.",
+				]
+			else:
+				lines = [
+					"Снова попался на копию, %s?" % u_name,
+					"A-160 не двигается и следит за тобой неестественным взглядом.",
+					"Держи дистанцию и не подходи вплотную, либо ослепи его трясосветом.",
+				]
+		else:
+			summary = "A-160 (The Mimic) copies a player! Don't get closer than 3 meters and don't shine your flashlight at its face. Walk around it or banish it with the Shakerlight."
+			if cause_count == 1:
+				lines = [
+					"Greetings, %s." % u_name,
+					"You were slain by The Mimic (A-160).",
+					"It copies the appearance of a player and waits near the far door.",
+					"You can recognize it by its unnaturally twisting head, chilly light, and total silence.",
+					"Getting closer than 3 meters or shining your flashlight directly at its face triggers an attack.",
+					"Walk around along the opposite wall, or banish it with the green Shakerlight flash.",
+				]
+			else:
+				lines = [
+					"Fooled by the duplicate again, %s?" % u_name,
+					"A-160 stands completely still, turning its neck past human limits.",
+					"Keep your distance and do not approach, or repel it with the Shakerlight.",
+				]
+
 	elif cause == "A-60'":
 		if is_ru:
 			summary = "MultiMonster Prime (A-60') приходит после A-60 за дверью A-49: непрерывное мерцание фонарика — сигнал!"

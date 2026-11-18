@@ -46,6 +46,7 @@ var active_modifiers: Dictionary = {
 	"lights_out": false,
 	"sprint_fatigue": false,
 }
+var run_used_admin := false
 
 # Death / Architect / Spectator state
 var _death_cause := ""
@@ -88,6 +89,9 @@ func _ready() -> void:
 	_connect_net_signals()
 	ui_mgr.sync_settings_ui()
 	settings_mgr.apply_render_quality(settings_mgr.render_quality, world_env, flashlight, cam, false)
+	var fx_on := settings_mgr.render_quality != SettingsManager.RenderQuality.MOBILE_OPT
+	player_ctrl.set_dust_enabled(fx_on)
+	ui_mgr.set_cinema_fx_enabled(fx_on)
 	ui_mgr.refresh_render_buttons()
 	refresh_mobile_mode()
 
@@ -120,13 +124,23 @@ func _connect_net_signals() -> void:
 	net.lan_servers_updated.connect(ui_mgr.update_lan_servers_list)
 	net.members_changed.connect(func() -> void:
 		ui_mgr.update_menu_players_list()
-		if state == State.MENU and net.is_online() and not net.is_host:
-			ui_mgr.set_menu_view("multi")
+		if net.is_online() and net.is_host:
+			net.broadcast_entity_event({"k": "mods_update", "mods": active_modifiers}, true)
+		elif net.is_online() and not net.is_host:
+			if state == State.MENU:
+				active_modifiers["admin_panel"] = false
+				admin_ctrl.reset_all(player_col, true)
+				ui_mgr.update_menu_modifiers_ui()
+				ui_mgr.update_admin_buttons_ui()
+				ui_mgr.set_menu_view("multi")
 	)
 
 
 func reset_run(forced_seed: int = -1, start_room: int = -1) -> void:
-	admin_ctrl.reset_all(player_col)
+	admin_ctrl.reset_all(player_col, false)
+	if net != null and net.is_online() and not net.is_host and not bool(active_modifiers.get("admin_panel", false)):
+		admin_ctrl.revoke_host_grant()
+	run_used_admin = bool(active_modifiers.get("admin_panel", false)) or admin_ctrl.is_active(active_modifiers, net)
 	ui_mgr.update_admin_buttons_ui()
 
 	var actual_start: int = start_room if start_room >= 0 else settings_mgr.selected_start_room
@@ -177,12 +191,12 @@ func reset_run(forced_seed: int = -1, start_room: int = -1) -> void:
 		sb.visible = false
 	_reset_touch_state()
 
-	net.update_lobby_progress(room_mgr.world_seed, 0)
+	net.update_lobby_progress(room_mgr.world_seed, actual_start, actual_start)
 	if net.is_online() and net.is_host and forced_seed <= 0:
-		net.broadcast_session_sync(room_mgr.world_seed, 0)
+		net.broadcast_session_sync(room_mgr.world_seed, actual_start, actual_start)
+		net.broadcast_entity_event({"k": "mods_update", "mods": active_modifiers}, true)
 
 	set_state(State.PLAYING)
-	ui_mgr.show_toast(RoomsI18n.t("toast_start"), 3.5)
 
 
 func set_state(new_state: int) -> void:
@@ -230,7 +244,8 @@ func set_state(new_state: int) -> void:
 	elif state == State.MENU:
 		_reset_touch_state()
 		ui_mgr.clear_all_vignettes()
-		admin_ctrl.reset_all(player_col)
+		admin_ctrl.reset_all(player_col, true)
+		run_used_admin = false
 		ui_mgr.update_admin_buttons_ui()
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		ui_mgr.get_node_ref("modal").visible = false
@@ -321,7 +336,15 @@ func menu_start_multiplayer() -> void:
 		if not net.is_host:
 			ui_mgr.show_toast(RoomsI18n.t("toast_host_start_only"), 2.0)
 			return
-		net.broadcast_entity_event({"k": "start_game", "seed": room_mgr.world_seed, "mods": active_modifiers})
+		var start_r := settings_mgr.selected_start_room
+		if room_mgr.highest_opened != start_r:
+			reset_run(-1, start_r)
+		net.broadcast_entity_event({
+			"k": "start_game",
+			"seed": room_mgr.world_seed,
+			"start_room": start_r,
+			"mods": active_modifiers,
+		}, true)
 	menu_begin_game(true, "")
 
 
@@ -356,7 +379,6 @@ func open_room_door(r_idx: int, slam: bool = false, from_remote: bool = false) -
 		if not from_remote:
 			audio.play_flashlight_click()
 			player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.04)
-			ui_mgr.show_toast(RoomsI18n.t("toast_door20"), 4.0)
 			if entity_dir.is_authority() and not entity_dir.a60_active and not entity_dir.a120_active:
 				entity_dir.spawn_a60(false)
 		return
@@ -389,7 +411,6 @@ func advance_door_progress(r_idx: int, allow_spawn: bool) -> void:
 		if opened_num >= 50 and not room_mgr.power_out and not room_mgr.door50_flicker_active:
 			room_mgr.door50_flicker_active = true
 			room_mgr.door50_flicker_t = 3.0
-			ui_mgr.show_toast(RoomsI18n.t("toast_power_flicker"), 3.0)
 		if bool(active_modifiers.get("make_haste", false)):
 			haste_timer = maxf(haste_timer, 60.0)
 		room_mgr.ensure_ahead_rooms(settings_mgr.render_quality, bool(active_modifiers.get("make_haste", false)), settings_mgr.room_vis_radius)
@@ -398,13 +419,11 @@ func advance_door_progress(r_idx: int, allow_spawn: bool) -> void:
 			entity_dir.a60_door20_trigger_timer = 5.0
 		if opened_num % 50 == 0:
 			checkpoint_room = opened_num
-			var is_new := settings_mgr.unlock_checkpoint(opened_num)
-			if is_new:
-				ui_mgr.show_toast(RoomsI18n.t("toast_checkpoint_unlocked", [opened_num]), 4.0)
-			else:
-				ui_mgr.show_toast(RoomsI18n.t("toast_cp", [opened_num]), 3.5)
+			var used_adm := run_used_admin or admin_ctrl.cheats_used or bool(active_modifiers.get("admin_panel", false)) or admin_ctrl.is_active(active_modifiers, net)
+			if not used_adm:
+				settings_mgr.unlock_checkpoint(opened_num)
+				ui_mgr.update_checkpoint_ui()
 			audio.play_architect_blip()
-			ui_mgr.update_checkpoint_ui()
 		if opened_num >= 300 and not victory_reached:
 			victory_reached = true
 			set_state(State.VICTORY)
@@ -474,22 +493,37 @@ func handle_a120_damage_and_warp(rebounded: bool) -> bool:
 		player_ctrl.fov = 104.0
 		cam.fov = 104.0
 		ui_mgr.flash_damage(Color(0.85, 0.96, 1.0, 0.78))
-		ui_mgr.show_toast(RoomsI18n.t("toast_a120_warp", [back_steps, target_idx]), 3.4)
 		return true
 	ui_mgr.flash_damage(Color(0.85, 0.08, 0.08, 0.65))
-	ui_mgr.show_toast(RoomsI18n.t("toast_a120_hit", [hp]), 2.6)
 	return false
 
 
-func admin_revive_self() -> void:
+func admin_revive_self(from_host_event: bool = false) -> void:
+	if not from_host_event and not can_use_admin():
+		return
+	run_used_admin = true
 	hp = 100
+	audio.low_hp_mode = false
 	player_ctrl.is_hiding = false
+	player_ctrl.hiding_door_lifted = false
+	player_ctrl.a085_grab_locked = false
+	if player_col != null:
+		player_col.disabled = false
+	if player_ctrl.vm_holder != null:
+		player_ctrl.vm_holder.visible = true
+	if flashlight != null:
+		flashlight.visible = true
+	ui_mgr.clear_all_vignettes()
 	set_state(State.PLAYING)
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if settings_mgr.mobile_controls_enabled else Input.MOUSE_MODE_CAPTURED
 	ui_mgr.show_toast(RoomsI18n.t("toast_revived"), 2.0)
 
 
 func admin_skip_rooms(count: int) -> void:
+	if not can_use_admin():
+		return
+	run_used_admin = true
+	admin_ctrl.cheats_used = true
 	for _i in range(count):
 		var target_r := room_mgr.find_first_closed_door_room()
 		if target_r != null:
@@ -676,6 +710,9 @@ func cycle_spectate_target(step: int) -> void:
 func cycle_render_quality() -> void:
 	var nxt := (settings_mgr.render_quality + 1) % 3
 	settings_mgr.apply_render_quality(nxt, world_env, flashlight, cam, true)
+	var fx_on := settings_mgr.render_quality != SettingsManager.RenderQuality.MOBILE_OPT
+	player_ctrl.set_dust_enabled(fx_on)
+	ui_mgr.set_cinema_fx_enabled(fx_on)
 	room_mgr.update_room_visibility(settings_mgr.room_vis_radius)
 	ui_mgr.refresh_render_buttons()
 	ui_mgr.show_toast(RoomsI18n.t("toast_quality", [settings_mgr.quality_label()]), 2.2)
@@ -713,9 +750,16 @@ func cycle_mobile_mode() -> void:
 	refresh_mobile_mode()
 
 
-func _on_net_session_synced(seed_val: int, room_idx: int) -> void:
-	if seed_val > 0 and room_mgr.world_seed != seed_val and not net.is_host:
-		reset_run(seed_val)
+func _on_net_session_synced(seed_val: int, room_idx: int, start_room_idx: int = 0) -> void:
+	if not net.is_host:
+		active_modifiers["admin_panel"] = false
+		admin_ctrl.reset_all(player_col, true)
+		ui_mgr.open_admin_panel(false)
+		ui_mgr.update_menu_modifiers_ui()
+		ui_mgr.update_pause_modifiers_ui()
+		ui_mgr.update_admin_buttons_ui()
+	if seed_val > 0 and (room_mgr.world_seed != seed_val or room_mgr.highest_opened < start_room_idx) and not net.is_host:
+		reset_run(seed_val, start_room_idx)
 	if room_idx > room_mgr.highest_opened:
 		for idx in range(room_mgr.highest_opened, room_idx):
 			var r: RoomScene = room_mgr.room_by_idx.get(idx) as RoomScene
@@ -736,42 +780,88 @@ func _on_remote_door_opened(room_index: int, slam: bool = false) -> void:
 
 func _on_remote_entity_event(msg: Dictionary) -> void:
 	var kind := String(msg.get("k", ""))
+	var from_host := bool(msg.get("_from_host", false))
+	# Client-allowed gameplay sync events (Make Haste levers & A-120 client hit relay)
+	if kind == "lever_pull":
+		interact_ctrl.pull_wall_lever(int(msg.get("r", -1)), int(msg.get("l", -1)), true)
+		return
+	if kind == "a120_end" and bool(msg.get("from_client", false)) and net.is_host:
+		entity_dir.handle_remote_event(msg, state == State.PLAYING, state == State.DEAD)
+		return
 	if kind == "start_game":
-		var s := int(msg.get("seed", 0))
-		if s > 0 and room_mgr.world_seed != s:
-			reset_run(s)
+		if not from_host:
+			return
 		var m: Variant = msg.get("mods", null)
 		if m is Dictionary:
 			active_modifiers = (m as Dictionary).duplicate()
 			ui_mgr.update_menu_modifiers_ui()
+		if not bool(active_modifiers.get("admin_panel", false)):
+			admin_ctrl.reset_all(player_col, true)
+		var s := int(msg.get("seed", 0))
+		var sr := int(msg.get("start_room", 0))
+		if s > 0 and (room_mgr.world_seed != s or checkpoint_room != sr):
+			reset_run(s, sr)
 		menu_begin_game(true, "")
 		return
 	if kind == "mods_update":
+		if not from_host:
+			return
 		var m: Variant = msg.get("mods", null)
 		if m is Dictionary:
 			active_modifiers = (m as Dictionary).duplicate()
+			if not bool(active_modifiers.get("admin_panel", false)):
+				admin_ctrl.reset_all(player_col, true)
+				ui_mgr.open_admin_panel(false)
+			else:
+				run_used_admin = true
 			ui_mgr.update_menu_modifiers_ui()
+			ui_mgr.update_pause_modifiers_ui()
+			ui_mgr.update_admin_buttons_ui()
+		return
+	if kind == "power_state":
+		if not from_host:
+			return
+		if bool(msg.get("out", false)):
+			if not room_mgr.power_out:
+				room_mgr.trigger_power_outage(audio)
+				player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.045)
+		else:
+			if room_mgr.power_out:
+				room_mgr.restore_power()
 		return
 	if kind == "admin_grant":
+		if not from_host or not bool(active_modifiers.get("admin_panel", false)):
+			return
 		admin_ctrl.granted_by_host = true
-		ui_mgr.get_node_ref("btn_pause_admin").visible = true
+		run_used_admin = true
+		ui_mgr.update_pause_modifiers_ui()
 		ui_mgr.show_toast(RoomsI18n.t("toast_admin_granted"), 3.0)
 		return
 	if kind == "admin_revive":
-		admin_revive_self()
+		if not from_host:
+			return
+		admin_revive_self(true)
+		return
+	if not from_host:
 		return
 	entity_dir.handle_remote_event(msg, state == State.PLAYING, state == State.DEAD)
 
 
 func _physics_process(delta: float) -> void:
+	if player_ctrl == null or entity_dir == null or room_mgr == null:
+		return
 	if state == State.SPECTATING:
 		entity_dir.process_entities(delta, false, false)
 		entity_dir.process_a075(delta, false, false, active_modifiers)
+		entity_dir.process_a085(delta, false, false, active_modifiers)
+		entity_dir.process_a160(delta, false, false, active_modifiers)
 		return
 	if state == State.DEAD:
 		if entity_dir.is_authority() and net.is_online() and avatar_mgr.has_alive_remote_players():
 			entity_dir.process_entities(delta, false, true)
 			entity_dir.process_a075(delta, false, true, active_modifiers)
+			entity_dir.process_a085(delta, false, true, active_modifiers)
+			entity_dir.process_a160(delta, false, true, active_modifiers)
 		return
 	if state != State.PLAYING:
 		return
@@ -785,7 +875,8 @@ func _physics_process(delta: float) -> void:
 		if room_mgr.process_door50_flicker(delta):
 			if room_mgr.trigger_power_outage(audio):
 				player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.045)
-				ui_mgr.show_toast(RoomsI18n.t("toast_power_out"), 3.4)
+				if net.is_online() and net.is_host:
+					net.broadcast_entity_event({"k": "power_state", "out": true}, true)
 
 	if bool(active_modifiers.get("make_haste", false)):
 		haste_timer -= delta
@@ -800,14 +891,18 @@ func _physics_process(delta: float) -> void:
 	entity_dir.process_spawners(delta, active_modifiers)
 	entity_dir.process_entities(delta, true, false)
 	entity_dir.process_a075(delta, true, false, active_modifiers)
+	entity_dir.process_a085(delta, true, false, active_modifiers)
+	entity_dir.process_a160(delta, true, false, active_modifiers)
 	player_ctrl.process_movement(delta, active_modifiers, ui_mgr.chat_open, entity_dir, rng)
 	entity_dir.process_a90(delta, active_modifiers)
 	ui_mgr.update_playing_hud(delta, hp, haste_timer, active_modifiers)
 
 
 func _process(delta: float) -> void:
-	if net.is_online() and not settings_mgr.mobile_controls_enabled:
-		net.voice_talking = Input.is_key_pressed(KEY_V) and not ui_mgr.chat_open
+	if net == null or entity_dir == null or avatar_mgr == null:
+		return
+	if net.is_online() and settings_mgr != null and not settings_mgr.mobile_controls_enabled:
+		net.voice_talking = Input.is_key_pressed(KEY_V) and ui_mgr != null and not ui_mgr.chat_open
 	_sync_net_local_state()
 	avatar_mgr.process_remote_players(delta)
 	entity_dir.update_warp_fx(delta)
@@ -1191,10 +1286,6 @@ func _input(event: InputEvent) -> void:
 				player_ctrl.exit_locker(false, entity_dir)
 			elif player_ctrl.is_hiding and ke.keycode == KEY_S:
 				player_ctrl.exit_locker(true, entity_dir)
-			elif ke.keycode == KEY_1:
-				player_ctrl.set_active_tool(0)
-			elif ke.keycode == KEY_2 and player_ctrl.has_gummy:
-				player_ctrl.set_active_tool(1)
 			elif ke.keycode == KEY_R:
 				player_ctrl.try_reload_flashlight(ui_mgr)
 			elif ke.keycode == KEY_M:
