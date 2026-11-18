@@ -95,6 +95,13 @@ func flash_damage(col: Color) -> void:
 		dmg.visible = true
 
 
+func pulse_damage(alpha: float) -> void:
+	var dmg := ui.get("dmg_flash") as ColorRect
+	if dmg != null:
+		dmg.color = Color(0.85, 0.08, 0.08, clampf(alpha, 0.0, 0.85))
+		dmg.visible = true
+
+
 func hide_locker_mask() -> void:
 	var mask := ui.get("locker_mask") as ColorRect
 	if mask != null:

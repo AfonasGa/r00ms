@@ -1006,8 +1006,10 @@ func process_camera_and_viewmodel(delta: float, lock_mask: ColorRect, a075_threa
 			revive_last_beat_idx = beat_idx
 			if audio != null:
 				audio.play_heartbeat(lerpf(-1.0, 5.0, revive_heartbeat_timer / 2.4))
-			if ui_mgr != null:
-				ui_mgr.pulse_damage(0.50 * (revive_heartbeat_timer / 2.4))
+			if game != null and is_instance_valid(game):
+				var um = game.get("ui_mgr")
+				if um != null:
+					um.call("pulse_damage", 0.50 * (revive_heartbeat_timer / 2.4))
 		var pulse := 0.0
 		if beat_t < 0.12:
 			pulse = sin((beat_t / 0.12) * PI) * 0.10
