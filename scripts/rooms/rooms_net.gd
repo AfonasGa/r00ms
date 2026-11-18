@@ -836,6 +836,8 @@ func _setup_voice() -> void:
 		AudioServer.add_bus()
 		_voice_bus_idx = AudioServer.bus_count - 1
 		AudioServer.set_bus_name(_voice_bus_idx, bus_name)
+	# Mute bus send to Master so local player doesn't hear echo of their own mic
+	AudioServer.set_bus_mute(_voice_bus_idx, true)
 	if AudioServer.get_bus_effect_count(_voice_bus_idx) == 0:
 		AudioServer.add_bus_effect(_voice_bus_idx, AudioEffectCapture.new())
 	_voice_capture = AudioServer.get_bus_effect(_voice_bus_idx, 0) as AudioEffectCapture
@@ -843,7 +845,7 @@ func _setup_voice() -> void:
 		var mp := AudioStreamPlayer.new()
 		mp.stream = AudioStreamMicrophone.new()
 		mp.bus = bus_name
-		mp.volume_db = -80.0 # capture taps the bus pre-fader; keep the mic silent locally
+		mp.volume_db = 0.0 # Clean 0 dB so AudioEffectCapture gets full microphone amplitude
 		mp.autoplay = true
 		add_child(mp)
 		mp.play()
@@ -885,7 +887,8 @@ func _voice_playback(peer_key: String, pcm: PackedByteArray) -> void:
 		gen.buffer_length = 0.5
 		var pl := AudioStreamPlayer.new()
 		pl.stream = gen
-		pl.volume_db = 2.0
+		pl.volume_db = 6.0
+		pl.bus = "Master"
 		add_child(pl)
 		pl.play()
 		entry = {"gen": gen, "pl": pl}
@@ -947,7 +950,11 @@ func _process_voice(delta: float) -> void:
 			if mode == "steam":
 				_steam_send_all(pkt, 0, 1)
 			elif mode == "enet" and multiplayer.has_multiplayer_peer():
-				multiplayer.send_bytes(var_to_bytes(pkt), 0, MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED)
+				var bytes := var_to_bytes(pkt)
+				if is_host:
+					multiplayer.send_bytes(bytes, 0, MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED)
+				else:
+					multiplayer.send_bytes(bytes, 1, MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED)
 	else:
 		if _voice_capture != null and _voice_capture.get_frames_available() > 0:
 			_voice_capture.clear_buffer()
@@ -1290,4 +1297,13 @@ func _get_local_lan_ip() -> String:
 func _on_enet_packet_received(id: int, packet: PackedByteArray) -> void:
 	var parsed: Variant = bytes_to_var(packet)
 	if parsed is Dictionary:
-		_handle_packet("enet_%d" % id, parsed as Dictionary)
+		var d: Dictionary = parsed as Dictionary
+		_handle_packet("enet_%d" % id, d)
+		# Server-relay: broadcast client packets to other peers
+		if is_host and multiplayer.has_multiplayer_peer():
+			var mtype := String(d.get("t", ""))
+			if mtype in ["v", "chat", "st", "lock", "door", "face", "ev"]:
+				var tmode := MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED if mtype in ["v", "st"] else MultiplayerPeer.TRANSFER_MODE_RELIABLE
+				for p_id in multiplayer.get_peers():
+					if p_id != id:
+						multiplayer.send_bytes(packet, p_id, tmode)

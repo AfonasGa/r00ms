@@ -195,7 +195,7 @@ func on_remote_state(peer_key: String, msg: Dictionary) -> void:
 
 	var spot_node := rp.get("spot") as SpotLight3D
 	if is_instance_valid(spot_node):
-		spot_node.visible = next_light and (not bool(rp["dead"])) and (not bool(rp["cov"]))
+		spot_node.visible = next_light and (not bool(rp["dead"])) and (not bool(rp["cov"])) and (not bool(rp["insp"])) and (not next_hide)
 		spot_node.light_color = Color(0.44, 1.0, 0.58) if show_gummy else Color(1.0, 0.96, 0.88)
 	var lbl_node := rp.get("lbl") as Label3D
 	if is_instance_valid(lbl_node):

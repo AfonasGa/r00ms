@@ -106,9 +106,9 @@ func _build_gameplay_attachments(assets: RoomAssets, bulb_on_mat: Material, gumm
 
 	var held := Node3D.new()
 	held.name = "HeldTool"
-	# Hand tip is at -Y along ArmR in dummi space; align tool forward along +Z (which rotates to -Z when arm raises)
-	held.position = Vector3(0.0, -1.72, 0.22) if arm_r_attach != null else Vector3(0.42, 1.05, -0.35)
-	held.rotation.y = PI if arm_r_attach != null else 0.0
+	# Hand tip is at -Y along ArmR in bone space; rotate by -PI*0.5 around X to point local -Z forward along the arm
+	held.position = Vector3(0.0, -1.72, 0.12) if arm_r_attach != null else Vector3(0.42, 1.05, -0.35)
+	held.rotation = Vector3(-PI * 0.5, 0.0, 0.0) if arm_r_attach != null else Vector3.ZERO
 	held.scale = Vector3.ONE * inv_sc
 	attach_parent.add_child(held)
 

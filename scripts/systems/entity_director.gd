@@ -58,6 +58,7 @@ var a120_node: Node3D = null
 var a120_sprite: Sprite3D = null
 var a120_warn_timer := 0.0
 var a120_pause_timer := 0.0
+var a120_random_timer := 48.0
 var a120_path: Array[Vector3] = []
 var a120_path_idx := 0
 var a120_rebounds := 0
@@ -619,9 +620,16 @@ func maybe_spawn_door_entities(room_num: int) -> void:
 	if room_num == 120:
 		spawn_a120()
 	elif room_num > 120:
-		var chance_120 := clampf(0.07 + float(room_num - 120) * 0.0006, 0.07, 0.14)
+		var chance_120 := clampf(0.20 + float(room_num - 120) * 0.001, 0.20, 0.36)
 		if rng.randf() < chance_120:
 			spawn_a120()
+			return
+
+	if room_num >= 90 and not a085_active and a90_phase == 0 and not player_ctrl.is_hiding:
+		# Door opening trigger for A-90 after room 90
+		if rng.randf() < 0.16 and a90_cooldown < 12.0:
+			a90_cooldown = 0.0
+			start_a90_local()
 			return
 
 	if room_num == 160:
@@ -657,6 +665,13 @@ func process_spawners(delta: float, active_modifiers: Dictionary) -> void:
 				min_cd *= 0.55
 			a60_random_timer = rng.randf_range(min_cd, max_cd)
 			spawn_a60(false)
+
+	# Ambient spawner for A-120
+	if room_mgr.highest_opened >= 120 and not a60_active and not a120_active and not a160_active:
+		a120_random_timer -= delta * cd_mult
+		if a120_random_timer <= 0.0:
+			a120_random_timer = rng.randf_range(38.0, 72.0)
+			spawn_a120()
 
 
 func spawn_a60(force_prime: bool = false) -> void:
@@ -1033,7 +1048,7 @@ func process_entities(delta: float, is_playing: bool, is_dead: bool) -> void:
 							for _c in range(max_chains - 1):
 								if rng.randf() < lerpf(0.25, 0.72, p_prog):
 									chains += 1
-							a60_prime_pending_timer = 1.8
+							a60_prime_pending_timer = 4.2
 							a60_prime_chains_left = chains - 1
 							a60_prime_flicker_active = true
 							a60_prime_flicker_gap_t = 0.0
@@ -1044,7 +1059,7 @@ func process_entities(delta: float, is_playing: bool, is_dead: bool) -> void:
 							a60_prime_chains_left -= 1
 							a60_prime_flicker_active = true
 							a60_prime_flicker_gap_t = 0.35
-							a60_prime_pending_timer = 1.8
+							a60_prime_pending_timer = 3.8
 							if net != null and net.is_online():
 								net.broadcast_entity_event({"k": "a60p_warn", "gap": 0.5}, true)
 						else:
@@ -1233,8 +1248,8 @@ func process_a90(delta: float, active_modifiers: Dictionary) -> void:
 		a90_cooldown -= delta * (1.75 if bad_time else 1.0)
 		if a90_cooldown > 0.0:
 			return
-		a90_cooldown = rng.randf_range(18.0 if bad_time else 35.0, 38.0 if bad_time else 70.0)
-		if rng.randf() > (0.85 if bad_time else 0.65):
+		a90_cooldown = rng.randf_range(16.0 if bad_time else 22.0, 30.0 if bad_time else 42.0)
+		if rng.randf() > (0.95 if bad_time else 0.85):
 			return
 		start_a90_local()
 		return
@@ -2259,10 +2274,12 @@ func spawn_a160(target_room: int = -1) -> void:
 		uses_gummy = (player_ctrl != null and player_ctrl.has_gummy)
 
 	var spawn_pos: Vector3
+	var side_dir := Vector3(-r.out_dir.z, 0.0, r.out_dir.x)
+	var side_offset := side_dir * (2.2 if rng.randf() < 0.5 else -2.2)
 	if is_instance_valid(r.exit_anchor):
-		spawn_pos = r.exit_anchor.global_position - r.out_dir * 1.85 + Vector3.UP * 0.02
+		spawn_pos = (r.exit_anchor.global_position - r.out_dir * 3.2) + side_offset + Vector3.UP * 0.02
 	else:
-		spawn_pos = r.center_pos + r.out_dir * 3.6 + Vector3.UP * 0.02
+		spawn_pos = (r.center_pos + r.out_dir * 2.8) + side_offset + Vector3.UP * 0.02
 	var rot_y := atan2(r.out_dir.x, r.out_dir.z)
 
 	start_a160_local(r_idx, spawn_pos, rot_y, t_name, face_bytes, uses_gummy)
@@ -2332,7 +2349,7 @@ func _a160_trigger_alert_local() -> void:
 	if not a160_active or a160_phase != 1:
 		return
 	a160_phase = 2
-	a160_timer = 0.65
+	a160_timer = 1.25
 	a160_phase_elapsed = 0.0
 	audio.play_a160_alert()
 	player_ctrl.shake_amount = maxf(player_ctrl.shake_amount, 0.045)
@@ -2391,12 +2408,13 @@ func process_a160(delta: float, is_playing: bool, is_dead: bool, _active_modifie
 	a160_phase_elapsed += delta
 
 	if is_playing and not is_dead and player_ctrl != null and player_ctrl.has_gummy and player_ctrl.active_tool == 1 and not player_ctrl.is_covering_gummy:
-		if player_ctrl.vm_shake_time > 0.05 and a160_phase in [1, 2, 3]:
+		var is_shaking := player_ctrl.vm_shake_time > 0.01 or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or player_ctrl.shaking_gummy
+		if is_shaking and a160_phase in [1, 2, 3]:
 			var to_ent := (a160_node.global_position + Vector3.UP * 1.0) - cam.global_position
 			var dist := to_ent.length()
-			if dist < 11.5:
+			if dist < 14.0:
 				var fwd := -cam.global_transform.basis.z
-				if fwd.dot(to_ent.normalized()) > 0.50:
+				if fwd.dot(to_ent.normalized()) > 0.38:
 					_a160_trigger_banish_local()
 					if is_authority() and net != null and net.is_online():
 						net.broadcast_entity_event({"k": "a160_banish"}, true)
@@ -2424,7 +2442,8 @@ func process_a160(delta: float, is_playing: bool, is_dead: bool, _active_modifie
 			var ent_pos := a160_node.global_position
 			var dist := p_pos.distance_to(ent_pos)
 
-			if dist < 3.0:
+			# Fair proximity aggro radius: 1.55m (down from 3.0m so corridor can be traversed)
+			if dist < 1.55:
 				_a160_trigger_alert_local()
 				if net != null and net.is_online():
 					net.broadcast_entity_event({"k": "a160_alert"}, true)
@@ -2432,9 +2451,9 @@ func process_a160(delta: float, is_playing: bool, is_dead: bool, _active_modifie
 
 			var to_ent := (ent_pos + Vector3.UP * 1.0) - cam.global_position
 			var fwd := -cam.global_transform.basis.z
-			if player_ctrl.light_on and dist < 16.0 and fwd.dot(to_ent.normalized()) > 0.82:
+			if player_ctrl.light_on and dist < 16.0 and fwd.dot(to_ent.normalized()) > 0.88:
 				a160_stare_timer += delta
-				if a160_stare_timer >= 1.6:
+				if a160_stare_timer >= 2.2:
 					_a160_trigger_alert_local()
 					if net != null and net.is_online():
 						net.broadcast_entity_event({"k": "a160_alert"}, true)

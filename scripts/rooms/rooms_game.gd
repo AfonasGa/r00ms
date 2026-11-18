@@ -49,6 +49,7 @@ var active_modifiers: Dictionary = {
 var run_used_admin := false
 
 # Death / Architect / Spectator state
+var revives_left := 1
 var _death_cause := ""
 var _death_phase := 0
 var _death_phase_t := 0.0
@@ -153,6 +154,7 @@ func reset_run(forced_seed: int = -1, start_room: int = -1) -> void:
 	rng.seed = room_mgr.world_seed
 
 	hp = 100
+	revives_left = 1
 	run_time = 0.0
 	victory_reached = false
 	checkpoint_room = actual_start
@@ -240,6 +242,8 @@ func set_state(new_state: int) -> void:
 			player_ctrl.vm_holder.visible = false
 		if player_ctrl.anim_hand != null:
 			player_ctrl.anim_hand.visible = false
+		if player_ctrl.cover_hand != null:
+			player_ctrl.cover_hand.visible = false
 		flashlight.visible = false
 	elif state == State.MENU:
 		_reset_touch_state()
@@ -251,6 +255,8 @@ func set_state(new_state: int) -> void:
 		ui_mgr.get_node_ref("modal").visible = false
 		ui_mgr.get_node_ref("architect_overlay").visible = false
 		ui_mgr.get_node_ref("death_iris").visible = false
+		if player_ctrl.cover_hand != null:
+			player_ctrl.cover_hand.visible = false
 		player_body.velocity = Vector3.ZERO
 		ui_mgr.show_main_menu(false)
 	else:
@@ -498,25 +504,86 @@ func handle_a120_damage_and_warp(rebounded: bool) -> bool:
 	return false
 
 
-func admin_revive_self(from_host_event: bool = false) -> void:
-	if not from_host_event and not can_use_admin():
+func can_revive() -> bool:
+	return can_use_admin() or revives_left > 0
+
+
+func try_revive_player() -> void:
+	if not can_revive():
+		ui_mgr.show_toast(RoomsI18n.t("toast_revive_none"), 2.0)
 		return
-	run_used_admin = true
+	if not can_use_admin():
+		revives_left = maxi(revives_left - 1, 0)
+	else:
+		run_used_admin = true
+		admin_ctrl.cheats_used = true
+
+	# Architect says "попробую..."
+	var arch_speech := ui_mgr.get_node_ref("arch_speech") as Label
+	if arch_speech != null and is_instance_valid(arch_speech):
+		arch_speech.text = RoomsI18n.t("arch_trying")
+		arch_speech.visible = true
+	audio.play_architect_blip(0.74)
+
+	var big := ui_mgr.get_node_ref("arch_window_big") as Control
+	if big != null:
+		big.visible = false
+	var arch_restart := ui_mgr.get_node_ref("arch_restart") as Control
+	if arch_restart != null:
+		arch_restart.visible = false
+
+	var tw := create_tween()
+	tw.tween_interval(0.55)
+	tw.tween_callback(func() -> void:
+		_execute_revive()
+	)
+
+
+func _execute_revive() -> void:
 	hp = 100
 	audio.low_hp_mode = false
 	player_ctrl.is_hiding = false
 	player_ctrl.hiding_door_lifted = false
 	player_ctrl.a085_grab_locked = false
+	_death_phase_t = 0.0
+	_death_phase = 0
+
 	if player_col != null:
 		player_col.disabled = false
 	if player_ctrl.vm_holder != null:
 		player_ctrl.vm_holder.visible = true
 	if flashlight != null:
-		flashlight.visible = true
+		flashlight.visible = player_ctrl.light_on
+
 	ui_mgr.clear_all_vignettes()
+	var arch_ov := ui_mgr.get_node_ref("architect_overlay")
+	if arch_ov != null:
+		arch_ov.visible = false
+	var iris := ui_mgr.get_node_ref("death_iris")
+	if iris != null:
+		iris.visible = false
+	var modal := ui_mgr.get_node_ref("modal")
+	if modal != null:
+		modal.visible = false
+
 	set_state(State.PLAYING)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if settings_mgr.mobile_controls_enabled else Input.MOUSE_MODE_CAPTURED
+
+	# Jumping heartbeat camera adrenaline animation!
+	player_ctrl.trigger_revive_heartbeat()
+
+	# Sync over network
+	_sync_net_local_state()
+	if net != null and net.is_online():
+		net.broadcast_entity_event({"k": "player_revived", "peer": net.local_peer_key}, true)
+
 	ui_mgr.show_toast(RoomsI18n.t("toast_revived"), 2.0)
+
+
+func admin_revive_self(from_host_event: bool = false) -> void:
+	if not from_host_event and not can_use_admin():
+		return
+	try_revive_player()
 
 
 func admin_skip_rooms(count: int) -> void:
@@ -674,6 +741,10 @@ func advance_architect_dialogue() -> void:
 		tw.tween_property(big, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		ui_mgr.get_node_ref("arch_restart_hint").visible = true
 		ui_mgr.get_node_ref("btn_stat_spectate").visible = (net.is_online() and not avatar_mgr.remote_players.is_empty())
+		var btn_srev := ui_mgr.get_node_ref("btn_stat_revive") as Button
+		if btn_srev != null:
+			btn_srev.visible = can_revive()
+			btn_srev.text = RoomsI18n.t("arch_btn_revive") + (" (∞)" if can_use_admin() else (" (%d)" % revives_left))
 
 
 func start_spectating() -> void:
@@ -842,6 +913,18 @@ func _on_remote_entity_event(msg: Dictionary) -> void:
 			return
 		admin_revive_self(true)
 		return
+	if kind == "player_revived":
+		var p_key := String(msg.get("peer", ""))
+		if avatar_mgr.remote_players.has(p_key):
+			var rp: Dictionary = avatar_mgr.remote_players[p_key]
+			rp["dead"] = false
+			var node := rp.get("node") as Node3D
+			if is_instance_valid(node):
+				node.visible = true
+			var lbl := rp.get("lbl") as Label3D
+			if is_instance_valid(lbl):
+				lbl.text = "%s [A-%03d]" % [String(rp.get("name", "Player")), int(rp.get("room", 0))]
+		return
 	if not from_host:
 		return
 	entity_dir.handle_remote_event(msg, state == State.PLAYING, state == State.DEAD)
@@ -855,6 +938,18 @@ func _physics_process(delta: float) -> void:
 		entity_dir.process_a075(delta, false, false, active_modifiers)
 		entity_dir.process_a085(delta, false, false, active_modifiers)
 		entity_dir.process_a160(delta, false, false, active_modifiers)
+		return
+	if state == State.PAUSED:
+		# In multiplayer, host pausing must not freeze monsters or entity spawners for other players
+		if net.is_online():
+			room_mgr.process_doors(delta)
+			if entity_dir.is_authority():
+				entity_dir.process_spawners(delta, active_modifiers)
+			entity_dir.process_entities(delta, false, false)
+			entity_dir.process_a075(delta, false, false, active_modifiers)
+			entity_dir.process_a085(delta, false, false, active_modifiers)
+			entity_dir.process_a160(delta, false, false, active_modifiers)
+			entity_dir.process_a90(delta, active_modifiers)
 		return
 	if state == State.DEAD:
 		if entity_dir.is_authority() and net.is_online() and avatar_mgr.has_alive_remote_players():
@@ -985,6 +1080,10 @@ func _process_architect_death(delta: float) -> void:
 				arch_ov.visible = true
 				arch_ov.modulate.a = 0.0
 				create_tween().tween_property(arch_ov, "modulate:a", 1.0, 0.75)
+				var btn_rev := ui_mgr.get_node_ref("btn_arch_revive") as Button
+				if btn_rev != null:
+					btn_rev.visible = can_revive()
+					btn_rev.text = RoomsI18n.t("arch_btn_revive") + (" (∞)" if can_use_admin() else (" (%d)" % revives_left))
 			return
 		if a_rect != null:
 			var keep_a := ui_mgr.get_node_ref("architect_overlay").modulate.a < 0.99
@@ -1012,6 +1111,10 @@ func _process_architect_death(delta: float) -> void:
 				arch_ov.visible = true
 				arch_ov.modulate.a = 0.0
 				create_tween().tween_property(arch_ov, "modulate:a", 1.0, 0.75)
+				var btn_rev := ui_mgr.get_node_ref("btn_arch_revive") as Button
+				if btn_rev != null:
+					btn_rev.visible = can_revive()
+					btn_rev.text = RoomsI18n.t("arch_btn_revive") + (" (∞)" if can_use_admin() else (" (%d)" % revives_left))
 			return
 		if iris != null:
 			iris.visible = ui_mgr.get_node_ref("architect_overlay").modulate.a < 0.99
@@ -1211,16 +1314,38 @@ func _input(event: InputEvent) -> void:
 				ui_mgr.chat_submit()
 				get_viewport().set_input_as_handled()
 			return
-		if ke.keycode == KEY_F1 or ke.keycode == KEY_QUOTELEFT or ke.keycode == KEY_ASCIITILDE:
+		var is_admin_key := (
+			ke.keycode == KEY_F1
+			or ke.keycode == KEY_QUOTELEFT
+			or ke.keycode == KEY_ASCIITILDE
+			or ke.physical_keycode == KEY_QUOTELEFT
+			or ke.physical_keycode == KEY_ASCIITILDE
+			or ke.as_text().to_lower() in ["quoteleft", "asciitilde", "ё", "`", "~"]
+		)
+		if is_admin_key:
 			if can_use_admin():
 				if state == State.PLAYING:
 					set_state(State.PAUSED)
 					ui_mgr.open_admin_panel(true)
 				elif state == State.PAUSED:
 					ui_mgr.open_admin_panel(not ui_mgr.get_node_ref("m_admin_scroll").visible)
+				elif state == State.DEAD:
+					var adm_visible := ui_mgr.get_node_ref("m_admin_scroll").visible
+					ui_mgr.open_admin_panel(not adm_visible)
+					var modal := ui_mgr.get_node_ref("modal")
+					if modal != null:
+						modal.visible = not adm_visible
 				get_viewport().set_input_as_handled()
 				return
 		if state == State.DEAD:
+			if (ke.keycode == KEY_TAB and not ke.shift_pressed) or ke.keycode == KEY_ESCAPE:
+				if ui_mgr.get_node_ref("m_admin_scroll").visible:
+					ui_mgr.open_admin_panel(false)
+					var modal := ui_mgr.get_node_ref("modal")
+					if modal != null:
+						modal.visible = false
+					get_viewport().set_input_as_handled()
+					return
 			if ke.keycode == KEY_SPACE or ke.keycode == KEY_ENTER:
 				advance_architect_dialogue()
 				get_viewport().set_input_as_handled()

@@ -494,6 +494,23 @@ void fragment() {
 	hud_group.add_child(haste_lbl)
 	ui["haste_lbl"] = haste_lbl
 
+	var voice_lbl := Label.new()
+	voice_lbl.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	voice_lbl.offset_left = 24
+	voice_lbl.offset_top = 74
+	voice_lbl.offset_right = 260
+	voice_lbl.offset_bottom = 104
+	voice_lbl.text = "🎙 ГОЛОС [V]"
+	voice_lbl.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Medium.ttf"))
+	voice_lbl.add_theme_font_size_override("font_size", 16)
+	voice_lbl.add_theme_color_override("font_color", Color(0.35, 1.0, 0.55, 0.95))
+	voice_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.90))
+	voice_lbl.add_theme_constant_override("outline_size", 3)
+	voice_lbl.visible = false
+	voice_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_group.add_child(voice_lbl)
+	ui["voice_indicator"] = voice_lbl
+
 	_build_mobile_ui(hud_group)
 
 
@@ -1600,17 +1617,43 @@ func _build_architect_and_spectate(root: Control) -> void:
 	big.add_child(big_stats)
 	ui["arch_stats_lbl"] = big_stats
 
+	var big_btn_row := HBoxContainer.new()
+	big_btn_row.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	big_btn_row.offset_left = 24
+	big_btn_row.offset_right = -24
+	big_btn_row.offset_top = -48
+	big_btn_row.offset_bottom = -14
+	big_btn_row.add_theme_constant_override("separation", 10)
+	big.add_child(big_btn_row)
+
+	var btn_stat_revive := Button.new()
+	btn_stat_revive.text = "[ВОЗРОДИТЬСЯ]"
+	btn_stat_revive.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	RoomsUI.style_button(btn_stat_revive, Color(0.35, 1.0, 0.55), 13)
+	btn_stat_revive.pressed.connect(func() -> void: game.call("try_revive_player"))
+	big_btn_row.add_child(btn_stat_revive)
+	ui["btn_stat_revive"] = btn_stat_revive
+
 	var btn_spec := Button.new()
 	btn_spec.text = "[НАБЛЮДЕНИЕ]"
-	btn_spec.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	btn_spec.offset_left = 24
-	btn_spec.offset_right = -24
-	btn_spec.offset_top = -48
-	btn_spec.offset_bottom = -14
+	btn_spec.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	RoomsUI.style_button(btn_spec, Color(0.45, 0.85, 1.0), 13)
 	btn_spec.pressed.connect(func() -> void: game.call("start_spectating"))
-	big.add_child(btn_spec)
+	big_btn_row.add_child(btn_spec)
 	ui["btn_stat_spectate"] = btn_spec
+
+	var btn_arch_revive := Button.new()
+	btn_arch_revive.text = "[ ВОЗРОДИТЬСЯ ]"
+	btn_arch_revive.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	btn_arch_revive.offset_left = -150
+	btn_arch_revive.offset_top = -108
+	btn_arch_revive.offset_right = 150
+	btn_arch_revive.offset_bottom = -68
+	RoomsUI.style_button(btn_arch_revive, Color(0.35, 1.0, 0.55), 14)
+	btn_arch_revive.visible = false
+	btn_arch_revive.pressed.connect(func() -> void: game.call("try_revive_player"))
+	arch_overlay.add_child(btn_arch_revive)
+	ui["btn_arch_revive"] = btn_arch_revive
 
 	var arch_restart := Label.new()
 	arch_restart.text = "> [R] НАЧАТЬ ЗАНОВО"
@@ -1767,6 +1810,15 @@ func _build_mobile_ui(hud_group: Control) -> void:
 
 	var btn_pause := _make_ring_btn(mg, Color(0.85, 0.90, 0.96, 0.85), 3.0, -24, 72, 48, Control.PRESET_TOP_RIGHT, "||")
 	btn_pause.pressed.connect(func() -> void: game.call("set_state", 1)) # State.PAUSED
+
+	var btn_mic := _make_ring_btn(mg, Color(0.35, 0.95, 0.55, 0.95), 4.5, -96, 72, 48, Control.PRESET_TOP_RIGHT, "🎙")
+	btn_mic.pressed.connect(func() -> void:
+		if net != null:
+			net.voice_talking = not net.voice_talking
+			btn_mic.modulate = Color(0.4, 1.0, 0.5) if net.voice_talking else Color(0.8, 0.8, 0.8)
+	)
+	btn_mic.visible = false
+	ui["m_btn_mic"] = btn_mic
 
 	var btn_light := _make_ring_btn(mg, Color(1.0, 1.0, 1.0, 0.96), 7.5, -24, -22, 126)
 	btn_light.button_down.connect(func() -> void:
@@ -2489,12 +2541,17 @@ func update_playing_hud(delta: float, hp: int, haste_timer: float, active_modifi
 			if absf(reticle_radius - prev_r) > 0.02:
 				reticle_ring.queue_redraw()
 
+	if ui.has("voice_indicator"):
+		(ui["voice_indicator"] as Control).visible = (net != null and net.is_online() and net.voice_talking)
+
 	_update_mobile_ui()
 
 
 func _update_mobile_ui() -> void:
 	if not settings.mobile_controls_enabled:
 		return
+	if ui.has("m_btn_mic"):
+		(ui["m_btn_mic"] as Control).visible = (net != null and net.is_online())
 	var b_fwd := ui["m_btn_exit_fwd"] as RoomsUI.RingButton
 	var b_back := ui["m_btn_exit_back"] as RoomsUI.RingButton
 	var b_sprint := ui["m_btn_sprint"] as RoomsUI.RingButton

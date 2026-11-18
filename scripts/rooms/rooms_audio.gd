@@ -531,14 +531,14 @@ func update_a120_mix(delta: float, distance: float, phase: int) -> bool:
 	else:
 		_hs_ambience.pitch_scale = _hs_pitch_cur
 		var amb_lvl := clampf(dist_curve * _hs_amb_wave_cur, 0.0, 1.0)
-		_hs_ambience.volume_db = lerpf(-68.0, -2.5, amb_lvl)
+		_hs_ambience.volume_db = lerpf(-26.0, 3.5, amb_lvl)
 
-		var dist_db := lerpf(-68.0, -3.0, dist_curve) if phase == 2 else lerpf(-38.0, -14.0, dist_curve)
+		var dist_db := lerpf(-24.0, 4.0, dist_curve) if phase == 2 else lerpf(-22.0, -1.0, dist_curve)
 		_hs_distant.volume_db = dist_db
 
 		var near_lvl := prox_close * _hs_near_wave_cur if phase == 2 else 0.0
 		_hs_nearby.pitch_scale = lerpf(0.94, 1.10, _hs_near_wave_cur)
-		_hs_nearby.volume_db = lerpf(-46.0, 1.5, near_lvl) if near_lvl > 0.01 else -80.0
+		_hs_nearby.volume_db = lerpf(-22.0, 6.0, near_lvl) if near_lvl > 0.01 else -80.0
 
 	_hs_drum_cd = maxf(_hs_drum_cd - delta, 0.0)
 	var drum_hit := false
@@ -654,3 +654,7 @@ func _process(delta: float) -> void:
 			_play_sfx(_sfx_heartbeat, -3.0, 0.96, 1.04)
 	else:
 		_hb_timer = 0.0
+
+
+func play_heartbeat(vol_db: float = 0.0) -> void:
+	_play_sfx(_sfx_heartbeat, vol_db, 0.94, 1.04)

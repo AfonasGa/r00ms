@@ -35,6 +35,12 @@ var fov := 75.0
 var step_timer := 0.0
 var bob_phase := 0.0
 var shake_amount := 0.0
+var damage_kick := 0.0
+var revive_heartbeat_timer := 0.0
+var revive_beat_accum := 0.0
+var revive_last_beat_idx := -1
+var revive_cam_offset := Vector3.ZERO
+var revive_cam_rot := Vector3.ZERO
 
 # Hand & Door Animations
 var door_hand_timer := 0.0
@@ -300,10 +306,21 @@ func build_viewmodel() -> void:
 	cover_hand.name = "DummiCoverHandL"
 	cover_hand.visible = false
 	cam.add_child(cover_hand)
-	var cov_arm := assets.add_cached_cyl(cover_hand, "CoverArmL", Vector3(-0.22, -0.02, 0.04), 0.048, 0.44, dummi_arm_mat)
-	cov_arm.rotation.z = PI * 0.5
-	var cov_palm := assets.add_cached_box(cover_hand, "CoverPalmL", Vector3(0.02, 0.0, 0.0), Vector3(0.11, 0.11, 0.038), dummi_arm_mat, false)
-	cov_palm.rotation = Vector3(0.08, -0.22, 0.0)
+	var cov_arm := assets.add_cached_cyl(cover_hand, "CoverArmL", Vector3(-0.20, -0.02, 0.04), 0.052, 0.44, dummi_arm_mat)
+	cov_arm.rotation.z = PI * 0.46
+	cov_arm.rotation.y = -0.15
+	var cov_palm_mesh := MeshInstance3D.new()
+	var cov_sph := SphereMesh.new()
+	cov_sph.radius = 0.058
+	cov_sph.height = 0.116
+	cov_sph.radial_segments = 12
+	cov_sph.rings = 8
+	cov_palm_mesh.mesh = cov_sph
+	cov_palm_mesh.material_override = dummi_arm_mat
+	cov_palm_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	cov_palm_mesh.position = Vector3(0.015, 0.0, 0.0)
+	cov_palm_mesh.scale = Vector3(1.12, 0.95, 0.72)
+	cover_hand.add_child(cov_palm_mesh)
 
 
 func is_light_exposed() -> bool:
@@ -422,6 +439,12 @@ func trigger_damage_kick(amount: float = 0.14) -> void:
 	damage_kick = maxf(damage_kick, amount)
 
 
+func trigger_revive_heartbeat() -> void:
+	revive_heartbeat_timer = 2.4
+	revive_beat_accum = 0.0
+	revive_last_beat_idx = -1
+
+
 func process_a075_blind_death_pose(delta: float, prog: float) -> void:
 	# Both Dummi hands fly up across the screen to shield the player's blinded eyes while camera recoils!
 	var recoil := ease(clampf(prog * 1.45, 0.0, 1.0), 0.32)
@@ -453,7 +476,8 @@ func apply_camera_rotation() -> void:
 			inspect_pitch = 0.28
 		else:
 			inspect_pitch = ease((2.0 - prog) / 0.6, 0.4) * 0.28
-	cam.rotation = Vector3(pitch + inspect_pitch + damage_kick * 0.65, 0.0, cam_roll + damage_kick * 0.85)
+	cam.rotation = Vector3(pitch + inspect_pitch + damage_kick * 0.65 + revive_cam_rot.x, 0.0, cam_roll + damage_kick * 0.85 + revive_cam_rot.z)
+	cam.position = Vector3(0.0, 1.48 + revive_cam_offset.y, 0.0)
 
 
 func begin_door_teleport(r: RoomScene) -> void:
@@ -973,6 +997,31 @@ func _detect_floor_surface() -> String:
 
 
 func process_camera_and_viewmodel(delta: float, lock_mask: ColorRect, a075_threat: bool = false) -> void:
+	if revive_heartbeat_timer > 0.0:
+		revive_heartbeat_timer = maxf(revive_heartbeat_timer - delta, 0.0)
+		revive_beat_accum += delta
+		var beat_cycle := 0.68
+		var beat_idx := int(revive_beat_accum / beat_cycle)
+		var beat_t := fmod(revive_beat_accum, beat_cycle)
+		if beat_idx != revive_last_beat_idx:
+			revive_last_beat_idx = beat_idx
+			if audio != null:
+				audio.play_heartbeat(lerpf(-1.0, 5.0, revive_heartbeat_timer / 2.4))
+			if ui_mgr != null:
+				ui_mgr.pulse_damage(0.50 * (revive_heartbeat_timer / 2.4))
+		var pulse := 0.0
+		if beat_t < 0.12:
+			pulse = sin((beat_t / 0.12) * PI) * 0.10
+		elif beat_t > 0.15 and beat_t < 0.25:
+			pulse = sin(((beat_t - 0.15) / 0.10) * PI) * 0.06
+		var weight := clampf(revive_heartbeat_timer / 2.4, 0.0, 1.0)
+		revive_cam_offset.y = pulse * 0.85 * weight
+		revive_cam_rot.x = -pulse * 0.75 * weight
+		revive_cam_rot.z = pulse * 0.35 * weight
+	else:
+		revive_cam_offset = Vector3.ZERO
+		revive_cam_rot = Vector3.ZERO
+
 	var look_alpha := 1.0 - exp(-18.0 * delta)
 	yaw = lerpf(yaw, target_yaw, look_alpha)
 	pitch = lerpf(pitch, target_pitch, look_alpha)
@@ -1001,7 +1050,8 @@ func process_camera_and_viewmodel(delta: float, lock_mask: ColorRect, a075_threa
 	cover_hand_blend = lerpf(cover_hand_blend, 1.0 if is_covering_gummy else 0.0, clampf(1.0 - exp(-16.0 * delta), 0.0, 1.0))
 
 	if cover_hand != null:
-		cover_hand.visible = (cover_hand_blend > 0.02) and (not is_hiding)
+		var in_playing_state := (game == null or int(game.get("state")) == 0)
+		cover_hand.visible = (cover_hand_blend > 0.02) and (not is_hiding) and in_playing_state
 		if cover_hand.visible:
 			var cb := ease(cover_hand_blend, 0.35)
 			cover_hand.position = Vector3(-0.34, -0.44, -0.14).lerp(Vector3(0.18, -0.17, -0.46), cb)
