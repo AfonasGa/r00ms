@@ -995,7 +995,10 @@ func _detect_floor_surface() -> String:
 	return "carpet"
 
 
+var is_spectating_mode := false
+
 func set_spectating(spectating: bool) -> void:
+	is_spectating_mode = spectating
 	if spectating:
 		if vm_holder != null:
 			vm_holder.visible = false
@@ -1015,8 +1018,7 @@ func set_spectating(spectating: bool) -> void:
 
 
 func process_camera_and_viewmodel(delta: float, lock_mask: ColorRect, a075_threat: bool = false) -> void:
-	var is_spectating: bool = (game != null and int(game.get("state")) != 1 and int(game.get("state")) != 2)
-	if is_spectating:
+	if is_spectating_mode:
 		if vm_holder != null:
 			vm_holder.visible = false
 		if anim_hand != null:
@@ -1082,7 +1084,7 @@ func process_camera_and_viewmodel(delta: float, lock_mask: ColorRect, a075_threa
 	cover_hand_blend = lerpf(cover_hand_blend, 1.0 if is_covering_gummy else 0.0, clampf(1.0 - exp(-16.0 * delta), 0.0, 1.0))
 
 	if cover_hand != null:
-		var in_playing_state := (game == null or int(game.get("state")) == 1)
+		var in_playing_state := (game == null or int(game.get("state")) == 0)
 		cover_hand.visible = (cover_hand_blend > 0.02) and (not is_hiding) and in_playing_state
 		if cover_hand.visible:
 			var cb := ease(cover_hand_blend, 0.35)
@@ -1166,13 +1168,15 @@ func process_camera_and_viewmodel(delta: float, lock_mask: ColorRect, a075_threa
 			else:
 				var move_p := clampf((locker_transition_t - 0.14) / 0.72, 0.0, 1.0)
 				cam.global_position = locker_cam_from.lerp(locker_eye, ease(move_p, 0.28)) + hide_shake
-			lock_mask.color = Color(0.0, 0.0, 0.0, lerpf(0.0, max_mask, t_ease))
-			lock_mask.visible = (lock_mask.color.a > 0.004)
+			if lock_mask != null:
+				lock_mask.color = Color(0.0, 0.0, 0.0, lerpf(0.0, max_mask, t_ease))
+				lock_mask.visible = (lock_mask.color.a > 0.004)
 		else:
 			cam.global_position = locker_eye + hide_shake
-			var cur_a := lerpf(lock_mask.color.a, max_mask, clampf(1.0 - exp(-9.0 * delta), 0.0, 1.0))
-			lock_mask.color = Color(0.0, 0.0, 0.0, cur_a)
-			lock_mask.visible = (cur_a > 0.004)
+			if lock_mask != null:
+				var cur_a := lerpf(lock_mask.color.a, max_mask, clampf(1.0 - exp(-9.0 * delta), 0.0, 1.0))
+				lock_mask.color = Color(0.0, 0.0, 0.0, cur_a)
+				lock_mask.visible = (cur_a > 0.004)
 	else:
 		if locker_transition_t < 1.0 and not locker_transition_entering:
 			var exit_turn_p := ease(clampf(locker_transition_t, 0.0, 1.0), -1.8)
@@ -1228,9 +1232,10 @@ func process_camera_and_viewmodel(delta: float, lock_mask: ColorRect, a075_threa
 			var tgt_pos := player_body.global_position + Vector3(0.0, 1.48, 0.0)
 			cam.global_position = locker_cam_from.lerp(tgt_pos, t_out)
 			cam.rotation.z = lerpf(cam.rotation.z, sin(locker_transition_t * PI) * (-0.05 if locker_exit_face_locker else 0.03), 1.0 - exp(-14.0 * delta))
-			lock_mask.color = Color(0.0, 0.0, 0.0, lerpf(0.32, 0.0, t_out))
-			lock_mask.visible = (lock_mask.color.a > 0.004)
-		else:
+			if lock_mask != null:
+				lock_mask.color = Color(0.0, 0.0, 0.0, lerpf(0.32, 0.0, t_out))
+				lock_mask.visible = (lock_mask.color.a > 0.004)
+		elif lock_mask != null:
 			lock_mask.color = Color(0.0, 0.0, 0.0, 0.0)
 			lock_mask.visible = false
 

@@ -1264,7 +1264,7 @@ func _input(event: InputEvent) -> void:
 			elif not te.pressed and te.index == _look_touch_id:
 				_look_touch_id = -1
 			return
-		if state != State.PLAYING or not settings_mgr.mobile_controls_enabled or ui_mgr.chat_open:
+		if state != State.PLAYING or ui_mgr.chat_open:
 			return
 		var vp_sz := get_viewport().get_visible_rect().size
 		if te.pressed:
@@ -1314,7 +1314,7 @@ func _input(event: InputEvent) -> void:
 			_spectate_pitch = clampf(_spectate_pitch - sd.relative.y * sp_sens, -1.15, 0.85)
 			_spectate_user_orbited = true
 			return
-		if state != State.PLAYING or not settings_mgr.mobile_controls_enabled or ui_mgr.chat_open:
+		if state != State.PLAYING or ui_mgr.chat_open:
 			return
 		if sd.index == _joy_touch_id:
 			_update_joystick_from_pos(sd.position)
