@@ -231,6 +231,9 @@ func set_state(new_state: int) -> void:
 		ui_mgr.get_node_ref("modal").visible = false
 		ui_mgr.get_node_ref("architect_overlay").visible = false
 		ui_mgr.get_node_ref("death_iris").visible = false
+		player_ctrl.set_spectating(false)
+		if flashlight != null:
+			flashlight.visible = player_ctrl.light_on
 	elif state == State.SPECTATING:
 		_reset_touch_state()
 		ui_mgr.clear_all_vignettes()
@@ -238,13 +241,13 @@ func set_state(new_state: int) -> void:
 		ui_mgr.get_node_ref("modal").visible = false
 		ui_mgr.get_node_ref("architect_overlay").visible = false
 		ui_mgr.get_node_ref("death_iris").visible = false
-		if player_ctrl.vm_holder != null:
-			player_ctrl.vm_holder.visible = false
-		if player_ctrl.anim_hand != null:
-			player_ctrl.anim_hand.visible = false
-		if player_ctrl.cover_hand != null:
-			player_ctrl.cover_hand.visible = false
-		flashlight.visible = false
+		player_ctrl.set_spectating(true)
+		if flashlight != null:
+			flashlight.visible = false
+	elif state == State.DEAD:
+		player_ctrl.set_spectating(true)
+		if flashlight != null:
+			flashlight.visible = false
 	elif state == State.MENU:
 		_reset_touch_state()
 		ui_mgr.clear_all_vignettes()
@@ -255,6 +258,9 @@ func set_state(new_state: int) -> void:
 		ui_mgr.get_node_ref("modal").visible = false
 		ui_mgr.get_node_ref("architect_overlay").visible = false
 		ui_mgr.get_node_ref("death_iris").visible = false
+		player_ctrl.set_spectating(true)
+		if flashlight != null:
+			flashlight.visible = false
 		if player_ctrl.cover_hand != null:
 			player_ctrl.cover_hand.visible = false
 		player_body.velocity = Vector3.ZERO
@@ -776,6 +782,12 @@ func cycle_spectate_target(step: int) -> void:
 	_spectate_user_orbited = false
 	var rp_yaw := float(rp.get("tgt_yaw", 0.0))
 	_spectate_yaw = wrapf(rp_yaw + PI * 0.88, -PI, PI) if _spectate_last_hiding else rp_yaw
+	var tgt_node := rp.get("node") as Node3D
+	if is_instance_valid(tgt_node):
+		var pivot := tgt_node.global_position + Vector3(0.0, 1.48, 0.0)
+		var back_dir := (Basis(Vector3.UP, _spectate_yaw) * Basis(Vector3.RIGHT, -_spectate_pitch) * Vector3(0.0, 0.0, 1.0)).normalized()
+		cam.global_position = pivot + back_dir * 2.55
+		cam.look_at(pivot, Vector3.UP)
 
 
 func cycle_render_quality() -> void:
@@ -1153,9 +1165,22 @@ func _process_spectating(delta: float) -> void:
 	if not is_instance_valid(tgt_node):
 		return
 	var r_num := int(rp.get("room", 0))
+
+	# Spawn ahead rooms dynamically so spectating a teammate further ahead never shows pitch-black void!
+	if r_num > room_mgr.highest_opened:
+		var prev_high := room_mgr.highest_opened
+		room_mgr.highest_opened = r_num
+		while room_mgr.rooms.is_empty() or room_mgr.rooms[-1].index < r_num + 4:
+			room_mgr.spawn_next_room(settings_mgr.render_quality, bool(active_modifiers.get("make_haste", false)), settings_mgr.room_vis_radius)
+		for idx in range(prev_high, r_num):
+			var r_door: RoomScene = room_mgr.room_by_idx.get(idx) as RoomScene
+			if r_door != null and not r_door.door_opened:
+				open_room_door(idx, false, true)
+
 	if r_num != room_mgr.current_room_idx:
 		room_mgr.current_room_idx = r_num
 		room_mgr.update_room_visibility(settings_mgr.room_vis_radius)
+
 	var s_txt := RoomsI18n.t("spec_watching", [String(rp.get("name", "Player")), r_num])
 	s_txt += RoomsI18n.t("spec_dead_suffix") if bool(rp.get("dead", false)) else RoomsI18n.t("spec_alive_suffix")
 	(ui_mgr.get_node_ref("spectate_lbl") as Label).text = s_txt
@@ -1172,7 +1197,12 @@ func _process_spectating(delta: float) -> void:
 		var hit := space_state.intersect_ray(q)
 		if not hit.is_empty():
 			desired = hit.get("position", desired) - back_dir * 0.22
-	cam.global_position = cam.global_position.lerp(desired, 1.0 - exp(-14.0 * delta))
+
+	# Snap camera if target is distant (switching target or large room gap) to avoid long lerp through walls
+	if cam.global_position.distance_squared_to(pivot) > 625.0:
+		cam.global_position = desired
+	else:
+		cam.global_position = cam.global_position.lerp(desired, 1.0 - exp(-14.0 * delta))
 	cam.look_at(pivot, Vector3.UP)
 	cam.fov = lerpf(cam.fov, 76.0, 1.0 - exp(-10.0 * delta))
 

@@ -180,13 +180,13 @@ func setup_environment(world_env: WorldEnvironment, flashlight: SpotLight3D) -> 
 	env.ambient_light_energy = 0.20
 	env.fog_enabled = (render_quality != RenderQuality.MOBILE_OPT)
 	env.fog_light_color = Color(0.012, 0.016, 0.026)
-	env.fog_density = 0.022
+	env.fog_density = 0.018
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.14
-	env.tonemap_white = 6.0
+	env.tonemap_exposure = 1.15
+	env.tonemap_white = 5.2
 	env.adjustment_enabled = (render_quality != RenderQuality.MOBILE_OPT)
-	env.adjustment_brightness = 1.03
-	env.adjustment_contrast = 1.07
+	env.adjustment_brightness = 1.02
+	env.adjustment_contrast = 1.08
 	env.adjustment_saturation = 1.06
 	env.ssao_enabled = (render_quality == RenderQuality.HIGH)
 	env.ssao_radius = 0.85
@@ -222,7 +222,7 @@ func apply_render_quality(q: int, world_env: WorldEnvironment, flashlight: SpotL
 		if flashlight != null:
 			flashlight.shadow_enabled = false
 		if cam != null:
-			cam.far = 78.0
+			cam.far = 85.0
 		if env != null:
 			env.ssao_enabled = false
 			env.glow_enabled = false
@@ -241,7 +241,7 @@ func apply_render_quality(q: int, world_env: WorldEnvironment, flashlight: SpotL
 			flashlight.shadow_blur = 1.4
 			flashlight.shadow_reverse_cull_face = true
 		if cam != null:
-			cam.far = 68.0
+			cam.far = 100.0
 		if env != null:
 			env.ssao_enabled = false
 			env.glow_enabled = true
@@ -260,7 +260,7 @@ func apply_render_quality(q: int, world_env: WorldEnvironment, flashlight: SpotL
 			flashlight.shadow_blur = 1.8
 			flashlight.shadow_reverse_cull_face = true
 		if cam != null:
-			cam.far = 85.0
+			cam.far = 135.0
 		if env != null:
 			env.ssao_enabled = true
 			env.glow_enabled = true

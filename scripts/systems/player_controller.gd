@@ -995,7 +995,38 @@ func _detect_floor_surface() -> String:
 	return "carpet"
 
 
+func set_spectating(spectating: bool) -> void:
+	if spectating:
+		if vm_holder != null:
+			vm_holder.visible = false
+		if anim_hand != null:
+			anim_hand.visible = false
+		if cover_hand != null:
+			cover_hand.visible = false
+		if held_battery != null:
+			held_battery.visible = false
+		door_hand_timer = 0.0
+		pickup_hand_timer = 0.0
+		battery_inspect_timer = 0.0
+		is_covering_gummy = false
+		cover_hand_blend = 0.0
+	elif vm_holder != null:
+		vm_holder.visible = true
+
+
 func process_camera_and_viewmodel(delta: float, lock_mask: ColorRect, a075_threat: bool = false) -> void:
+	var is_spectating: bool = (game != null and int(game.get("state")) != 1 and int(game.get("state")) != 2)
+	if is_spectating:
+		if vm_holder != null:
+			vm_holder.visible = false
+		if anim_hand != null:
+			anim_hand.visible = false
+		if cover_hand != null:
+			cover_hand.visible = false
+		if held_battery != null:
+			held_battery.visible = false
+		return
+
 	if revive_heartbeat_timer > 0.0:
 		revive_heartbeat_timer = maxf(revive_heartbeat_timer - delta, 0.0)
 		revive_beat_accum += delta
@@ -1051,7 +1082,7 @@ func process_camera_and_viewmodel(delta: float, lock_mask: ColorRect, a075_threa
 	cover_hand_blend = lerpf(cover_hand_blend, 1.0 if is_covering_gummy else 0.0, clampf(1.0 - exp(-16.0 * delta), 0.0, 1.0))
 
 	if cover_hand != null:
-		var in_playing_state := (game == null or int(game.get("state")) == 0)
+		var in_playing_state := (game == null or int(game.get("state")) == 1)
 		cover_hand.visible = (cover_hand_blend > 0.02) and (not is_hiding) and in_playing_state
 		if cover_hand.visible:
 			var cb := ease(cover_hand_blend, 0.35)
@@ -1152,6 +1183,11 @@ func process_camera_and_viewmodel(delta: float, lock_mask: ColorRect, a075_threa
 		var fl_lag_y := clampf((target_yaw - yaw) * 0.45, -0.18, 0.18)
 		flashlight.rotation.x = lerpf(flashlight.rotation.x, fl_lag_x, 1.0 - exp(-14.0 * delta))
 		flashlight.rotation.y = lerpf(flashlight.rotation.y, fl_lag_y, 1.0 - exp(-14.0 * delta))
+
+		# Natural subtle camera roll when strafing/turning
+		var strafe_dot := player_body.velocity.dot(cam.global_transform.basis.x)
+		var strafe_tilt := clampf(-strafe_dot * 0.0055, -0.035, 0.035)
+		cam.rotation.z = lerpf(cam.rotation.z, strafe_tilt, 1.0 - exp(-10.0 * delta))
 
 		if door_hand_timer > 0.0:
 			door_hand_timer = maxf(door_hand_timer - delta, 0.0)

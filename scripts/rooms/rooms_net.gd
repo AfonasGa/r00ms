@@ -50,9 +50,10 @@ var _enet_connected_flag := false
 # UDP LAN Auto-Discovery (for mobile & PC same-Wi-Fi one-tap join)
 var _lan_broadcaster: PacketPeerUDP = null
 var _lan_listener: PacketPeerUDP = null
-var _lan_broadcast_accum := 0.0
+var _lan_broadcast_accum: float = 0.0
+var _lan_probe_accum: float = 0.0
 var _lan_servers: Dictionary = {} # ip -> {ip, port, name, players, last_seen}
-var _lan_discovering := false
+var _lan_discovering: bool = false
 
 var _send_accum := 0.0
 var _send_tick := 0
@@ -481,6 +482,7 @@ func update_presence(room_idx: int, alive: int, total: int) -> void:
 
 func host_enet(seed_val: int, port: int = ENET_PORT) -> Error:
 	disconnect_session()
+	stop_lan_discovery()
 	var enet := ENetMultiplayerPeer.new()
 	# Bind explicitly to IPv4 0.0.0.0 so Android/iOS/PC sockets accept all Wi-Fi IPv4 peers!
 	enet.set_bind_ip("0.0.0.0")
@@ -504,6 +506,22 @@ func host_enet(seed_val: int, port: int = ENET_PORT) -> Error:
 	var lan_ip := _get_local_lan_ip()
 	emit_signal("status_changed", "LAN: %s:%d" % [lan_ip, port])
 	return OK
+
+
+func is_hotspot_network() -> bool:
+	var ip: String = _get_local_lan_ip()
+	return ip.begins_with("172.20.10.") or ip.begins_with("192.168.43.") or ip.begins_with("192.168.137.")
+
+
+func get_hotspot_host_ip() -> String:
+	var ip: String = _get_local_lan_ip()
+	if ip.begins_with("172.20.10."):
+		return "172.20.10.1"
+	if ip.begins_with("192.168.43."):
+		return "192.168.43.1"
+	if ip.begins_with("192.168.137."):
+		return "192.168.137.1"
+	return "172.20.10.1"
 
 
 func join_enet(ip: String = "127.0.0.1", port: int = ENET_PORT) -> Error:
@@ -553,6 +571,9 @@ func _start_lan_broadcaster() -> void:
 	_stop_lan_broadcaster()
 	_lan_broadcaster = PacketPeerUDP.new()
 	_lan_broadcaster.set_broadcast_enabled(true)
+	var err: Error = _lan_broadcaster.bind(LAN_DISCOVERY_PORT, "0.0.0.0")
+	if err != OK:
+		_lan_broadcaster.bind(LAN_DISCOVERY_PORT)
 	_lan_broadcast_accum = 1.5
 
 
@@ -563,13 +584,36 @@ func _stop_lan_broadcaster() -> void:
 
 
 func _tick_lan_discovery(delta: float) -> void:
-	# 1. Host broadcasts presence every 1.1s to both global & subnet broadcast
+	# 1. Host broadcasts presence every 1.0s to global broadcast, hotspot unicasts, & replies to client pings
 	if mode == "enet" and is_host and _lan_broadcaster != null:
+		var my_ip: String = _get_local_lan_ip()
+		var p_guard: int = 0
+		while _lan_broadcaster.get_available_packet_count() > 0 and p_guard < 16:
+			p_guard += 1
+			var pkt: PackedByteArray = _lan_broadcaster.get_packet()
+			var from_ip: String = _lan_broadcaster.get_packet_ip()
+			var from_port: int = _lan_broadcaster.get_packet_port()
+			if pkt.is_empty() or from_ip.is_empty():
+				continue
+			var parsed: Variant = JSON.parse_string(pkt.get_string_from_utf8())
+			if parsed is Dictionary and String((parsed as Dictionary).get("app", "")).begins_with("r00ms_lan"):
+				var reply: PackedByteArray = JSON.stringify({
+					"app": "r00ms_lan",
+					"name": persona_name,
+					"ip": my_ip,
+					"port": ENET_PORT,
+					"players": _enet_connected_ids.size() + 1,
+				}).to_utf8_buffer()
+				_lan_broadcaster.set_dest_address(from_ip, LAN_DISCOVERY_PORT)
+				_lan_broadcaster.put_packet(reply)
+				if from_port > 0 and from_port != LAN_DISCOVERY_PORT:
+					_lan_broadcaster.set_dest_address(from_ip, from_port)
+					_lan_broadcaster.put_packet(reply)
+
 		_lan_broadcast_accum += delta
-		if _lan_broadcast_accum >= 1.1:
+		if _lan_broadcast_accum >= 1.0:
 			_lan_broadcast_accum = 0.0
-			var my_ip := _get_local_lan_ip()
-			var payload := JSON.stringify({
+			var payload: PackedByteArray = JSON.stringify({
 				"app": "r00ms_lan",
 				"name": persona_name,
 				"ip": my_ip,
@@ -578,30 +622,100 @@ func _tick_lan_discovery(delta: float) -> void:
 			}).to_utf8_buffer()
 			_lan_broadcaster.set_dest_address("255.255.255.255", LAN_DISCOVERY_PORT)
 			_lan_broadcaster.put_packet(payload)
-			var parts := my_ip.split(".")
-			if parts.size() == 4 and not my_ip.begins_with("127."):
-				var subnet_bcast := "%s.%s.%s.255" % [parts[0], parts[1], parts[2]]
-				_lan_broadcaster.set_dest_address(subnet_bcast, LAN_DISCOVERY_PORT)
-				_lan_broadcaster.put_packet(payload)
 
-	# 2. Client listens for LAN hosts
+			if my_ip.begins_with("172.20.10."):
+				# iOS Hotspot (/28 subnet: broadcast is .15, unicast to all 14 nodes)
+				_lan_broadcaster.set_dest_address("172.20.10.15", LAN_DISCOVERY_PORT)
+				_lan_broadcaster.put_packet(payload)
+				for i in range(1, 15):
+					var tip: String = "172.20.10.%d" % i
+					if tip != my_ip:
+						_lan_broadcaster.set_dest_address(tip, LAN_DISCOVERY_PORT)
+						_lan_broadcaster.put_packet(payload)
+			elif my_ip.begins_with("192.168.43."):
+				_lan_broadcaster.set_dest_address("192.168.43.255", LAN_DISCOVERY_PORT)
+				_lan_broadcaster.put_packet(payload)
+				for i in range(1, 26):
+					var tip: String = "192.168.43.%d" % i
+					if tip != my_ip:
+						_lan_broadcaster.set_dest_address(tip, LAN_DISCOVERY_PORT)
+						_lan_broadcaster.put_packet(payload)
+			elif my_ip.begins_with("192.168.137."):
+				_lan_broadcaster.set_dest_address("192.168.137.255", LAN_DISCOVERY_PORT)
+				_lan_broadcaster.put_packet(payload)
+				for i in range(1, 26):
+					var tip: String = "192.168.137.%d" % i
+					if tip != my_ip:
+						_lan_broadcaster.set_dest_address(tip, LAN_DISCOVERY_PORT)
+						_lan_broadcaster.put_packet(payload)
+			else:
+				var parts: PackedStringArray = my_ip.split(".")
+				if parts.size() == 4 and not my_ip.begins_with("127."):
+					var subnet_bcast: String = "%s.%s.%s.255" % [parts[0], parts[1], parts[2]]
+					_lan_broadcaster.set_dest_address(subnet_bcast, LAN_DISCOVERY_PORT)
+					_lan_broadcaster.put_packet(payload)
+
+	# 2. Client listens for LAN hosts AND sends active discovery probes
 	if _lan_discovering and _lan_listener != null:
-		var changed := false
-		var now_s := float(Time.get_ticks_msec()) * 0.001
-		var my_ip := _get_local_lan_ip()
-		var guard := 0
+		_lan_probe_accum += delta
+		if _lan_probe_accum >= 0.95:
+			_lan_probe_accum = 0.0
+			var c_ip: String = _get_local_lan_ip()
+			var probe: PackedByteArray = JSON.stringify({
+				"app": "r00ms_lan_ping",
+				"from": c_ip,
+			}).to_utf8_buffer()
+			_lan_listener.set_dest_address("255.255.255.255", LAN_DISCOVERY_PORT)
+			_lan_listener.put_packet(probe)
+			if c_ip.begins_with("172.20.10."):
+				# iOS Hotspot: send unicast probe directly to hotspot router (172.20.10.1) and all nodes!
+				_lan_listener.set_dest_address("172.20.10.1", LAN_DISCOVERY_PORT)
+				_lan_listener.put_packet(probe)
+				_lan_listener.set_dest_address("172.20.10.15", LAN_DISCOVERY_PORT)
+				_lan_listener.put_packet(probe)
+				for i in range(1, 15):
+					var tip: String = "172.20.10.%d" % i
+					if tip != c_ip:
+						_lan_listener.set_dest_address(tip, LAN_DISCOVERY_PORT)
+						_lan_listener.put_packet(probe)
+			elif c_ip.begins_with("192.168.43."):
+				_lan_listener.set_dest_address("192.168.43.1", LAN_DISCOVERY_PORT)
+				_lan_listener.put_packet(probe)
+				_lan_listener.set_dest_address("192.168.43.255", LAN_DISCOVERY_PORT)
+				_lan_listener.put_packet(probe)
+				for i in range(1, 26):
+					var tip: String = "192.168.43.%d" % i
+					if tip != c_ip:
+						_lan_listener.set_dest_address(tip, LAN_DISCOVERY_PORT)
+						_lan_listener.put_packet(probe)
+			elif c_ip.begins_with("192.168.137."):
+				_lan_listener.set_dest_address("192.168.137.1", LAN_DISCOVERY_PORT)
+				_lan_listener.put_packet(probe)
+				_lan_listener.set_dest_address("192.168.137.255", LAN_DISCOVERY_PORT)
+				_lan_listener.put_packet(probe)
+			else:
+				var parts: PackedStringArray = c_ip.split(".")
+				if parts.size() == 4 and not c_ip.begins_with("127."):
+					var subnet_bcast: String = "%s.%s.%s.255" % [parts[0], parts[1], parts[2]]
+					_lan_listener.set_dest_address(subnet_bcast, LAN_DISCOVERY_PORT)
+					_lan_listener.put_packet(probe)
+
+		var changed: bool = false
+		var now_s: float = float(Time.get_ticks_msec()) * 0.001
+		var my_ip: String = _get_local_lan_ip()
+		var guard: int = 0
 		while _lan_listener.get_available_packet_count() > 0 and guard < 16:
 			guard += 1
-			var pkt := _lan_listener.get_packet()
-			var sender_ip := _lan_listener.get_packet_ip()
+			var pkt: PackedByteArray = _lan_listener.get_packet()
+			var sender_ip: String = _lan_listener.get_packet_ip()
 			if pkt.is_empty():
 				continue
 			var parsed: Variant = JSON.parse_string(pkt.get_string_from_utf8())
 			if parsed is Dictionary:
-				var d: Dictionary = parsed
+				var d: Dictionary = parsed as Dictionary
 				if String(d.get("app", "")) != "r00ms_lan":
 					continue
-				var host_ip := sender_ip if (not sender_ip.is_empty() and sender_ip.contains(".")) else String(d.get("ip", ""))
+				var host_ip: String = sender_ip if (not sender_ip.is_empty() and sender_ip.contains(".")) else String(d.get("ip", ""))
 				if host_ip.is_empty() or host_ip == my_ip or host_ip.begins_with("127."):
 					continue
 				_lan_servers[host_ip] = {
@@ -1258,8 +1372,25 @@ func _on_enet_connection_failed() -> void:
 	emit_signal("status_changed", RoomsI18n.t("toast_lan_fail"))
 
 
-## Returns the LAN IP of this device (PC, Android wlan0/ap0, iOS en0), prioritizing Wi-Fi/Ethernet IPv4.
+## Returns the LAN IP of this device (PC, Android wlan0/ap0, iOS en0/bridge100), prioritizing Wi-Fi/Ethernet/Hotspot IPv4.
 func _get_local_lan_ip() -> String:
+	# 1. First priority: Check if we are on a known Hotspot subnet (iOS 172.20.10.x, Android 192.168.43.x, Windows 192.168.137.x)
+	for iface in IP.get_local_interfaces():
+		var if_name: String = String(iface.get("name", "")).to_lower()
+		var friendly: String = String(iface.get("friendly", "")).to_lower()
+		var combined := if_name + " " + friendly
+		if "vmware" in combined or "virtual" in combined or "vbox" in combined or "bluetooth" in combined or "loopback" in combined or "rmnet" in combined or "ccmni" in combined or "pdp_ip" in combined or "tun" in combined or "ppp" in combined or "dummy" in combined:
+			continue
+		var addrs: Array = iface.get("addresses", [])
+		for a in addrs:
+			var addr := String(a)
+			if addr.begins_with("172.20.10.") or addr.begins_with("192.168.43.") or addr.begins_with("192.168.137."):
+				return addr
+	for addr in IP.get_local_addresses():
+		if addr.begins_with("172.20.10.") or addr.begins_with("192.168.43.") or addr.begins_with("192.168.137."):
+			return addr
+
+	# 2. Standard Wi-Fi / Ethernet priority
 	var best_lan := ""
 	var fallback := ""
 	for iface in IP.get_local_interfaces():
@@ -1268,7 +1399,7 @@ func _get_local_lan_ip() -> String:
 		var combined := if_name + " " + friendly
 		if "vmware" in combined or "virtual" in combined or "vbox" in combined or "bluetooth" in combined or "loopback" in combined or "rmnet" in combined or "ccmni" in combined or "pdp_ip" in combined or "tun" in combined or "ppp" in combined or "dummy" in combined:
 			continue
-		var is_preferred := ("wlan" in combined or "swlan" in combined or "ap0" in combined or "wi-fi" in combined or "wifi" in combined or "беспроводная" in combined or "en0" in if_name or "ethernet" in combined or "eth0" in if_name or "сеть" in combined)
+		var is_preferred := ("wlan" in combined or "swlan" in combined or "ap" in combined or "bridge" in combined or "wi-fi" in combined or "wifi" in combined or "беспроводная" in combined or "en0" in if_name or "en1" in if_name or "ethernet" in combined or "eth0" in if_name or "eth1" in if_name or "сеть" in combined)
 		var addrs: Array = iface.get("addresses", [])
 		for a in addrs:
 			var addr := String(a)

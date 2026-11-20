@@ -786,9 +786,12 @@ func _build_main_menu(root: Control) -> void:
 		show_toast(RoomsI18n.t("toast_lan_started", [host_ip, RoomsNet.ENET_PORT]), 5.0)
 	, 24, "m_btn_lan_host")
 
-	var my_ip := net._get_local_lan_ip() if net != null else "127.0.0.1"
+	var my_ip: String = net._get_local_lan_ip() if net != null else "127.0.0.1"
 	var lan_info := Label.new()
-	lan_info.text = RoomsI18n.t("menu_your_ip", [my_ip, RoomsNet.ENET_PORT])
+	if net != null and net.is_hotspot_network() and my_ip == net.get_hotspot_host_ip():
+		lan_info.text = RoomsI18n.t("menu_hotspot_active", [my_ip, RoomsNet.ENET_PORT])
+	else:
+		lan_info.text = RoomsI18n.t("menu_your_ip", [my_ip, RoomsNet.ENET_PORT])
 	lan_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lan_info.add_theme_font_override("font", preload("res://assets/fonts/Montserrat-Regular.ttf"))
 	lan_info.add_theme_font_size_override("font_size", 14)
@@ -801,18 +804,40 @@ func _build_main_menu(root: Control) -> void:
 	btn_copy.custom_minimum_size = Vector2(0, 28)
 	RoomsUI.style_link_button(btn_copy, 14, HORIZONTAL_ALIGNMENT_CENTER)
 	btn_copy.pressed.connect(func() -> void:
-		var cur_ip := net._get_local_lan_ip() if net != null else "127.0.0.1"
+		var cur_ip: String = net._get_local_lan_ip() if net != null else "127.0.0.1"
 		DisplayServer.clipboard_set("%s:%d" % [cur_ip, RoomsNet.ENET_PORT])
 		show_toast(RoomsI18n.t("toast_ip_copied"), 2.5)
 	)
 	v_multi.add_child(btn_copy)
 	ui["m_btn_copy_ip"] = btn_copy
 
+	# Dedicated 1-tap quick join button for Hotspot / Tethering mode (iOS 172.20.10.1, Android 192.168.43.1)
+	var hs_target: String = net.get_hotspot_host_ip() if net != null else "172.20.10.1"
+	var btn_hotspot := Button.new()
+	btn_hotspot.text = RoomsI18n.t("menu_hotspot_connect", [hs_target])
+	btn_hotspot.custom_minimum_size = Vector2(0, 36)
+	RoomsUI.style_button(btn_hotspot, Color(1.0, 0.86, 0.40), 13)
+	btn_hotspot.pressed.connect(func() -> void:
+		var target_ip: String = net.get_hotspot_host_ip() if net != null else "172.20.10.1"
+		if net != null:
+			var err: Error = net.join_enet(target_ip, RoomsNet.ENET_PORT)
+			if err != OK:
+				show_toast(RoomsI18n.t("toast_lan_bad_ip"), 3.0)
+				return
+		update_menu_players_list()
+		show_toast(RoomsI18n.t("toast_hotspot_connecting", [target_ip]), 3.5)
+	)
+	v_multi.add_child(btn_hotspot)
+	ui["m_btn_hotspot_join"] = btn_hotspot
+
 	var lan_row := HBoxContainer.new()
 	lan_row.add_theme_constant_override("separation", 6)
 	v_multi.add_child(lan_row)
 	var lan_edit := LineEdit.new()
-	lan_edit.placeholder_text = "%s:%d" % [my_ip, RoomsNet.ENET_PORT]
+	var def_placeholder: String = "%s:%d" % [my_ip, RoomsNet.ENET_PORT]
+	if net != null and net.is_hotspot_network() and my_ip != net.get_hotspot_host_ip():
+		def_placeholder = "%s:%d" % [net.get_hotspot_host_ip(), RoomsNet.ENET_PORT]
+	lan_edit.placeholder_text = def_placeholder
 	lan_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lan_edit.custom_minimum_size = Vector2(0, 40)
 	lan_row.add_child(lan_edit)
@@ -822,18 +847,23 @@ func _build_main_menu(root: Control) -> void:
 	btn_join.custom_minimum_size = Vector2(84, 40)
 	RoomsUI.style_link_button(btn_join, 20)
 	btn_join.pressed.connect(func() -> void:
-		var raw := lan_edit.text.strip_edges().replace(" ", "")
+		var raw: String = lan_edit.text.strip_edges().replace(" ", "")
 		if raw.is_empty():
-			raw = net._get_local_lan_ip() if net != null else my_ip
-		var ip := raw
-		var port := RoomsNet.ENET_PORT
+			if net != null and net.is_hotspot_network() and my_ip != net.get_hotspot_host_ip():
+				raw = net.get_hotspot_host_ip()
+			elif my_ip.begins_with("172.20.10.") and my_ip != "172.20.10.1":
+				raw = "172.20.10.1"
+			else:
+				raw = net._get_local_lan_ip() if net != null else my_ip
+		var ip: String = raw
+		var port: int = RoomsNet.ENET_PORT
 		if ":" in raw:
-			var parts := raw.split(":", false, 1)
+			var parts: PackedStringArray = raw.split(":", false, 1)
 			ip = parts[0]
 			if parts.size() > 1 and parts[1].is_valid_int():
 				port = int(parts[1])
 		if net != null:
-			var err := net.join_enet(ip, port)
+			var err: Error = net.join_enet(ip, port)
 			if err != OK:
 				show_toast(RoomsI18n.t("toast_lan_bad_ip"), 3.0)
 				return
@@ -2067,8 +2097,14 @@ func apply_localization() -> void:
 	set_txt.call("m_btn_cred_back", "menu_back")
 	set_txt.call("menu_exit", "menu_exit")
 	if ui.has("lan_info_lbl"):
-		var cur_ip := net._get_local_lan_ip() if net != null else "127.0.0.1"
-		(ui["lan_info_lbl"] as Label).text = RoomsI18n.t("menu_your_ip", [cur_ip, RoomsNet.ENET_PORT])
+		var cur_ip: String = net._get_local_lan_ip() if net != null else "127.0.0.1"
+		if net != null and net.is_hotspot_network() and cur_ip == net.get_hotspot_host_ip():
+			(ui["lan_info_lbl"] as Label).text = RoomsI18n.t("menu_hotspot_active", [cur_ip, RoomsNet.ENET_PORT])
+		else:
+			(ui["lan_info_lbl"] as Label).text = RoomsI18n.t("menu_your_ip", [cur_ip, RoomsNet.ENET_PORT])
+	if ui.has("m_btn_hotspot_join"):
+		var hs_target: String = net.get_hotspot_host_ip() if net != null else "172.20.10.1"
+		(ui["m_btn_hotspot_join"] as Button).text = RoomsI18n.t("menu_hotspot_connect", [hs_target])
 	if ui.has("lan_found_hdr") and (lan_servers_box == null or lan_servers_box.get_child_count() == 0):
 		(ui["lan_found_hdr"] as Label).text = RoomsI18n.t("menu_lan_searching")
 
@@ -2243,8 +2279,14 @@ func set_menu_view(view: String, fade: bool = true) -> void:
 		if is_multi:
 			net.start_lan_discovery()
 			if ui.has("lan_info_lbl"):
-				var cur_ip := net._get_local_lan_ip()
-				(ui["lan_info_lbl"] as Label).text = RoomsI18n.t("menu_your_ip", [cur_ip, RoomsNet.ENET_PORT])
+				var cur_ip: String = net._get_local_lan_ip()
+				if net.is_hotspot_network() and cur_ip == net.get_hotspot_host_ip():
+					(ui["lan_info_lbl"] as Label).text = RoomsI18n.t("menu_hotspot_active", [cur_ip, RoomsNet.ENET_PORT])
+				else:
+					(ui["lan_info_lbl"] as Label).text = RoomsI18n.t("menu_your_ip", [cur_ip, RoomsNet.ENET_PORT])
+			if ui.has("m_btn_hotspot_join"):
+				var hs_target: String = net.get_hotspot_host_ip()
+				(ui["m_btn_hotspot_join"] as Button).text = RoomsI18n.t("menu_hotspot_connect", [hs_target])
 			update_menu_players_list()
 		else:
 			net.stop_lan_discovery()
