@@ -298,7 +298,12 @@ func compute_mobile_enabled() -> bool:
 	elif mobile_override == -1:
 		mobile_controls_enabled = false
 	else:
-		mobile_controls_enabled = touch_seen or is_mobile_platform() or DisplayServer.is_touchscreen_available()
+		# Auto-detection: on desktop platforms (Windows, Linux, macOS) default to keyboard/mouse (false).
+		# Only actual mobile platforms (Android, iOS) default to touch controls (true).
+		if is_mobile_platform():
+			mobile_controls_enabled = true
+		else:
+			mobile_controls_enabled = false
 	return mobile_controls_enabled
 
 

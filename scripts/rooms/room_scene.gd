@@ -101,8 +101,16 @@ func _register_hiding_node(hnode: Node3D) -> void:
 	var lbl := ""
 	if hkind == "locker":
 		dp = hnode.get_node_or_null("LockerDoorPivot") as Node3D
+		if dp == null:
+			dp = hnode.find_child("Locker*DoorPivot*", true, false) as Node3D
+		if dp == null:
+			dp = hnode.find_child("*DoorPivot*", true, false) as Node3D
 	elif hkind == "fridge":
 		dp = hnode.get_node_or_null("FridgeDoorPivot") as Node3D
+		if dp == null:
+			dp = hnode.find_child("Fridge*DoorPivot*", true, false) as Node3D
+		if dp == null:
+			dp = hnode.find_child("*DoorPivot*", true, false) as Node3D
 		eye_loc = Vector3(0.0, 1.44, 0.08)
 		exit_loc = Vector3(0.0, 0.05, 1.15)
 	elif hkind == "under_desk":
@@ -111,12 +119,29 @@ func _register_hiding_node(hnode: Node3D) -> void:
 		lbl = "[ЛКМ] Залезть под тумбочку"
 
 	var colliders: Array[StaticBody3D] = []
+	if dp != null and dp.find_child("*DoorInteract*", true, false) == null:
+		var d_body := StaticBody3D.new()
+		d_body.name = "DoorInteract"
+		d_body.set_meta("hiding_interact", true)
+		var d_col := CollisionShape3D.new()
+		var d_box := BoxShape3D.new()
+		if hkind == "fridge":
+			d_box.size = Vector3(0.88, 1.98, 0.08)
+			d_col.position = Vector3(0.44, 1.02, 0.0)
+		else:
+			d_box.size = Vector3(0.86, 1.96, 0.06)
+			d_col.position = Vector3(0.42, 1.05, 0.0)
+		d_col.shape = d_box
+		d_body.add_child(d_col)
+		dp.add_child(d_body)
+		colliders.append(d_body)
+
 	var st: Array[Node] = [hnode]
 	while not st.is_empty():
 		var c: Node = st.pop_back()
 		for ch in c.get_children():
 			st.append(ch)
-		if c is StaticBody3D and c.has_meta("hiding_interact"):
+		if c is StaticBody3D and c.has_meta("hiding_interact") and not colliders.has(c as StaticBody3D):
 			colliders.append(c as StaticBody3D)
 
 	lockers.append({

@@ -1,142 +1,48 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://c3m7x5k12locker"]
 
-[sub_resource type="BoxMesh" id="BoxMesh_jqe60"]
-size = Vector3(0.92, 2.1, 0.05)
+[ext_resource type="PackedScene" path="res://assets/models/props/locker_detailed.glb" id="1_model"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_o5kpa"]
 size = Vector3(0.92, 2.1, 0.05)
 
-[sub_resource type="BoxMesh" id="BoxMesh_7lun4"]
-size = Vector3(0.05, 2.1, 0.72)
-
 [sub_resource type="BoxShape3D" id="BoxShape3D_468gu"]
-size = Vector3(0.05, 2.1, 0.72)
-
-[sub_resource type="BoxMesh" id="BoxMesh_6gp0b"]
 size = Vector3(0.05, 2.1, 0.72)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_c5228"]
 size = Vector3(0.05, 2.1, 0.72)
 
-[sub_resource type="BoxMesh" id="BoxMesh_pyspm"]
-size = Vector3(0.92, 0.05, 0.72)
-
 [sub_resource type="BoxShape3D" id="BoxShape3D_oyks5"]
 size = Vector3(0.92, 0.05, 0.72)
 
-[sub_resource type="BoxMesh" id="BoxMesh_7wgnu"]
-size = Vector3(0.84, 1.36, 0.05)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_fmeb4"]
-size = Vector3(0.84, 1.36, 0.05)
-
-[sub_resource type="BoxMesh" id="BoxMesh_4mu1f"]
-size = Vector3(0.84, 0.05, 0.05)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_cs6va"]
-size = Vector3(0.84, 0.05, 0.05)
-
-[sub_resource type="BoxMesh" id="BoxMesh_yptv4"]
-size = Vector3(0.84, 0.44, 0.05)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_rl8qi"]
-size = Vector3(0.84, 0.44, 0.05)
-
-[sub_resource type="BoxMesh" id="BoxMesh_q6m0n"]
-size = Vector3(0.04, 0.16, 0.03)
-
-[node name="Locker" type="Node3D" unique_id=1639668258]
+[node name="Locker" type="Node3D"]
 metadata/hiding_kind = "locker"
 
-[node name="Back" type="StaticBody3D" parent="." unique_id=213775519]
+[node name="Model" parent="." instance=ExtResource("1_model")]
+
+[node name="Back" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, -0.34)
 metadata/hiding_interact = true
 
-[node name="Mesh" type="MeshInstance3D" parent="Back" unique_id=1727145304]
-cast_shadow = 0
-mesh = SubResource("BoxMesh_jqe60")
-metadata/mat_slot = "locker"
-
-[node name="Col" type="CollisionShape3D" parent="Back" unique_id=262775531]
+[node name="Col" type="CollisionShape3D" parent="Back"]
 shape = SubResource("BoxShape3D_o5kpa")
 
-[node name="Left" type="StaticBody3D" parent="." unique_id=1534801192]
+[node name="Left" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.44, 1.05, 0)
 metadata/hiding_interact = true
 
-[node name="Mesh" type="MeshInstance3D" parent="Left" unique_id=10201229]
-cast_shadow = 0
-mesh = SubResource("BoxMesh_7lun4")
-metadata/mat_slot = "locker"
-
-[node name="Col" type="CollisionShape3D" parent="Left" unique_id=1758516051]
+[node name="Col" type="CollisionShape3D" parent="Left"]
 shape = SubResource("BoxShape3D_468gu")
 
-[node name="Right" type="StaticBody3D" parent="." unique_id=1781308292]
+[node name="Right" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.44, 1.05, 0)
 metadata/hiding_interact = true
 
-[node name="Mesh" type="MeshInstance3D" parent="Right" unique_id=180658882]
-cast_shadow = 0
-mesh = SubResource("BoxMesh_6gp0b")
-metadata/mat_slot = "locker"
-
-[node name="Col" type="CollisionShape3D" parent="Right" unique_id=262311944]
+[node name="Col" type="CollisionShape3D" parent="Right"]
 shape = SubResource("BoxShape3D_c5228")
 
-[node name="Top" type="StaticBody3D" parent="." unique_id=1345492785]
+[node name="Top" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.08, 0)
 metadata/hiding_interact = true
 
-[node name="Mesh" type="MeshInstance3D" parent="Top" unique_id=1724769715]
-cast_shadow = 0
-mesh = SubResource("BoxMesh_pyspm")
-metadata/mat_slot = "locker"
-
-[node name="Col" type="CollisionShape3D" parent="Top" unique_id=1834807519]
+[node name="Col" type="CollisionShape3D" parent="Top"]
 shape = SubResource("BoxShape3D_oyks5")
-
-[node name="LockerDoorPivot" type="Node3D" parent="." unique_id=787873277]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.42, 0, 0.34)
-
-[node name="DoorLower" type="StaticBody3D" parent="LockerDoorPivot" unique_id=869044800]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.42, 0.68, 0)
-metadata/hiding_interact = true
-
-[node name="Mesh" type="MeshInstance3D" parent="LockerDoorPivot/DoorLower" unique_id=1741383165]
-cast_shadow = 0
-mesh = SubResource("BoxMesh_7wgnu")
-metadata/mat_slot = "locker_door"
-
-[node name="Col" type="CollisionShape3D" parent="LockerDoorPivot/DoorLower" unique_id=1976960193]
-shape = SubResource("BoxShape3D_fmeb4")
-
-[node name="DoorSlitBar" type="StaticBody3D" parent="LockerDoorPivot" unique_id=1084372053]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.42, 1.5, 0)
-metadata/hiding_interact = true
-
-[node name="Mesh" type="MeshInstance3D" parent="LockerDoorPivot/DoorSlitBar" unique_id=755912894]
-cast_shadow = 0
-mesh = SubResource("BoxMesh_4mu1f")
-metadata/mat_slot = "locker_door"
-
-[node name="Col" type="CollisionShape3D" parent="LockerDoorPivot/DoorSlitBar" unique_id=1517775640]
-shape = SubResource("BoxShape3D_cs6va")
-
-[node name="DoorUpper" type="StaticBody3D" parent="LockerDoorPivot" unique_id=756309597]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.42, 1.85, 0)
-metadata/hiding_interact = true
-
-[node name="Mesh" type="MeshInstance3D" parent="LockerDoorPivot/DoorUpper" unique_id=1686384195]
-cast_shadow = 0
-mesh = SubResource("BoxMesh_yptv4")
-metadata/mat_slot = "locker_door"
-
-[node name="Col" type="CollisionShape3D" parent="LockerDoorPivot/DoorUpper" unique_id=540932227]
-shape = SubResource("BoxShape3D_rl8qi")
-
-[node name="Handle" type="MeshInstance3D" parent="LockerDoorPivot" unique_id=132957681]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.72, 1.05, 0.035)
-cast_shadow = 0
-mesh = SubResource("BoxMesh_q6m0n")
-metadata/mat_slot = "fridge"

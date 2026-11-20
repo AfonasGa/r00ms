@@ -1307,6 +1307,7 @@ func _input(event: InputEvent) -> void:
 
 	elif event is InputEventScreenDrag:
 		var sd := event as InputEventScreenDrag
+		var vp_sz := get_viewport().get_visible_rect().size
 		if state == State.SPECTATING and sd.index == _look_touch_id:
 			var sp_sens := 0.0044 * settings_mgr.mouse_sens_mult
 			_spectate_yaw -= sd.relative.x * sp_sens
@@ -1317,7 +1318,8 @@ func _input(event: InputEvent) -> void:
 			return
 		if sd.index == _joy_touch_id:
 			_update_joystick_from_pos(sd.position)
-		elif sd.index == _look_touch_id:
+		elif sd.index == _look_touch_id or (_look_touch_id == -1 and sd.position.x > vp_sz.x * 0.35):
+			_look_touch_id = sd.index
 			if player_ctrl.locker_transition_t < 1.0:
 				return
 			var sens := 0.0044 * settings_mgr.mouse_sens_mult
@@ -1451,27 +1453,28 @@ func _input(event: InputEvent) -> void:
 
 	elif event is InputEventMouseMotion and (state == State.PLAYING or state == State.SPECTATING):
 		var mm := event as InputEventMouseMotion
-		if mm.device == InputEvent.DEVICE_ID_EMULATION or ui_mgr.chat_open:
+		if ui_mgr.chat_open:
 			return
 		if state == State.SPECTATING:
-			if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+			if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 				_spectate_yaw -= mm.relative.x * 0.004 * settings_mgr.mouse_sens_mult
 				_spectate_pitch = clampf(_spectate_pitch - mm.relative.y * 0.004 * settings_mgr.mouse_sens_mult, -1.15, 0.85)
 				_spectate_user_orbited = true
 			return
-		if not settings_mgr.mobile_controls_enabled and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-			if player_ctrl.locker_transition_t < 1.0:
-				return
-			if player_ctrl.is_hiding:
-				player_ctrl.target_hide_yaw = clampf(player_ctrl.target_hide_yaw - mm.relative.x * 0.0022 * settings_mgr.mouse_sens_mult, -0.58, 0.58)
-				player_ctrl.target_hide_pitch = clampf(player_ctrl.target_hide_pitch - mm.relative.y * 0.0022 * settings_mgr.mouse_sens_mult, -0.38, 0.38)
-			else:
-				player_ctrl.target_yaw -= mm.relative.x * 0.0024 * settings_mgr.mouse_sens_mult
-				player_ctrl.target_pitch = clampf(player_ctrl.target_pitch - mm.relative.y * 0.0024 * settings_mgr.mouse_sens_mult, -1.42, 1.42)
+		if not settings_mgr.mobile_controls_enabled and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		if player_ctrl.locker_transition_t < 1.0:
+			return
+		if player_ctrl.is_hiding:
+			player_ctrl.target_hide_yaw = clampf(player_ctrl.target_hide_yaw - mm.relative.x * 0.0022 * settings_mgr.mouse_sens_mult, -0.58, 0.58)
+			player_ctrl.target_hide_pitch = clampf(player_ctrl.target_hide_pitch - mm.relative.y * 0.0022 * settings_mgr.mouse_sens_mult, -0.38, 0.38)
+		else:
+			player_ctrl.target_yaw -= mm.relative.x * 0.0024 * settings_mgr.mouse_sens_mult
+			player_ctrl.target_pitch = clampf(player_ctrl.target_pitch - mm.relative.y * 0.0024 * settings_mgr.mouse_sens_mult, -1.42, 1.42)
 
 	elif event is InputEventMouseButton and (state == State.PLAYING or state == State.SPECTATING):
 		var mb := event as InputEventMouseButton
-		if mb.device == InputEvent.DEVICE_ID_EMULATION or ui_mgr.chat_open:
+		if ui_mgr.chat_open:
 			return
 		if state == State.SPECTATING:
 			if mb.pressed:
@@ -1480,17 +1483,14 @@ func _input(event: InputEvent) -> void:
 				elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 					cycle_spectate_target(1)
 			return
-		if settings_mgr.mobile_controls_enabled:
-			return
-		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+		if mb.pressed and not settings_mgr.mobile_controls_enabled:
 			if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-			elif not player_ctrl.is_action_locked():
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			if not player_ctrl.is_action_locked():
 				interact_ctrl.try_interact()
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			if mb.pressed:
-				if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-					Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 				if player_ctrl.is_action_locked():
 					return
 				if player_ctrl.active_tool == 1:
